@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "awsctl"
+version = "1.2.0"
+description = "Beginner-friendly AWS SSO org/account login and profile helper with plugins"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Your Team" }]
+keywords = ["aws", "sso", "cli", "login", "profiles"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "License :: OSI Approved :: MIT License",
+  "Environment :: Console",
+  "Operating System :: OS Independent",
+]
+
+dependencies = [
+  "colorama>=0.4.6",
+  "PyYAML>=6.0.1",
+  "InquirerPy>=0.3.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/awsctl"
+Issues = "https://github.com/your-org/awsctl/issues"
+
+[project.scripts]
+awsctl = "awsctl:main"
+awsctl-version = "awsctl._version_cli:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=4.1",
+  "pytest-mock>=3.12",
+  "mypy>=1.11",
+  "ruff>=0.6",
+  "black>=24.8",
+  "isort>=5.13.2",
+  "bandit>=1.8.6",
+  "safety>=3.6.2",
+  "build>=1.2.2",
+  "twine>=5.1.1",
+]
+
+[tool.setuptools.packages.find]
+include = ["awsctl*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["awsctl"]
+skip = [".venv", "build", "dist"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# Ignore E501 (line too long, handled by black)
+# Ignore UP007 (Python 3.10+ union syntax `X | Y`) because target is 3.9
+# Ignore UP045 (Python 3.10+ optional syntax `X | None`) because target is 3.9
+ignore = ["E501", "UP007", "UP045"] # <-- Make sure UP045 is here
+exclude = [".venv", "build", "dist"]
+
+# [tool.mypy] section removed (config is in mypy.ini)
