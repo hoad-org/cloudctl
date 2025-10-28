@@ -1,134 +1,99 @@
-🧭 awsctl: The Missing AWS SSO Helper
+# 🧭 awsctl: The Missing AWS SSO Helper
 
 Welcome to the awsctl wiki. This guide covers user installation, day-to-day usage, advanced topics, quality assurance, security posture, and developer/contributor information.
 
-Table of Contents
+## Table of Contents
 
-Introduction
+- Introduction
 
-What is awsctl?
+  - What is awsctl?
+  - Why Use awsctl? (The Problem Solved)
+  - Core Features & Benefits
+  - Comparison: awsctl vs. Manual Credential Pasting
 
-Why Use awsctl? (The Problem Solved)
+- User Guide
 
-Core Features & Benefits
+  - Prerequisites
+  - Installation
 
-Comparison: awsctl vs. Manual Credential Pasting
+    - Recommended: pipx
+    - Alternative: Standard pip
 
-User Guide
+  - Initial Setup (awsctl setup)
+  - Configuration (orgs.yaml)
 
-Prerequisites
+    - File Location
+    - Structure and Fields
+    - Example orgs.yaml
 
-Installation
+  - Daily Usage
 
-Recommended: pipx
+    - Step 1: Login (awsctl login)
+    - Step 2: Activate Credentials (awsctl-use)
+    - Verifying Credentials
+    - Switching Roles/Accounts/Regions
+    - Command Reference
+    - Troubleshooting
 
-Alternative: Standard pip
+- Quality Assurance
 
-Initial Setup (awsctl setup)
+  - Coding Standards
+  - Testing Standards
+  - Commitment to Quality
 
-Configuration (orgs.yaml)
+- Security
 
-File Location
+  - Security Model: Wrapping the AWS CLI
+  - Credential Handling
+  - Authentication Flow
+  - Code Security Practices
+  - Scope and Assumptions
+  - Security Standards Compliance (Tool Perspective)
 
-Structure and Fields
+- Plugin System
 
-Example orgs.yaml
+  - Overview
+  - Okta Plugin Details
 
-Daily Usage
+    - Purpose
+    - Enabling/Disabling
+    - Functionality (Current)
+    - Advantages over Browser-Only Flow
+    - Security Considerations
+    - Future Enhancements
 
-Step 1: Login (awsctl login)
+- Developer Guide
 
-Step 2: Activate Credentials (awsctl-use)
+  - Getting Started
+  - Project Structure
+  - Core Logic Deep Dive
+  - Testing Strategy (tests/, tox.ini)
+  - Linting and Formatting (tox.ini, pyproject.toml)
+  - Build and Packaging (pyproject.toml, Makefile)
+  - Contributing
 
-Verifying Credentials
+- License
 
-Switching Roles/Accounts/Regions
+---
 
-Command Reference
+# 🚀 Introduction
 
-Troubleshooting
-
-Quality Assurance
-
-Coding Standards
-
-Testing Standards
-
-Commitment to Quality
-
-Security
-
-Security Model: Wrapping the AWS CLI
-
-Credential Handling
-
-Authentication Flow
-
-Code Security Practices
-
-Scope and Assumptions
-
-Security Standards Compliance (Tool Perspective)
-
-Plugin System
-
-Overview
-
-Okta Plugin Details
-
-Purpose
-
-Enabling/Disabling
-
-Functionality (Current)
-
-Advantages over Browser-Only Flow
-
-Security Considerations
-
-Future Enhancements
-
-Developer Guide
-
-Getting Started
-
-Project Structure
-
-Core Logic Deep Dive
-
-Testing Strategy (tests/, tox.ini)
-
-Linting and Formatting (tox.ini, pyproject.toml)
-
-Build and Packaging (pyproject.toml, Makefile)
-
-Contributing
-
-License
-
-🚀 Introduction
-
-What is awsctl?
+## What is awsctl?
 
 awsctl is a user-friendly command-line utility designed to streamline the AWS Single Sign-On (SSO) login process and credential management. It acts as a smart wrapper around the official AWS CLI (aws), automating common tasks and providing a convenient way to get temporary, profile-less AWS credentials into your shell environment.
 
 Its primary philosophy is: Log in once, then switch roles easily.
 
-Why Use awsctl? (The Problem Solved)
+## Why Use awsctl? (The Problem Solved)
 
 Using AWS SSO with the standard AWS CLI often involves:
 
-Running aws sso login --profile <base-sso-profile>.
-
-Manually configuring dozens or hundreds of specific role profiles in ~/.aws/config, like [profile my-account-admin], specifying sso_account_id, sso_role_name, etc.
-
-Remembering which profile name corresponds to which account/role.
-
-Constantly setting the AWS_PROFILE environment variable or using --profile flags.
-
-Refreshing credentials periodically using aws sso get-role-credentials or similar complex commands.
-
-Alternatively, using the AWS SSO console's "Command line or programmatic access" option, which requires manually copying and pasting temporary credentials (Access Key ID, Secret Key, Session Token) into the terminal multiple times a day.
+- Running aws sso login --profile <base-sso-profile>.
+- Manually configuring dozens or hundreds of specific role profiles in ~/.aws/config, like [profile my-account-admin], specifying sso_account_id, sso_role_name, etc.
+- Remembering which profile name corresponds to which account/role.
+- Constantly setting the AWS_PROFILE environment variable or using --profile flags.
+- Refreshing credentials periodically using aws sso get-role-credentials or similar complex commands.
+- Alternatively, using the AWS SSO console's "Command line or programmatic access" option, which requires manually copying and pasting temporary credentials (Access Key ID, Secret Key, Session Token) into the terminal multiple times a day.
 
 awsctl simplifies this significantly by:
 
@@ -140,105 +105,72 @@ Exporting the temporary credentials (Access Key ID, Secret Access Key, Session T
 
 This eliminates the need for numerous role-specific profiles in ~/.aws/config AND removes the error-prone and tedious process of manually copying credentials from the AWS console. It makes switching contexts much faster, more reliable, and more secure.
 
-Core Features & Benefits
+## Core Features & Benefits
 
-One-Time SSO Login: Authenticate via your browser once per session using awsctl login. awsctl then reuses the secure token cached by the official AWS CLI.
+- **One-Time SSO Login**: Authenticate via your browser once per session using awsctl login. awsctl then reuses the secure token cached by the official AWS CLI.
 
-Profile-less Credential Management: Exports temporary credentials directly to environment variables, avoiding clutter in ~/.aws/config.
+- **Profile-less Credential Management**: Exports temporary credentials directly to environment variables, avoiding clutter in ~/.aws/config.
 
-Fast Context Switching: Use the awsctl-use shell function (awsctl-use --account X --role Y --region Z) to activate credentials for any account/role/region combination instantly, directly within your current shell.
+- **Fast Context Switching**: Use the awsctl-use shell function (awsctl-use --account X --role Y --region Z) to activate credentials for any account/role/region combination instantly, directly within your current shell.
 
-Multi-Org Support: Manage multiple AWS Organizations (different SSO portals) from a single configuration file (~/.awsctl/orgs.yaml).
+- **Multi-Org Support**: Manage multiple AWS Organizations (different SSO portals) from a single configuration file (~/.awsctl/orgs.yaml).
 
-Automated Setup: awsctl setup creates initial configuration, syncs necessary base AWS profiles, and installs the essential awsctl-use shell helper function.
+- **Automated Setup**: awsctl setup creates initial configuration, syncs necessary base AWS profiles, and installs the essential awsctl-use shell helper function.
 
-Built-in Diagnostics: awsctl doctor verifies dependencies (aws, jq, python3) and environment readiness.
+- **Built-in Diagnostics**: awsctl doctor verifies dependencies (aws, jq, python3) and environment readiness.
 
-Reduced Errors: Eliminates typos and mistakes common when manually copying/pasting credentials.
+- **Reduced Errors**: Eliminates typos and mistakes common when manually copying/pasting credentials.
 
-Enhanced Security: Avoids exposing temporary credentials in shell history or accidentally pasting them into insecure locations. Credentials exist only as environment variables within a specific shell session.
+- **Enhanced Security**: Avoids exposing temporary credentials in shell history or accidentally pasting them into insecure locations. Credentials exist only as environment variables within a specific shell session.
 
-Improved Workflow: Integrates seamlessly into standard terminal workflows; switch roles without leaving your command line.
+- **Improved Workflow**: Integrates seamlessly into standard terminal workflows; switch roles without leaving your command line.
 
-Extensible: Basic plugin system scaffold included (e.g., for Okta pre-checks).
+- **Extensible**: Basic plugin system scaffold included (e.g., for Okta pre-checks).
 
-Comparison: awsctl vs. Manual Credential Pasting
+## Comparison: awsctl vs. Manual Credential Pasting
 
 Manually copying temporary credentials from the AWS SSO console is a common but inefficient and risky practice. Here's why awsctl is superior:
 
-Feature
+| **Feature**       | **Manual Copy/Paste from AWS Console**                           | **awsctl (awsctl login + awsctl-use)**                      |
+| ----------------- | ---------------------------------------------------------------- | ----------------------------------------------------------- |
+| **Speed**         | Slow: Navigate console, click role, copy 3 values, paste 3 times | Fast: Single awsctl-use command after initial login         |
+| **Reliability**   | Error-prone: Typos, incomplete pastes, pasting old creds         | Reliable: Directly fetches and exports correct, fresh creds |
+| **Convenience**   | Requires browser interaction every time                          | Requires browser only for infrequent awsctl login           |
+| **Context**       | Requires remembering account IDs, role names                     | Uses clear command-line arguments (--account, --role)       |
+| **Shell History** | Credentials may accidentally appear in shell history             | Credentials are eval'd, minimizing history exposure         |
+| **Security Risk** | High risk of pasting secrets into wrong windows (chat, etc.)     | Low risk: Credentials stay within the shell environment     |
 
-Manual Copy/Paste from AWS Console
+---
 
-awsctl (awsctl login + awsctl-use)
+# 📘 User Guide
 
-Speed
-
-Slow: Navigate console, click role, copy 3 values, paste 3 times
-
-Fast: Single awsctl-use command after initial login
-
-Reliability
-
-Error-prone: Typos, incomplete pastes, pasting old creds
-
-Reliable: Directly fetches and exports correct, fresh creds
-
-Convenience
-
-Requires browser interaction every time
-
-Requires browser only for infrequent awsctl login
-
-Context
-
-Requires remembering account IDs, role names
-
-Uses clear command-line arguments (--account, --role)
-
-Shell History
-
-Credentials may accidentally appear in shell history
-
-Credentials are eval'd, minimizing history exposure
-
-Security Risk
-
-High risk of pasting secrets into wrong windows (chat, etc.)
-
-Low risk: Credentials stay within the shell environment
-
-Workflow
-
-Disruptive context switching (CLI -> Browser -> CLI)
-
-Seamless: Stays within the command line
-
-📘 User Guide
-
-Prerequisites
+## Prerequisites
 
 Before installing awsctl, ensure you have the following installed and configured:
 
-Python: Version 3.9 or higher.
+### Python: Version 3.9 or higher
 
-Verify: python3 --version
+- Verify: `python3 --version`
 
-pip & pipx: The Python package installers. pipx is highly recommended for CLI tool installation.
+### pip & pipx
 
-Verify: pip --version, pipx --version
+The Python package installers. pipx is highly recommended for CLI tool installation.
 
-Install/Upgrade pipx: python3 -m pip install --user -U pipx && python3 -m pipx ensurepath
+- Verify: `pip --version`, `pipx --version`
+- Install/Upgrade pipx: `python3 -m pip install --user -U pipx && python3 -m pipx ensurepath`
 
-AWS CLI v2: The official AWS Command Line Interface. awsctl wraps this tool.
+### AWS CLI v2
 
-Verify: aws --version (Ensure it shows aws-cli/2.x.x)
+The official AWS Command Line Interface. awsctl wraps this tool.
 
-Installation: Follow the official AWS CLI installation guide.
+- Verify: `aws --version` (Ensure it shows aws-cli/2.x.x)
+- Installation: Follow the official AWS CLI installation guide.
 
-jq: A command-line JSON processor. Used internally by some helper scripts and potentially by awsctl itself.
+### jq
 
-Verify: jq --version
+A command-line JSON processor. Used internally by some helper scripts and potentially by awsctl itself.
+
+- Verify: `jq --version`
 
 Installation:
 
@@ -254,132 +186,146 @@ Verify: git --version
 
 Installation: Usually pre-installed or available via your OS package manager (e.g., brew install git, sudo apt install git).
 
-Installation
+## Installation
 
-Recommended: pipx
+### Installation Methods
+
+- **Recommended**: pipx
+- **Alternative**: Standard pip
+
+#### Recommended: pipx
 
 pipx installs Python CLI applications into isolated virtual environments, keeping dependencies clean and avoiding conflicts.
 
+```bash
 # Ensure pipx paths are configured (run once)
 python3 -m pipx ensurepath
 
 # Install awsctl directly from its Git repository
 # (Replace URL with the actual repository location)
-pipx install "git+[https://github.com/](https://github.com/)<your-org>/awsctl.git"
+pipx install "git+https://github.com/<your-org>/awsctl.git"
 
 # OR, if you have a built wheel file:
 # pipx install /path/to/awsctl-*.whl
 
 # IMPORTANT: Run the one-time setup command AFTER installation
 awsctl setup
+```
 
-
-Alternative: Standard pip
+#### Alternative: Standard pip
 
 You can install using pip within a virtual environment or globally (not generally recommended for system Python).
 
+```bash
 # Create and activate a virtual environment (optional but recommended)
-# python3 -m venv my-aws-tools
-# source my-aws-tools/bin/activate
+python3 -m venv my-aws-tools
+source my-aws-tools/bin/activate
 
 # Install from Git
-pip install "git+[https://github.com/](https://github.com/)<your-org>/awsctl.git"
+pip install "git+https://github.com/<your-org>/awsctl.git"
 
 # OR install from a local clone (e.g., for development)
-# git clone [https://github.com/](https://github.com/)<your-org>/awsctl.git
-# cd awsctl
-# pip install -e .  # Editable install
+git clone https://github.com/<your-org>/awsctl.git
+cd awsctl
+pip install -e .  # Editable install
 
 # IMPORTANT: Run the one-time setup command AFTER installation
 awsctl setup
 
 # Deactivate virtual environment if you used one
-# deactivate
+deactivate
+```
 
+### Setup and Configuration
 
-Initial Setup (awsctl setup)
+#### Initial Setup (awsctl setup)
 
-After installing awsctl via pipx or pip, you must run the awsctl setup command once. This performs crucial first-time configuration:
+After installing awsctl via pipx or pip, you must run the `awsctl setup` command once. This performs crucial first-time configuration:
 
+```bash
 awsctl setup
-
+```
 
 This command will:
 
-Create Configuration Directory: Ensure ~/.awsctl/ exists.
+- **Create Configuration Directory**: Ensure `~/.awsctl/` exists.
+- **Create Sample orgs.yaml**: If `~/.awsctl/orgs.yaml` doesn't exist or is empty, it creates a sample file with placeholders.
+- **Sync Base AWS Config**: Creates or updates sections in `~/.aws/config` required for the underlying `aws sso login` command to work. It sets up `[profile sso-<org_name>]` and `[sso-session <org_name>]` blocks based on your `orgs.yaml`.
+- **Inject Shell Function**: Detects your shell (bash or zsh) and adds the `awsctl-use()` helper function to the appropriate startup file (`~/.bashrc` or `~/.zshrc`).
 
-Create Sample orgs.yaml: If ~/.awsctl/orgs.yaml doesn't exist or is empty, it creates a sample file with placeholders.
+➡️ **Action Required**: After running `awsctl setup`, you must restart your shell or manually source your profile (`source ~/.zshrc` or `source ~/.bashrc`) for the `awsctl-use` function to become available.
 
-Sync Base AWS Config: Creates or updates sections in ~/.aws/config required for the underlying aws sso login command to work. It sets up [profile sso-<org_name>] and [sso-session <org_name>] blocks based on your orgs.yaml.
-
-Inject Shell Function: Detects your shell (bash or zsh) and adds the awsctl-use() helper function to the appropriate startup file (~/.bashrc or ~/.zshrc).
-
-➡️ Action Required: After running awsctl setup, you must restart your shell or manually source your profile (source ~/.zshrc or source ~/.bashrc) for the awsctl-use function to become available.
-
-Configuration (orgs.yaml)
+## Configuration (orgs.yaml)
 
 awsctl uses a single YAML file to manage connection details for one or more AWS Organizations integrated with AWS SSO.
 
-File Location
+#### File Location
 
-The configuration file is expected at: ~/.awsctl/orgs.yaml
+The configuration file is expected at:
 
-Structure and Fields
+```bash
+~/.awsctl/orgs.yaml
+```
 
-The file contains a top-level orgs list and an optional plugins section.
+#### Structure and Fields
 
+The file contains a top-level `orgs` list and an optional `plugins` section.
+
+```yaml
 orgs:
-  - name: <string>                  # REQUIRED: A unique, friendly name for this org (used in `awsctl login --org <name>`)
-    sso_start_url: <string>         # REQUIRED: The "User portal URL" from your AWS SSO dashboard.
-    sso_region: <string>            # REQUIRED: The AWS region where your AWS SSO instance is configured.
-    default_region: <string>        # Optional: The default AWS region to use when activating credentials via `awsctl-use` if `--region` is not specified. Defaults to `sso_region` if omitted.
-    allowed_regions: [<string>]     # Optional: A list of regions you are permitted to use. `awsctl-use` might warn if you try to use a region outside this list (implementation dependent).
-    preferred_roles: [<string>]     # Optional: A list of role names you frequently use. Future versions might use this for interactive pickers or suggestions.
+  - name: <string> # REQUIRED: A unique, friendly name for this org (used in `awsctl login --org <name>`)
+    sso_start_url: <string> # REQUIRED: The "User portal URL" from your AWS SSO dashboard.
+    sso_region: <string> # REQUIRED: The AWS region where your AWS SSO instance is configured.
+    default_region: <string> # Optional: The default AWS region to use when activating credentials via `awsctl-use` if `--region` is not specified. Defaults to `sso_region` if omitted.
+    allowed_regions: [<string>] # Optional: A list of regions you are permitted to use. `awsctl-use` might warn if you try to use a region outside this list (implementation dependent).
+    preferred_roles: [<string>] # Optional: A list of role names you frequently use. Future versions might use this for interactive pickers or suggestions.
 
   - name: another-org
     # ... other org details
 
-plugins:                            # Optional: Section for enabling plugins.
-  enabled: [<string>]             # Optional: A list of plugin module names to load (e.g., ['awsctl.plugins.okta']).
+plugins: # Optional: Section for enabling plugins.
+  enabled: [<string>] # Optional: A list of plugin module names to load (e.g., ['awsctl.plugins.okta']).
+```
 
-
-Example orgs.yaml
+### Example orgs.yaml
 
 # ~/.awsctl/orgs.yaml
-orgs:
-  - name: development-org
-    sso_start_url: [https://d-abcdef1234.awsapps.com/start](https://d-abcdef1234.awsapps.com/start)
-    sso_region: eu-west-1
-    default_region: eu-west-1
-    allowed_regions:
-      - eu-west-1
-      - eu-central-1
-    preferred_roles:
-      - DeveloperAccess
-      - ViewOnlyAccess
 
-  - name: production-org
-    sso_start_url: [https://d-98765fedcba.awsapps.com/start](https://d-98765fedcba.awsapps.com/start)
-    sso_region: us-east-1
-    default_region: us-east-1
+orgs:
+
+- name: development-org
+  sso_start_url: https://d-abcdef1234.awsapps.com/start
+  sso_region: eu-west-1
+  default_region: eu-west-1
+  allowed_regions:
+
+  - eu-west-1
+  - eu-central-1
+    preferred_roles:
+  - DeveloperAccess
+  - ViewOnlyAccess
+
+- name: production-org
+  sso_start_url: https://d-98765fedcba.awsapps.com/start
+  sso_region: us-east-1
+  default_region: us-east-1
 
 plugins:
-  enabled: [] # No plugins enabled currently
-
+enabled: [] # No plugins enabled currently
 
 Action Required: Edit this file after running awsctl setup and replace the placeholder values with your actual AWS SSO details.
 
-Daily Usage
+## Daily Usage
 
 Using awsctl involves two main steps: logging in (infrequently) and activating credentials (frequently).
 
-Step 1: Login (awsctl login)
+### Step 1: Login (awsctl login)
 
 You need to log in to an organization whenever your AWS SSO session expires (typically configured for 8-12 hours by your AWS administrator).
 
 # Log in to the organization named 'development-org' defined in your orgs.yaml
-awsctl login --org development-org
 
+awsctl login --org development-org
 
 This command performs the following actions:
 
@@ -397,16 +343,17 @@ Upon successful authentication, AWS grants access, and the AWS CLI securely stor
 
 awsctl confirms the login was successful.
 
-Step 2: Activate Credentials (awsctl-use)
+### Step 2: Activate Credentials (awsctl-use)
 
 This is the command you'll use most often. Once you have a valid token in the cache (from awsctl login), you can instantly get temporary credentials for any account/role/region you have access to.
 
 # Syntax:
+
 # awsctl-use --account <ACCOUNT_ID> --role <ROLE_NAME> --region <AWS_REGION>
 
 # Example: Activate credentials for the DeveloperAccess role in account 111122223333, targeting eu-west-1
-awsctl-use --account 111122223333 --role DeveloperAccess --region eu-west-1
 
+awsctl-use --account 111122223333 --role DeveloperAccess --region eu-west-1
 
 This shell function (installed by awsctl setup) performs these actions:
 
@@ -426,31 +373,33 @@ The awsctl-use shell function captures this output and uses the shell's built-in
 
 It prints a confirmation message indicating which role has been activated.
 
-Verifying Credentials
+## Verifying Credentials
 
 After running awsctl-use, you can verify that the credentials are active using standard AWS CLI commands:
 
 # Check the active identity (should show the assumed role ARN)
+
 aws sts get-caller-identity
 
 # List S3 buckets (or any other AWS command)
-aws s3 ls
 
+aws s3 ls
 
 Important: These credentials are only set for your current shell session. Opening a new terminal window or tab will require running awsctl-use again.
 
-Switching Roles/Accounts/Regions
+## Switching Roles/Accounts/Regions
 
 Simply run the awsctl-use command again with the new parameters:
 
 # Switch to ViewOnlyAccess in the same account/region
+
 awsctl-use --account 111122223333 --role ViewOnlyAccess --region eu-west-1
 
 # Switch to a different account and region
+
 awsctl-use --account 444455556666 --role AdminRole --region us-east-1
 
-
-Command Reference
+## Command Reference
 
 awsctl setup: Performs first-time setup (creates config, installs shell function). Run once after installation.
 
@@ -476,7 +425,7 @@ awsctl help: Displays the built-in help message.
 
 awsctl --version or -V: Prints the installed version of awsctl.
 
-Troubleshooting
+## Troubleshooting
 
 awsctl: command not found:
 
@@ -518,7 +467,7 @@ Config not found: ~/.awsctl/orgs.yaml: Run awsctl setup.
 
 awsctl is developed with a strong emphasis on code quality, correctness, and maintainability.
 
-Coding Standards
+## Coding Standards
 
 PEP 8 Compliance: Code formatting adheres strictly to PEP 8 style guidelines, enforced automatically by the Black code formatter. This ensures consistency and readability.
 
@@ -530,37 +479,39 @@ Static Type Checking: MyPy is used in conjunction with type hints to perform sta
 
 Modularity: The codebase is organized into modules with specific responsibilities (e.g., sso_cache.py for token handling, accounts.py for AWS CLI listing calls, cli.py for argument parsing and dispatch).
 
-Testing Standards
+## Testing Standards
 
 Unit Testing: A comprehensive suite of unit tests using Pytest covers individual functions and modules. Mocking (pytest-mock, unittest.mock) is used extensively to isolate components and simulate external interactions (like file system access and subprocess calls) without relying on live AWS services or specific user environments.
 
-End-to-End Smoke Testing: Bash scripts (scripts/full_smoke*.sh) provide automated end-to-end testing. They simulate a user installing and running key awsctl commands in a clean, temporary environment, verifying core workflows and interactions. These tests catch integration issues that unit tests might miss.
+End-to-End Smoke Testing: Bash scripts (scripts/full_smoke\*.sh) provide automated end-to-end testing. They simulate a user installing and running key awsctl commands in a clean, temporary environment, verifying core workflows and interactions. These tests catch integration issues that unit tests might miss.
 
 Environment Management: Tox is used to automate testing across multiple Python versions (3.9+) and to manage isolated environments for testing and linting. This ensures compatibility and consistent results.
 
 Continuous Integration (CI): A GitHub Actions workflow (.github/workflows/test.yml) automatically runs linters (tox -e lint), unit tests (tox -e py across multiple Python versions and OSs), and build validation (tox -e build) on every push and pull request, ensuring code quality is maintained.
 
-Commitment to Quality
+## Commitment to Quality
 
 The combination of strict coding standards, comprehensive testing (unit and E2E), static analysis, and automated CI ensures that awsctl is built to a high standard. This minimizes bugs, improves reliability, and makes the tool easier to maintain and extend in the future.
 
-🔒 Security
+# 🔒 Security
 
 Security is a primary consideration in awsctl's design. The tool aims to enhance, not compromise, the security posture established by AWS SSO and the official AWS CLI.
 
-Security Model: Wrapping the AWS CLI
+## Security Model: Wrapping the AWS CLI
 
-Core Principle: awsctl wraps the official, security-vetted AWS CLI (aws) for all interactions with AWS services. It does not reimplement AWS APIs or authentication protocols.
+### Core Principle
 
-Reliance on AWS CLI Security: awsctl relies entirely on the security mechanisms built into the AWS CLI for:
+awsctl wraps the official, security-vetted AWS CLI (aws) for all interactions with AWS services. It does not reimplement AWS APIs or authentication protocols.
 
-Handling the secure browser-based SSO authentication flow (aws sso login).
+### Reliance on AWS CLI Security
 
-Storing the short-lived SSO accessToken securely in the ~/.aws/sso/cache/ directory (managed by the AWS CLI).
+awsctl relies entirely on the security mechanisms built into the AWS CLI for:
 
-Making authenticated API calls to AWS SSO (list-accounts, list-account-roles, get-role-credentials) using the cached token.
+- Handling the secure browser-based SSO authentication flow (aws sso login).
+- Storing the short-lived SSO accessToken securely in the ~/.aws/sso/cache/ directory (managed by the AWS CLI).
+- Making authenticated API calls to AWS SSO (list-accounts, list-account-roles, get-role-credentials) using the cached token.
 
-Credential Handling
+## Credential Handling
 
 No Long-Term Credential Storage: awsctl never stores long-term AWS credentials (like IAM user keys).
 
@@ -570,13 +521,13 @@ Environment Variables Only: The awsctl-use function directly exports these tempo
 
 Reduced Risk vs. Manual Pasting: This model significantly reduces the risk associated with manually copying and pasting credentials, where they could be accidentally saved in files, shell history, or pasted into unintended applications (like chat windows).
 
-Authentication Flow
+## Authentication Flow
 
 Delegation to AWS CLI: The primary authentication (logging into your SSO provider) is handled entirely by aws sso login, which awsctl login invokes. This leverages the secure browser interaction and token caching implemented by AWS.
 
 No Credential Interception: awsctl does not intercept or handle your primary SSO username/password or MFA tokens.
 
-Code Security Practices
+## Code Security Practices
 
 Standard Libraries: The tool primarily uses Python's standard libraries and well-vetted third-party libraries (PyYAML, colorama, InquirerPy) for core functionality.
 
@@ -586,7 +537,7 @@ Input Handling: User-provided inputs (like account IDs, role names from CLI argu
 
 Security Linters: Development dependencies include ruff (which incorporates checks from tools like flake8-bandit) and potentially bandit and safety (listed in dev dependencies) to scan for common security vulnerabilities during development and CI.
 
-Scope and Assumptions
+## Scope and Assumptions
 
 Local Execution: awsctl is designed to run locally on a developer's machine. It assumes the underlying operating system and user environment are reasonably secure.
 
@@ -594,7 +545,7 @@ AWS CLI Trust: The security model fundamentally relies on the security and integ
 
 SSO Cache Permissions: It assumes the file permissions on the ~/.aws/sso/cache/ directory (managed by the AWS CLI) are appropriately restricted by the operating system.
 
-Security Standards Compliance (Tool Perspective)
+## Security Standards Compliance (Tool Perspective)
 
 While awsctl itself doesn't directly handle sensitive authentication secrets like passwords, it operates in a security-conscious manner:
 
@@ -614,7 +565,7 @@ awsctl includes a basic plugin system to allow for extending its functionality, 
 
 Loading: Plugins are Python modules listed in the plugins.enabled section of ~/.awsctl/orgs.yaml.
 
-Hooks: The system currently supports a pre_login(org: dict) hook. When awsctl login is run, the plugin loader (awsctl/plugins/__init__.py) imports the enabled plugin modules and calls the pre_login function in each module that defines it, passing the configuration dictionary for the target organization.
+Hooks: The system currently supports a pre_login(org: dict) hook. When awsctl login is run, the plugin loader (awsctl/plugins/**init**.py) imports the enabled plugin modules and calls the pre_login function in each module that defines it, passing the configuration dictionary for the target organization.
 
 Error Handling: Plugin loading is best-effort. If a plugin fails to import or its hook raises an exception, awsctl typically logs a warning but continues execution.
 
@@ -631,16 +582,16 @@ Enabling/Disabling
 To enable the Okta plugin, add its module path to your orgs.yaml:
 
 # ~/.awsctl/orgs.yaml
+
 orgs:
-  - name: my-okta-federated-org
-    sso_start_url: ...
-    sso_region: ...
-    # ... other org details
+
+- name: my-okta-federated-org
+  sso_start_url: ...
+  sso_region: ...
+  # ... other org details
 
 plugins:
-  enabled:
-    - awsctl.plugins.okta # Enable the Okta plugin
-
+enabled: - awsctl.plugins.okta # Enable the Okta plugin
 
 To disable it, simply remove the entry or leave the enabled list empty ([]).
 
@@ -649,15 +600,13 @@ Functionality (Current)
 The current awsctl/plugins/okta.py is primarily a placeholder. Its pre_login hook simply prints an informational message and performs a basic check for the presence of sso_start_url in the org configuration.
 
 # awsctl/plugins/okta.py
+
 from awsctl.utils import info, warn
 
 def pre_login(org: dict) -> None:
-    info("Okta plugin: pre-login checks starting")
-    # Example check:
-    if "sso_start_url" not in org:
-        warn("Okta plugin: org missing sso_start_url; nothing to do")
-    # Future logic could go here
-
+info("Okta plugin: pre-login checks starting") # Example check:
+if "sso_start_url" not in org:
+warn("Okta plugin: org missing sso_start_url; nothing to do") # Future logic could go here
 
 Advantages over Browser-Only Flow
 
@@ -689,80 +638,92 @@ Provide guidance on MFA setup or device enrollment.
 
 Potentially support Okta device authorization flows (though this might require significant additional libraries and security considerations).
 
-👨‍💻 Developer Guide
+# 👨‍💻 Developer Guide
 
-Getting Started
+## Getting Started
 
-Clone the Repository:
+### Clone the Repository
 
-git clone [https://github.com/](https://github.com/)<your-org>/awsctl.git
+```bash
+git clone https://github.com/<your-org>/awsctl.git
 cd awsctl
+```
 
+### Use the Makefile for Setup
 
-Use the Makefile for Setup: The Makefile provides convenient targets for setting up a development environment using tox.
+The Makefile provides convenient targets for setting up a development environment using tox.
 
+```bash
 make setup
-# Or directly using tox for a specific Python version
-# tox -e py311
+```
 
+# Or directly using tox for a specific Python version
+
+# tox -e py311
 
 This creates a virtual environment (usually in .tox/py... or venv/), installs dependencies, and installs awsctl in editable mode (pip install -e .).
 
 Activate Virtual Environment:
 
 # If using make setup -> venv/
+
 source venv/bin/activate
+
 # If using tox -> .tox/py.../bin/
+
 # source .tox/py311/bin/activate
 
-
-Project Structure
+## Project Structure
 
 (See detailed structure in previous sections)
 
-Core Logic Deep Dive
+## Core Logic Deep Dive
 
 (See detailed logic flow in previous sections: Config -> Cache -> CLI Interaction -> Export -> Shell Integration -> Entrypoint)
 
-Testing Strategy (tests/, tox.ini)
+## Testing Strategy (tests/, tox.ini)
 
 (See detailed strategy in Quality Assurance section: Unit Tests, Smoke Tests, Tox Orchestration)
 
-Running Unit Tests
+### Running Unit Tests
 
 # Run tests using the current virtual environment's Python
+
 pytest -v
 
 # Run tests for a specific Python version using tox
+
 tox -e py311
 
-
-Running Smoke Tests
+### Running Smoke Tests
 
 # Run the extended smoke test (recommended)
+
 bash scripts/full_smoke_ext.sh
 
 # Review detailed logs and summary
+
 # open tools/smoke_artifacts/$(ls -1 tools/smoke_artifacts | tail -1)
 
-
-Linting and Formatting (tox.ini, pyproject.toml)
+## Linting and Formatting (tox.ini, pyproject.toml)
 
 (See details in Quality Assurance section: Black, Ruff, MyPy)
 
 Commands (via tox):
 
 # Check formatting, linting, and types
+
 tox -e lint
 
 # Auto-format code with Black
+
 black awsctl tests
 
 # Auto-fix fixable linting errors with Ruff
+
 ruff check awsctl tests --fix
 
-
-Build and Packaging (pyproject.toml, Makefile)
+## Build and Packaging (pyproject.toml, Makefile)
 
 Build System: Uses standard setuptools with configuration defined in pyproject.toml (PEP 517/518).
 
@@ -773,12 +734,11 @@ Console Script: Entry point defined in pyproject.toml ([project.scripts]).
 Building:
 
 python -m build
-twine check dist/* # Optional validation
-
+twine check dist/\* # Optional validation
 
 Makefile: Provides convenience targets: make build, make install (via pipx), make uninstall, make setup, make lint, make test.
 
-Contributing
+## Contributing
 
 Fork and Clone: Fork the repository on GitHub and clone your fork locally.
 
