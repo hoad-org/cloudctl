@@ -1,13 +1,23 @@
 # Example awsctl configuration
 orgs:
-- name: myorg
-  sso_start_url: https://d-XXXXXXXXXX.awsapps.com/start
-  sso_region: eu-west-2
-  default_region: eu-west-2
-  allowed_regions: [eu-west-1, eu-west-2, eu-central-1]
+- name: btavm
+  sso_start_url: https://d-9067dbbf5a.awsapps.com/start
+  sso_region: us-east-1
+  default_region: us-east-1
+  allowed_regions: [us-east-1, us-east-2]
   preferred_roles:
   - AdministratorAccess
-  - ViewOnlyAccess
+  - SecurityAuditor
+# plugins:
+#   enabled: []   # e.g. ['okta']
 
-plugins:
-  enabled: []   # e.g. ['okta']
+- name: btdev
+  sso_start_url: https://d-9067dbbf5a.awsapps.com/start
+  sso_region: us-east-1
+  default_region: us-east-1
+  allowed_regions: [us-east-1, us-east-2]
+  preferred_roles:
+  - AdministratorAccess
+  - SecurityAuditor
+# plugins:
+#   enabled: []   # e.g. ['okta']

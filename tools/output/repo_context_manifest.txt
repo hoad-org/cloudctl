@@ -1,5 +1,5 @@
 # 📦 Repo Context Manifest
-Generated: 2025-10-28T14:57:05.756285+00:00
+Generated: 2025-10-28T15:59:27.633216+00:00
 Root: /Users/choad/repos/NEW/TOOLS/awsctl
 
 ## How to use this manifest
@@ -16,17 +16,10 @@ Output full-file replacements when modifying code. Do not emit snippets.
       "parts": 1
     },
     {
-      "path": ".github/workflows/test.yaml",
-      "lines": 133,
-      "bytes": 3672,
-      "sha256": "aa2464716c982d62533d54a3930ed3b5ef37bcc4ca17fb0aea23ef82935b5728",
-      "parts": 1
-    },
-    {
       "path": ".github/workflows/tests.yml",
-      "lines": 58,
-      "bytes": 1322,
-      "sha256": "53883a2199b67eb4bd30756d27bfcb6f357ef46517f2a2547ecedc130c44eb6f",
+      "lines": 37,
+      "bytes": 880,
+      "sha256": "55f4d8e45fb543e0b884d612964429e206d53eb8ce877e02d7005a040950f90d",
       "parts": 1
     },
     {
@@ -434,202 +427,44 @@ jobs:
 
 ---FILE-END: .github/workflows/ci-release.yml
 
----FILE-START: .github/workflows/test.yaml | LINES: 133 | BYTES: 3672 | SHA256: aa2464716c982d62533d54a3930ed3b5ef37bcc4ca17fb0aea23ef82935b5728
-# .github/workflows/test.yml
-name: CI and Wiki Publish
+---FILE-START: .github/workflows/tests.yml | LINES: 37 | BYTES: 880 | SHA256: 55f4d8e45fb543e0b884d612964429e206d53eb8ce877e02d7005a040950f90d
+name: Test
 
 on:
   push:
-    branches: [ main ]
-    # PATHS FILTER REMOVED: Workflow will run on every push to main for maximum reliability.
+    branches: [main]
   pull_request:
-    # Only run CI jobs for pull requests, not wiki publish
-    paths:
-      - 'awsctl/**'
-      - 'tests/**'
-      - 'pyproject.toml'
-      - 'tox.ini'
-      - 'Makefile'
-      - '.github/workflows/test.yml'
 
 jobs:
-  lint:
-    name: Lint & Type Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install Tox
-        run: python -m pip install --upgrade pip tox
-
-      - name: Run Linters via Tox
-        run: tox -e lint
-
   test:
-    name: Unit Tests
-    runs-on: ${{ matrix.os }}
-    needs: lint
+    runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
       matrix:
-        os: [ ubuntu-latest, macos-latest ]
-        python-version: [ "3.9", "3.11", "3.13" ]
-        toxenv: [ "py39", "py311", "py313" ]
-        include:
-          - python-version: "3.9"
-            toxenv: "py39"
-          - python-version: "3.11"
-            toxenv: "py311"
-          - python-version: "3.13"
-            toxenv: "py313"
-
+        python-version: ["3.9", "3.11", "3.13"]
+        toxenv: ["py39", "py311", "py313"]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: "pip"
 
-      - name: Install Tox
-        run: python -m pip install --upgrade pip tox
+      - name: Upgrade pip and install Tox
+        run: |
+          python -m pip install --upgrade pip
+          pip install tox
 
-      - name: Run tests via Tox
+      - name: Run Tox for ${{ matrix.toxenv }}
         run: tox -e ${{ matrix.toxenv }}
 
-  build:
-    name: Build Validation
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - name: Upload test reports (optional)
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          python-version: "3.11"
-
-      - name: Install Tox
-        run: python -m pip install --upgrade pip tox
-
-      - name: Run Build Validation via Tox
-        run: tox -e build
-
-  publish-wiki:
-    name: Publish Wiki (Manual Git Push)
-    runs-on: ubuntu-latest
-    needs: [ build ]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    permissions:
-      contents: write  # Required to push back to the repo/wiki
-
-    steps:
-      - name: Checkout main repository
-        uses: actions/checkout@v4
-        with:
-          path: main-repo
-
-      - name: Clone Wiki repo
-        env:
-          WIKI_PAT: ${{ secrets.WIKI_PAT }}
-        run: |
-          if [ -z "$WIKI_PAT" ]; then
-            echo "WIKI_PAT is not set; cannot push to the wiki."
-            exit 1
-          fi
-          git clone "https://x-access-token:${WIKI_PAT}@github.com/${{ github.repository }}.wiki.git" wiki-repo
-          cd wiki-repo
-          git checkout main || git checkout -b main
-
-      - name: Stage and Push Wiki Content
-        env:
-          WIKI_PAT: ${{ secrets.WIKI_PAT }}
-        run: |
-          SOURCE_FILE="main-repo/wiki/Home.md"
-          if [ ! -f "$SOURCE_FILE" ]; then
-            echo "Error: Source wiki file ($SOURCE_FILE) not found. Check local file structure."
-            exit 1
-          fi
-
-          cp "$SOURCE_FILE" wiki-repo/Home.md
-
-          cd wiki-repo
-          git config user.email "action@github.com"
-          git config user.name "GitHub Action"
-
-          git add Home.md
-          if ! git diff-index --quiet HEAD; then
-            echo "Changes detected. Committing and pushing."
-            git commit -m "Automated Wiki Update: Sync from ${{ github.sha }} [skip ci]"
-            git push "https://x-access-token:${WIKI_PAT}@github.com/${{ github.repository }}.wiki.git" main
-          else
-            echo "No changes detected. Push skipped."
-          fi
-
----FILE-END: .github/workflows/test.yaml
-
----FILE-START: .github/workflows/tests.yml | LINES: 58 | BYTES: 1322 | SHA256: 53883a2199b67eb4bd30756d27bfcb6f357ef46517f2a2547ecedc130c44eb6f
-name: PR Tests (fast)
-
-on:
-  pull_request:
-    branches: [ main ]
-
-concurrency:
-  group: tests-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
-
-jobs:
-  commitlint:
-    name: Conventional Commits
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: wagoid/commitlint-github-action@v6
-
-  lint:
-    name: Lint & Type Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: "pip"
-      - run: python -m pip install --upgrade pip tox
-      - run: tox -e lint
-
-  test:
-    name: Unit Tests
-    runs-on: ${{ matrix.os }}
-    needs: lint
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ ubuntu-latest, macos-latest ]
-        include:
-          - python-version: "3.9"
-            toxenv: "py39"
-          - python-version: "3.11"
-            toxenv: "py311"
-          - python-version: "3.13"
-            toxenv: "py313"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: "pip"
-      - run: python -m pip install --upgrade pip tox
-      - run: tox -e ${{ matrix.toxenv }}
+          name: test-logs-${{ matrix.python-version }}
+          path: .tox/**/log/
 
 ---FILE-END: .github/workflows/tests.yml
 
