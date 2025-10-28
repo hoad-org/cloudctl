@@ -1,0 +1,9 @@
+awsctl configuration (example)
+
+orgs:
+- name: myorg
+  sso_start_url: https://d-XXXXXXXXXX.awsapps.com/start
+  sso_region: eu-west-2
+  default_region: eu-west-2
+plugins:
+  enabled: []

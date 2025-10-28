@@ -1,0 +1,4 @@
+awsctl doctor — quick diagnostics
+✓ aws: found
+✓ jq: found
+✓ python3: found

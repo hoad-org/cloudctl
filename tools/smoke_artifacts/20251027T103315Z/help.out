@@ -1,0 +1,40 @@
+awsctl — Navigate AWS SSO orgs, accounts, roles and regions with beginner-friendly helpers.
+
+Examples:
+  # Guided setup: creates config, syncs profiles, installs shell helper
+  awsctl setup
+
+  # Create a starter config you can edit
+  awsctl init-config > ~/.awsctl/orgs.yaml
+
+  # List orgs defined in your config
+  awsctl orgs
+
+  # Sync ~/.aws/config with sso-session and base profiles for your orgs
+  awsctl config sync
+
+  # Login to your SSO org (defined in orgs.yaml)
+  awsctl login --org myorg
+
+  # List accounts for the current org (JSON output optional)
+  awsctl accounts
+  awsctl accounts --json
+
+  # List roles for an account
+  awsctl roles --account 123456789012
+  awsctl roles --account 123456789012 --json
+
+  # Get and print export lines (non-interactive)
+  eval "$(awsctl use --account <id> --role <name> --region <region>)"
+
+  # Use shell helper (installed by `awsctl setup`) for fast switching
+  awsctl-use --account <id> --role <name> --region <region>
+
+  # Quick helpers
+  awsctl --whoami           # show caller identity for current context
+  awsctl --open             # open SSO start URL of current org in browser
+  awsctl --export           # (Not Implemented) re-print export lines for current context
+
+  # Diagnose and optionally fix PATH issues
+  awsctl doctor
+  awsctl doctor --fix-path

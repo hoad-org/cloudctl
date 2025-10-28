@@ -27,7 +27,7 @@ Works on macOS, Linux, and Windows 11 WSL. No boto3. Wraps the official AWS CLI.
 # Ubuntu/WSL: sudo apt install -y python3 python3-venv jq awscli pipx git
 
 pipx ensurepath
-pipx install "git+https://github.com/<your-org>/awsctl.git"
+pipx install "git+https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git"
 awsctl setup
 ```
 
@@ -36,7 +36,7 @@ awsctl setup
 ### Local development
 
 ```bash
-git clone https://github.com/<your-org>/awsctl.git
+git clone https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git
 cd awsctl
 make setup
 ```
