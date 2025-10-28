@@ -1,0 +1,56 @@
+{
+  "$schema": "vscode://schemas/mcp",
+  "servers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${input:github_mcp_pat}"
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem"]
+    },
+    "git": {
+      "command": "uvx",
+      "args": ["mcp-server-git"]
+    },
+    "shell": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-shell",
+        "--chdir",
+        "${workspaceFolder}",
+        "--allow",
+        "git",
+        "--allow",
+        "gh"
+      ]
+    },
+    "terraform": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "${workspaceFolder}:/workspace",
+        "-w",
+        "/workspace",
+        "--network",
+        "host",
+        "hashicorp/terraform-mcp-server:latest"
+      ]
+    }
+  },
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "github_mcp_pat",
+      "description": "Fine-grained GitHub PAT (repo-scoped)",
+      "password": true
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Python: Lint",
+      "type": "shell",
+      "command": "make lint",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Python: Test",
+      "type": "shell",
+      "command": "make test",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Python: Format (Black + Ruff)",
+      "type": "shell",
+      "command": "make format",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Terraform: Validate",
+      "type": "shell",
+      "command": "terraform -chdir=infra validate",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Terraform: Plan (no apply)",
+      "type": "shell",
+      "command": "terraform -chdir=infra plan",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Terraform: Fmt Check",
+      "type": "shell",
+      "command": "terraform -chdir=infra fmt -check",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Git: Commit & Push",
+      "type": "shell",
+      "command": "git add -A && git commit -m 'WIP commit from VS Code' && git push",
+      "group": "none",
+      "problemMatcher": []
+    }
+  ]
+}
