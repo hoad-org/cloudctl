@@ -32,7 +32,7 @@ from typing import Any
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent  # scan up one level (repo root)
 OUTPUT_SUBDIR = SCRIPT_DIR / "output"
-OUTPUT_FILENAME = "repo_context_manifest.txt"
+OUTPUT_FILENAME = "awsctl_repo_context_manifest.txt"
 OUTPUT_FILE = OUTPUT_SUBDIR / OUTPUT_FILENAME
 
 # --------------------------------------------------------------------

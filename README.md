@@ -1,203 +1,145 @@
-# 🧭 awsctl
+# awsctl
 
-**Beginner-friendly AWS SSO org/account login & profile helper**  
-Works on macOS, Linux, and Windows 11 WSL. No boto3. Wraps the official AWS CLI.
-
----
-
-## 🚀 Features
-
-- One-command SSO login and profile activation  
-- Interactive account picker and quick exports  
-- Shell helper `awsctl-use` for fast switching  
-- Multiple orgs in a single `orgs.yaml`  
-- Plugin system with simple enable/disable list (Okta scaffold included)  
-- `doctor` command with remediation tips  
-- Business rules: optional region allow-list warnings  
+`awsctl` is a production-grade command-line interface for AWS IAM Identity Center (SSO).  
+It is designed for high-security environments where **Zero Trust** is mandatory.  
+It streamlines login, enforces organization-wide guardrails, and provides a fast, shell-integrated workflow for switching accounts and roles without ever writing static credentials to disk.
 
 ---
 
-## 📦 Install
+## ⚡️ Key Features
 
-### Global via pipx (recommended)
+### 🔐 Zero Trust Credential Architecture
 
-```bash
-# Dependencies you should have:
-# macOS: brew install python jq awscli pipx git
-# Ubuntu/WSL: sudo apt install -y python3 python3-venv jq awscli pipx git
+- **In-Memory Only:** Uses the "Trojan Horse" shell integration pattern to export short-lived STS credentials directly to your shell environment variables.
+- **Diskless:** Never writes `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` to `~/.aws/credentials`.
+- **Isolated:** Each terminal tab maintains its own independent AWS context.
 
-pipx ensurepath
-pipx install "git+https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git"
-awsctl setup
-```
+### 🛡️ Registry-Backed Guardrails
 
----
+- **Hydration Model:** Configuration is hydrated from a central, immutable `registry.py` compiled into the tool.
+- **Region Locking:** Prevents users from authenticating or switching to non-approved regions (for example, restrict to `eu-west-2`).
+- **Role Prioritization:** Enforces "Preferred Roles" (for example, `ViewOnlyAccess`) to appear at the top of selection lists, promoting Least Privilege.
+- **Plugin Enforcement:** Mandatory security hooks (VPN checks, Okta validation, device posture) run *before* login.
 
-### Local development
+### 🚀 Developer Experience
 
-```bash
-git clone https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git
-cd awsctl
-make setup
-```
+- **Smart Context Switching:** Fuzzy-search selection for Accounts and Roles.
+- **Context Toggle:** Jump back to your previous context instantly with `awsctl switch -`.
+- **Headless Support:** Full support for CI/CD and scripts via non-interactive flags.
+- **Implicit Execution:** Run commands in your active context using `awsctl exec -- <command>`.
 
 ---
 
-## 🧰 Quick Start
+## 📥 Installation
 
-### Create a starter config then edit:
-```bash
-awsctl init-config > ~/.awsctl/orgs.yaml
-```
+### Recommended: `pipx`
 
-### Log in to your org:
-```bash 
-awsctl login --org myorg
-```
+To ensure isolation and easy upgrades, install via `pipx` using a pinned release tag:
 
-### List accounts:
-```bash
-awsctl accounts
-```
+    pipx install "git+https://github.com/your-org/awsctl.git@v2.0.0"
 
-### Choose and export environment for this shell:
-```bash
-eval "$(awsctl use)"
-# or, after setup:
-awsctl-use --account 123456789012 --role AdministratorAccess --region eu-west-2
-```
+Validation:
 
-### Diagnose your environment:
-```bash
-awsctl doctor
-```
+    awsctl --version
+    # Output: awsctl v2.0.0
 
 ---
 
-# 📋 Dependencies
+## 🏎️ Quickstart
 
-## Runtime
-- **Python** ≥ 3.9  
-- **AWS CLI** v2  
-- **jq**  
-- **Python packages:**  
-  - `colorama`  
-  - `PyYAML`  
-  - `InquirerPy` *(installed automatically with `awsctl`)*
+### 1. Setup and Shell Integration
 
----
+Initialize the configuration and inject the shell wrapper function:
 
-## Development & Tests
-- **Testing:**  
-  - `pytest`  
-  - `pytest-cov`  
-  - `pytest-mock`
+    awsctl setup
+    source ~/.zshrc    # or: source ~/.bashrc
 
-- **Static Analysis & Formatting:**  
-  - `mypy`  
-  - `ruff`  
-  - `black`  
-  - `isort`
+Note: Fish shell users must manually install the wrapper. See `docs/SHELL_INTEGRATION.md`.
 
-- **Security:**  
-  - `bandit`  
-  - `safety`
+### 2. Authenticate
 
-- **Build & Packaging:**  
-  - `build`  
-  - `twine`  
-  - `pre-commit`
+Log in to your organization (triggers browser flow):
+
+    awsctl login --org engineering
+
+### 3. Select Context
+
+Interactively select your Account, Role, and Region:
+
+    awsctl switch
+
+### 4. Verify
+
+Check your "Flight Deck" status:
+
+    awsctl status
 
 ---
 
-# 🩺 doctor
+## 🛠️ Command Reference (High Level)
 
-## Overview
-`awsctl doctor` performs environment diagnostics and verifies prerequisites.
+| Command          | Description                                     | Strategy |
+|------------------|-------------------------------------------------|----------|
+| `awsctl login`   | Authenticate via AWS SSO.                       | EXEC     |
+| `awsctl switch`  | Interactive context switcher (exports vars).    | EVAL     |
+| `awsctl switch -`| Toggle to immediate previous context.           | EVAL     |
+| `awsctl logout`  | Clear credentials and cached tokens.            | EVAL     |
+| `awsctl status`  | View current identity and token expiry.         | EXEC     |
+| `awsctl exec`    | Run command in a target account (one-shot).     | EXEC     |
+| `awsctl doctor`  | Run system diagnostics and health checks.       | EXEC     |
+| `awsctl list`    | View available Orgs, Accounts, or Roles.        | EXEC     |
 
-### Checks
-- `aws`  
-- `jq`  
-- `python3`  
-- `pipx`  
-- `git`  
-- Readable `~/.awsctl/orgs.yaml`  
-- Saved context after login  
-
-It also prints remediation tips for beginners on **macOS**, **Linux**, or **Windows WSL**.
-
----
-
-# 🔒 Notes on Okta Integration
-
-- Okta can initiate **AWS SSO** or **federation**.  
-- Some authentication flows still require **browser confirmation**.  
-- The **plugin model** does **not bypass provider-required consent**.  
-- Goal: minimize clicks, pre-populate credentials, and validate tokens where permitted.
+(Export to Sheets: copy this table into your spreadsheet tool of choice.)
 
 ---
 
-# 🧪 Development
+## 🧩 Configuration (`~/.awsctl/orgs.yaml`)
 
-## Run Tests
-```bash
-make test        # or tox -e py313
-pytest -v
-```
+`awsctl` uses a **Hydration Model**.
 
-## Lint and Type Checks
-```bash
-make lint
-```
+- Your local config is minimal; it only declares which organizations you want to enable.
+- All security settings come from the compiled Registry.
 
-## Build and Validate
-```bash
-tox -e build
-```
+Example `~/.awsctl/orgs.yaml`:
 
----
+    enabled_orgs:
+      - engineering
+      - production
 
-# 🗒️ TODO
+    plugins:
+      enabled:
+        - awsctl.plugins.okta
 
-- **Okta Plugin:**  
-  - Add device code flow helpers  
-  - Implement token caching rules  
+Notes:
 
-- **Non-interactive Mode:**  
-  - Add flags to resolve by account alias  
-
-- **Business Rules Engine:**  
-  - Implement per-org enforcement  
-  - Add allow/deny set support  
-
-- **Windows Support:**  
-  - Add PowerShell helper function
+- You cannot override `allowed_regions` or `start_url` locally.
+- These are enforced by the Registry (`src/awsctl/registry.py`).
 
 ---
 
-# 🧹 Uninstall
+## 🏗️ Architecture: The "Trojan Horse"
 
-```bash
-make uninstall
-```
+`awsctl` is not just a binary; it is a shell function wrapper.
 
-Removes pipx package, shell integration lines, and local context.
+- **Interception:** When you type `awsctl switch`, the shell function intercepts the command.
+- **Strategy Check:** It asks the binary: "Does this command need to modify the shell environment?"
+- **Evaluation:**
+  - If **Yes** (for example, `switch`), the binary outputs `export AWS_...` commands, and the shell function `eval`s them.
+  - If **No** (for example, `status`), the binary runs as a standard subprocess.
+
+This allows secure environment variable injection without requiring the user to manually type `eval $(...)`.
 
 ---
 
-# Summary
+## 🔐 Security Overview
 
-## What changed and why
-- Beginner-first UX: help, doctor, better init-config.  
-- Plugin scaffold with activation list.  
-- Business rules engine for region allow-lists.  
-- Packaging fixed for pip/pipx with console script.
+- **Credential Storage:** Ephemeral (RAM only).
+- **SSO Tokens:** Delegated to AWS CLI v2 (`~/.aws/sso/cache`, permissions `0600`).
+- **Config Permissions:** `~/.awsctl` directory enforced to `0700`.
+- **Compliance:** Full audit trail via CloudTrail (on AWS side) and immutable Registry policies (on client side).
 
-## How to verify
-- `awsctl help`, `awsctl doctor`, `awsctl init-config`, `awsctl login --org myorg`, `eval "$(awsctl use)"`.  
-- `pytest -v`, `tox -e py313`.
+For a deep dive, see:
 
-## How to run tests/validation
-- `make test` or `pytest -v`.  
-- `make lint` for static checks.  
-- `tox -e build` to build wheels.
+- `docs/SECURITY_APPRAISAL.md`
+- `docs/GUARDRAILS.md`
+- `docs/SECURITY_OPERATIONS.md`

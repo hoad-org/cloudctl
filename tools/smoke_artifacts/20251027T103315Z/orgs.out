@@ -1,1 +1,0 @@
-{"name": "myorg", "sso_start_url": "https://d-9c67661145.awsapps.com/start", "sso_region": "eu-west-2", "default_region": "eu-west-2", "allowed_regions": ["eu-west-1", "eu-west-2", "eu-central-1"], "preferred_roles": ["AdministratorAccess", "ViewOnlyAccess"]}

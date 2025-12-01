@@ -1,24 +1,63 @@
 {
-  // --- MCP behaviour ---
+  "security.workspace.trust.untrustedFiles": "open",
+  "explorer.confirmDragAndDrop": false,
+  "explorer.confirmDelete": false,
+  "workbench.iconTheme": "vscode-icons",
+
   "chat.mcp.discovery.enabled": {
     "claude-desktop": false,
     "windsurf": false,
     "cursor-global": false,
     "cursor-workspace": false
-  },     // stop VS Code from auto-discovering other MCP servers
-  "chat.mcp.access": "registry",           // only load servers declared in this workspace’s mcp.json
-  "chat.mcp.autostart": true,              // start all MCP servers when you open the workspace
-  "chat.agent.enabled": true,              // keep Agent Mode on so Copilot Chat can call tools
+  },
+  "chat.mcp.gallery.enabled": true,
+  "chat.mcp.access": "all",
+  "chat.mcp.autostart": true,
+  "chat.agent.enabled": true,
 
-  // --- Network / proxy / TLS ---
-  "http.systemCertificates": true,         // trust macOS Keychain root certificates
-  "http.proxyStrictSSL": false,            // temporarily relax strict SSL for corp TLS inspection
-  "http.proxySupport": "on",               // let VS Code honour system proxy env vars
-  // if you know the proxy host, uncomment & fill this line:
-  // "http.proxy": "http://proxy.mycorp.local:8080",
+  "http.systemCertificates": true,
+  "http.proxySupport": "on",
+  "http.proxyStrictSSL": false,
 
-  // --- Editor UX (optional quality of life) ---
-  "editor.codeLens": true,
-  "editor.formatOnSave": true,
-  "files.trimTrailingWhitespace": true
+  "[python]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+  "python.linting.enabled": true,
+  "python.linting.flake8Enabled": true,
+
+  "[terraform]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "hashicorp.terraform"
+  },
+
+  "[yaml]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[dockercompose]": {
+    "editor.insertSpaces": true,
+    "editor.tabSize": 2,
+    "editor.autoIndent": "advanced",
+    "editor.quickSuggestions": {
+      "other": true,
+      "comments": false,
+      "strings": true
+    },
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  },
+  "[github-actions-workflow]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  },
+
+  "chat.mcp.serverSampling": {
+    "awsctl/.vscode/mcp.json: github": {
+      "allowedModels": ["copilot/gpt-4.1"]
+    }
+  }
 }

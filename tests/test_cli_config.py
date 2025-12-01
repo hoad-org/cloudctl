@@ -1,17 +1,28 @@
 # file: tests/test_cli_config.py
 from __future__ import annotations
 
-from awsctl import cli
+from unittest.mock import MagicMock
+
+from awsctl import core
 
 
-def test_config_sync_dispatch(monkeypatch):
-    called = {"v": 0}
+def test_config_sync_direct(monkeypatch):
+    """
+    Test the config sync logic directly via core.
+    (The 'awsctl config' subcommand was removed in v1.3.0, replaced by setup automation)
+    """
+    # Mock config loader
+    monkeypatch.setattr(
+        "awsctl.config.load_orgs_config",
+        lambda: {"orgs": [{"name": "myorg", "sso_start_url": "u", "sso_region": "r"}]},
+    )
 
-    def _fake_sync():
-        called["v"] += 1
-        return 0
+    # Mock ensure_profile
+    ensure_mock = MagicMock()
+    monkeypatch.setattr("awsctl.aws.ensure_sso_base_profile", ensure_mock)
 
-    monkeypatch.setattr("awsctl.core.cmd_config_sync", _fake_sync)
-    rc = cli.main(["config", "sync"])
+    # Run
+    rc = core.cmd_config_sync()
+
     assert rc == 0
-    assert called["v"] == 1
+    ensure_mock.assert_called()

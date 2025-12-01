@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Unit Tests",
+      "type": "python",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-v"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Terraform: Validate",
+      "type": "shell",
+      "request": "launch",
+      "command": "terraform validate",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

@@ -1,9 +1,21 @@
 {
   "recommendations": [
-    "github.copilot",
     "github.copilot-chat",
-    "hashicorp.terraform",
+    "ms-vscode.vscode-mcp",
     "ms-python.python",
+    "ms-python.debugpy",
+    "ms-python.black-formatter",
+    "ms-python.flake8",
+    "hashicorp.terraform",
+    "eamodio.gitlens",
+    "github.vscode-pull-request-github",
+    "redhat.vscode-yaml",
+    "esbenp.prettier-vscode"
+  ],
+  "unwantedRecommendations": [
+    "github.copilot",
+    "ms-vscode.powershell",
+    "ms-vscode.cpptools",
     "ms-python.vscode-pylance"
   ]
 }

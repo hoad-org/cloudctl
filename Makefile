@@ -1,105 +1,77 @@
-# ============================================================
-# AWSCTL - Makefile
-# ------------------------------------------------------------
-# Unified developer workflow for building, testing, linting,
-# installing, and packaging the awsctl CLI utility.
-#
-# Compatible with macOS, Linux, and WSL.
-# ============================================================
+# file: Makefile
+# awsctl — build, lint, and test automation
 
-# Python executables
 PYTHON ?= python3
-PIP ?= $(PYTHON) -m pip
-TOX ?= tox
+SRC = src
+TESTS = tests
 
-# Default virtual environment
-VENV_DIR := venv
-VENV_BIN := $(VENV_DIR)/bin
-ACTIVATE := source $(VENV_BIN)/activate
+.PHONY: help install lint format typecheck security test smoke build clean all
 
-# Colors for output
-BOLD := \033[1m
-RESET := \033[0m
-GREEN := \033[32m
-CYAN := \033[36m
-YELLOW := \033[33m
+# --- Default Goal: Help ---
+help:
+	@echo "awsctl developer Makefile"
+	@echo "========================="
+	@echo "make setup      : Create local venv"
+	@echo "make install    : Install dependencies in editable mode"
+	@echo "make lint       : Check code style (Black + Ruff)"
+	@echo "make format     : Fix code style (Black + Ruff)"
+	@echo "make typecheck  : Run static typing (Mypy)"
+	@echo "make security   : Audit dependencies and code (Bandit + Pip-audit)"
+	@echo "make test       : Run unit tests"
+	@echo "make smoke      : Run comprehensive integration smoke test"
+	@echo "make build      : Build distribution artifacts (Wheel/Tarball)"
+	@echo "make clean      : Remove all build and test artifacts"
 
-.PHONY: all setup clean reinstall test lint coverage build install uninstall fmt check-env shell
-
-all: setup test
+# --- User Commands ---
 
 setup:
-	@echo "$(CYAN)Setting up development environment...$(RESET)"
-	$(PYTHON) -m venv $(VENV_DIR)
-	@$(ACTIVATE) && $(PIP) install -U pip setuptools wheel tox
-	@$(ACTIVATE) && $(PIP) install -e ".[dev]"
-	@echo "$(GREEN)Environment ready. Run: source $(VENV_DIR)/bin/activate$(RESET)"
-
-clean:
-	@echo "$(YELLOW)Cleaning...$(RESET)"
-	rm -rf $(VENV_DIR) dist build *.egg-info .tox .pytest_cache
-	find . -type d -name "__pycache__" -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
-	rm -f ~/.aws/awsctl-context.json ~/.awsctl/orgs.yaml
-	@echo "$(GREEN)Clean complete.$(RESET)"
-
-reinstall: clean
-	@echo "$(CYAN)Reinstalling awsctl...$(RESET)"
-	@$(MAKE) setup
-
-test:
-	@echo "$(CYAN)Running tests via tox...$(RESET)"
-	@$(TOX) -e py313
-	@echo "$(GREEN)Tests passed.$(RESET)"
-
-lint:
-	@echo "$(CYAN)Running lint/type checks...$(RESET)"
-	@$(TOX) -e lint
-	@echo "$(GREEN)Lint clean.$(RESET)"
-
-coverage:
-	@echo "$(CYAN)Coverage report...$(RESET)"
-	@$(TOX) -e coverage
-
-build:
-	@echo "$(CYAN)Building package...$(RESET)"
-	@$(ACTIVATE) && python -m build
-	@echo "$(GREEN)Build complete.$(RESET)"
+	$(PYTHON) -m venv venv
+	@echo "Run 'source venv/bin/activate' then 'make install'"
 
 install:
-	@echo "$(CYAN)Installing via pipx...$(RESET)"
-	@if ! command -v pipx >/dev/null 2>&1; then \
-		echo "Installing pipx..."; \
-		brew install pipx || $(PYTHON) -m pip install --user pipx; \
-	fi
-	pipx install .
-	@echo "$(GREEN)awsctl installed.$(RESET)"
+	$(PYTHON) -m pip install --upgrade pip
+	pip install -e .[dev]
+	@echo "Run 'awsctl setup' to configure shell integration."
 
-uninstall:
-	@echo "$(YELLOW)Uninstalling awsctl...$(RESET)"
-	-pipx uninstall awsctl || true
-	sed -i.bak '/AWSCTL SHELL INTEGRATION (auto-installed)/,/END AWSCTL SHELL INTEGRATION/d' ~/.zshrc 2>/dev/null || true
-	sed -i.bak '/AWSCTL SHELL INTEGRATION (auto-installed)/,/END AWSCTL SHELL INTEGRATION/d' ~/.bashrc 2>/dev/null || true
-	rm -f ~/.aws/awsctl-context.json ~/.awsctl/orgs.yaml
-	@echo "$(GREEN)Uninstall complete.$(RESET)"
+# --- Dev Commands ---
 
-fmt:
-	@echo "$(CYAN)Formatting...$(RESET)"
-	@$(ACTIVATE) && black awsctl tests
-	@echo "$(GREEN)Done.$(RESET)"
+lint:
+	black --check $(SRC) $(TESTS)
+	ruff check $(SRC) $(TESTS)
 
-check-env:
-	@echo "$(CYAN)Environment check...$(RESET)"
-	@echo "Python: $$($(PYTHON) --version)"
-	@echo "AWS CLI: $$(aws --version 2>&1 || echo 'Missing')"
-	@echo "jq: $$(jq --version 2>&1 || echo 'Missing')"
+format:
+	black $(SRC) $(TESTS)
+	ruff check $(SRC) $(TESTS) --fix
 
-shell:
-	@echo "$(CYAN)Interactive shell...$(RESET)"
-	@$(ACTIVATE) && exec $$SHELL
+typecheck:
+	$(PYTHON) -m mypy src --strict
 
-# -------------------------
-# Summary
-# - Aligned dev install to extras [dev].
-# - Added cleanup of .tox, caches.
-# -------------------------
+security:
+	pip-audit
+	# [FIX] Use $(SRC) variable for consistency
+	bandit -r $(SRC) -s B101,B404,B603,B607
+
+test:
+	pytest -v --cov=awsctl --cov-report=term-missing
+
+smoke:
+	tools/comprehensive_smoke.sh
+
+build: clean
+	$(PYTHON) -m build
+
+clean:
+	find . -type d -name "__pycache__" -exec rm -rf {} +
+	find . -type d -name ".pytest_cache" -exec rm -rf {} +
+	find . -type d -name ".mypy_cache" -exec rm -rf {} +
+	find . -type d -name ".ruff_cache" -exec rm -rf {} +
+	rm -rf build dist .coverage coverage.xml .tox
+	find . -type d -name "smoke_artifacts" -exec rm -rf {} +
+	# [CRITICAL] Remove egg-info to reset setuptools_scm version cache
+	find . -type d -name "*.egg-info" -exec rm -rf {} +
+	# Remove venvs (Optional - aggressive clean)
+	find . -type d -name ".venv" -exec rm -rf {} +
+	find . -type d -name ".venv_smoke" -exec rm -rf {} +
+	find . -type d -name "venv" -exec rm -rf {} +
+
+all: install lint typecheck security test

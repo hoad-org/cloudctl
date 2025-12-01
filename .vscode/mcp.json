@@ -1,11 +1,19 @@
 {
   "$schema": "vscode://schemas/mcp",
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "github_mcp_pat",
+      "description": "Fine-grained GitHub token (repo + workflow + contents access)",
+      "password": true
+    }
+  ],
   "servers": {
     "github": {
-      "type": "http",
-      "url": "https://api.githubcopilot.com/mcp/",
-      "headers": {
-        "Authorization": "Bearer ${input:github_mcp_pat}"
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "${input:github_mcp_pat}"
       }
     },
     "filesystem": {
@@ -20,37 +28,24 @@
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-shell",
+        "@modelcontextprotocol/server-terminal",
         "--chdir",
         "${workspaceFolder}",
         "--allow",
         "git",
         "--allow",
-        "gh"
-      ]
-    },
-    "terraform": {
-      "command": "docker",
-      "args": [
-        "run",
-        "-i",
-        "--rm",
-        "-v",
-        "${workspaceFolder}:/workspace",
-        "-w",
-        "/workspace",
-        "--network",
-        "host",
-        "hashicorp/terraform-mcp-server:latest"
+        "gh",
+        "--allow",
+        "terraform",
+        "--allow",
+        "aws",
+        "--allow",
+        "python3",
+        "--allow",
+        "pytest",
+        "--allow",
+        "make"
       ]
     }
-  },
-  "inputs": [
-    {
-      "type": "promptString",
-      "id": "github_mcp_pat",
-      "description": "Fine-grained GitHub PAT (repo-scoped)",
-      "password": true
-    }
-  ]
+  }
 }
