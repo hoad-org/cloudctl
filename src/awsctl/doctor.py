@@ -5,9 +5,12 @@ awsctl.doctor
 -------------
 Diagnostics and environment health checks.
 """
+
 from __future__ import annotations
 
 import shutil
+import subprocess
+import sys
 from typing import Tuple
 
 from rich.table import Table
@@ -21,6 +24,20 @@ def check_tool(name: str) -> Tuple[bool, str]:
     path = shutil.which(name)
     if path:
         return True, path
+
+    # [FIX] PYBH-0142: Fallback for git aliases
+    if name == "git":
+        try:
+            subprocess.run(
+                ["git", "--version"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            return True, "Found via shell execution"
+        except FileNotFoundError:
+            pass
+
     return False, "Not found"
 
 
@@ -35,7 +52,6 @@ def run_diagnostics(fix_path: bool = False) -> int:  # noqa: ARG001
     overall_status = 0
 
     with console.status("[bold green]Running diagnostics...[/]"):
-        # 1. Config Check
         try:
             cfg = config.load_orgs_config()
             count = len(cfg.get("orgs", []))
@@ -44,10 +60,11 @@ def run_diagnostics(fix_path: bool = False) -> int:  # noqa: ARG001
             table.add_row("Configuration", "❌", f"Error: {e}")
             overall_status = 1
 
-        # 2. Dependencies
-        required_tools = ["aws", "git", "python3"]
+        required_tools = ["aws", "git"]
+
+        table.add_row("Interpreter", "✅", sys.executable)
+
         if is_wsl():
-            # Check for wslview (part of wslu)
             required_tools.append("wslview")
 
         for tool in required_tools:
@@ -58,7 +75,6 @@ def run_diagnostics(fix_path: bool = False) -> int:  # noqa: ARG001
                 table.add_row(f"Binary: {tool}", "❌", "Missing from PATH")
                 overall_status = 1
 
-        # 3. Environment
         if is_wsl():
             table.add_row("Environment", "🐧", "WSL Detected")
         else:
@@ -71,8 +87,6 @@ def run_diagnostics(fix_path: bool = False) -> int:  # noqa: ARG001
     else:
         console.print("\n[bold red]Issues detected.[/]")
         if is_wsl() and not shutil.which("wslview"):
-            console.print(
-                "[yellow]Hint: Install 'wslu' in WSL for browser support: `sudo apt install wslu`[/]"
-            )
+            console.print("[yellow]Hint: Install 'wslu' in WSL for browser support: `sudo apt install wslu`[/]")
 
     return overall_status

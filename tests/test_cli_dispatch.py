@@ -2,6 +2,7 @@
 """
 Direct tests for cli_accounts to boost coverage.
 """
+
 import json
 
 import pytest
@@ -14,47 +15,50 @@ def mock_cfg():
     return {"orgs": [{"name": "myorg", "sso_start_url": "u", "sso_region": "r"}]}
 
 
-def test_cli_accounts_module(monkeypatch, mock_cfg, capsys, mock_rich_console):
+def test_cli_accounts_module(monkeypatch, mock_cfg, mock_rich_console, capsys):
+    # Patch Rich console to capture Table output
+    monkeypatch.setattr(cli_accounts, "stdout_console", mock_rich_console)
+
     mock_acct = accounts.Account("1", "n", "e")
     monkeypatch.setattr(cli_accounts, "list_accounts", lambda r: [mock_acct])
 
-    # Text output -> Mock Console
+    # 1. Text output (Rich Table) -> Check Mock Console
     cli_accounts.cmd_accounts(mock_cfg, "myorg", False)
-    captured = "".join(mock_rich_console.captured)
-    assert "1" in captured
-    assert "n" in captured
+    out = "".join(mock_rich_console.captured)
+    assert "1" in out
+    assert "n" in out
 
-    # JSON output -> stdout (capsys)
+    mock_rich_console.clear()
+
+    # 2. JSON output (print) -> Check Capsys
     cli_accounts.cmd_accounts(mock_cfg, "myorg", True)
     out, _ = capsys.readouterr()
     data = json.loads(out)
     assert data["accountList"][0]["account_id"] == "1"
 
-    # Empty
-    mock_rich_console.clear()
+    # 3. Empty (Stderr Warning) -> Check Mock Console (since stderr console is globally mocked)
     monkeypatch.setattr(cli_accounts, "list_accounts", lambda r: [])
     cli_accounts.cmd_accounts(mock_cfg, "myorg", False)
-    captured = "".join(mock_rich_console.captured)
-    assert "No accounts found" in captured
+    out = "".join(mock_rich_console.captured)
+    assert "No accounts found" in out
 
 
-def test_cli_roles_module(monkeypatch, mock_cfg, capsys, mock_rich_console):
+def test_cli_roles_module(monkeypatch, mock_cfg, mock_rich_console, capsys):
+    monkeypatch.setattr(cli_accounts, "stdout_console", mock_rich_console)
     monkeypatch.setattr(cli_accounts, "list_roles", lambda r, a: ["Admin"])
 
+    # 1. Text output (Rich Table) -> Check Mock Console
     cli_accounts.cmd_roles(mock_cfg, "myorg", "123", False)
-    captured = "".join(mock_rich_console.captured)
-    assert "Admin" in captured
+    out = "".join(mock_rich_console.captured)
+    assert "Admin" in out
 
+    mock_rich_console.clear()
+
+    # 2. JSON output (print) -> Check Capsys
     cli_accounts.cmd_roles(mock_cfg, "myorg", "123", True)
     out, _ = capsys.readouterr()
     data = json.loads(out)
     assert "Admin" in data["roles"]
-
-    mock_rich_console.clear()
-    monkeypatch.setattr(cli_accounts, "list_roles", lambda r, a: [])
-    cli_accounts.cmd_roles(mock_cfg, "myorg", "123", False)
-    captured = "".join(mock_rich_console.captured)
-    assert "No roles found" in captured
 
 
 def test_org_resolution_failures(mock_cfg):

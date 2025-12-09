@@ -272,27 +272,20 @@ def create_manifest() -> None:
             "parts": 1,
         }
         manifest_entries.append(entry)
-        header = (
-            f"---FILE-START: {rel} | LINES: {entry['lines']} | BYTES: {entry['bytes']} | "
-            f"SHA256: {entry['sha256']}"
-        )
+        header = f"---FILE-START: {rel} | LINES: {entry['lines']} | BYTES: {entry['bytes']} | " f"SHA256: {entry['sha256']}"
         footer = f"---FILE-END: {rel}"
         content = t if t.strip() else "[EMPTY FILE CONTENT]"
         file_blocks.append(f"\n\n{header}\n{content}\n{footer}")
 
     manifest_json = json.dumps({"files": manifest_entries}, indent=2)
-    final_output = (
-        AI_USAGE_PREAMBLE
-        + f"---MANIFEST-START---\n{manifest_json}\n---MANIFEST-END---"
-        + "".join(file_blocks)
-    )
+    final_output = AI_USAGE_PREAMBLE + f"---MANIFEST-START---\n{manifest_json}\n---MANIFEST-END---" + "".join(file_blocks)
 
     OUTPUT_FILE.write_text(final_output, encoding="utf-8")
 
     # Console summary
     total_bytes = sum(e["bytes"] for e in manifest_entries)
     print(f"✅ Manifest written: {OUTPUT_FILE}")
-    print(f"📄 Files indexed: {len(manifest_entries)}  Size: {total_bytes/1024:.2f} KB")
+    print(f"📄 Files indexed: {len(manifest_entries)}  Size: {total_bytes / 1024:.2f} KB")
 
 
 if __name__ == "__main__":

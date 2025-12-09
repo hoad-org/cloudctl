@@ -5,47 +5,142 @@ awsctl.aws
 ----------
 AWS CLI wrappers, profile management, and SSO token shims.
 """
+
 from __future__ import annotations
 
 import configparser
+import contextlib
+import hashlib
 import json
+import os
+import re
+import shutil
 import subprocess
-from datetime import datetime, timezone
+import tempfile
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional, Union, cast
+from typing import Any, Dict, Generator, Optional, Union, cast
 
+from awsctl.sso_cache import _normalize_start_url
 from awsctl.utils import run
 
 # Paths
 HOME = Path.home()
 AWS_DIR = HOME / ".aws"
-AWS_CONFIG = AWS_DIR / "config"
 SSO_CACHE_DIR = AWS_DIR / "sso" / "cache"
 
+# [FIX] PYBH-0056: Respect standard AWS_CONFIG_FILE environment variable
+if os.environ.get("AWS_CONFIG_FILE"):
+    AWS_CONFIG = Path(os.environ["AWS_CONFIG_FILE"])
+else:
+    AWS_CONFIG = AWS_DIR / "config"
 
-# -----------------------------------------------------------------------------
-# AWS CLI Wrapper
-# -----------------------------------------------------------------------------
-def run_aws(
-    args: list[str], timeout: Optional[float] = 10.0
-) -> subprocess.CompletedProcess[str]:
+
+@contextlib.contextmanager
+def _config_file_lock(timeout: float = 5.0) -> Generator[None, None, None]:
     """
-    Run an AWS CLI command and return the completed process.
-    Accepts timeout to allow long-running commands (like login) to override the default.
+    [FIX] PYBH-0023: Cross-platform spinlock using atomic file creation.
+    [FIX] PYBH-0028: Added Stale Lock detection. If lock is >30s old, break it.
+    [FIX] PYBH-0045: Raise TimeoutError if lock cannot be acquired.
     """
-    # [FIX] Explicit cast for MyPy strict mode to prevent "Returning Any"
+    lock_path = AWS_CONFIG.with_suffix(".lock")
+    start = time.time()
+    locked = False
+
+    # Ensure parent dir exists before locking
+    if not AWS_CONFIG.parent.exists():
+        AWS_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+
+    while (time.time() - start) < timeout:
+        try:
+            # Atomic creation (O_CREAT | O_EXCL)
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_RDWR)
+            os.close(fd)
+            locked = True
+            break
+        except FileExistsError:
+            # Lock exists. Check for staleness.
+            try:
+                if lock_path.stat().st_mtime < (time.time() - 30):
+                    try:
+                        os.remove(lock_path)
+                        continue
+                    except OSError:
+                        pass
+            except OSError:
+                pass
+
+            time.sleep(0.1)
+        except OSError:
+            time.sleep(0.1)
+
+    if not locked:
+        raise TimeoutError(f"Could not acquire lock on {AWS_CONFIG} after {timeout}s")
+
+    try:
+        yield
+    finally:
+        if locked:
+            try:
+                os.remove(lock_path)
+            except OSError:
+                pass
+
+
+def _clean_env() -> Dict[str, str]:
+    """
+    🛡️ SECURITY: Return environment free of AWS identity variables.
+    [FIX] PYBH-0032: Added Web Identity and Role ARN to block list.
+    [FIX] PYBH-0056: Do NOT remove AWS_CONFIG_FILE, allow user override.
+    """
+    env = os.environ.copy()
+    keys = [
+        "AWS_PROFILE",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_REGION",
+        "AWS_DEFAULT_REGION",
+        # "AWS_CONFIG_FILE",  <-- Kept to support custom config paths
+        "AWS_SHARED_CREDENTIALS_FILE",
+        "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+        "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+        "AWS_EC2_METADATA_DISABLED",
+        "AWS_WEB_IDENTITY_TOKEN_FILE",
+        "AWS_ROLE_ARN",
+    ]
+    for k in keys:
+        env.pop(k, None)
+    return env
+
+
+def run_aws(args: list[str], timeout: Optional[float] = 60.0) -> subprocess.CompletedProcess[str]:
     return cast(
-        subprocess.CompletedProcess[str], run(args, check=False, timeout=timeout)
+        subprocess.CompletedProcess[str],
+        run(args, check=False, timeout=timeout, env=_clean_env()),
     )
 
 
-# -----------------------------------------------------------------------------
-# Profile Management (~/.aws/config)
-# -----------------------------------------------------------------------------
 def _ensure_aws_config_file() -> None:
-    AWS_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        AWS_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+        if not AWS_CONFIG.exists():
+            AWS_CONFIG.touch()
+    except OSError:
+        pass
+
+
+def _check_unsafe_config() -> None:
     if not AWS_CONFIG.exists():
-        AWS_CONFIG.touch()
+        return
+    try:
+        raw = AWS_CONFIG.read_text(encoding="utf-8")
+        # [FIX] PYBH-0052: Do not match commented out include lines.
+        if re.search(r"^(?![ \t]*[#;])\s*include\s*=", raw, re.MULTILINE):
+            raise RuntimeError("Fatal: ~/.aws/config contains 'include' directives.\n" "awsctl cannot modify this file safely without causing corruption.")
+    except OSError:
+        pass
 
 
 def _configparser_read() -> configparser.RawConfigParser:
@@ -56,72 +151,132 @@ def _configparser_read() -> configparser.RawConfigParser:
 
 
 def _configparser_write(cfg: configparser.RawConfigParser) -> None:
-    with AWS_CONFIG.open("w", encoding="utf-8") as f:
-        cfg.write(f)
+    # [FIX] PYBH-0024: Create backup before overwriting
+    if AWS_CONFIG.exists():
+        backup = AWS_CONFIG.with_suffix(".config.bak")
+        try:
+            shutil.copy2(AWS_CONFIG, backup)
+        except OSError:
+            pass
+
+    # [FIX] PYBH-0056: Use same dir as target for atomic move support
+    target_dir = AWS_CONFIG.parent
+    fd, tmp_path = tempfile.mkstemp(dir=target_dir, text=True)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            cfg.write(f)
+
+        # [FIX] PYBH-0055: Resolve symlinks to preserve them
+        dest_path = AWS_CONFIG
+        if dest_path.is_symlink():
+            dest_path = dest_path.resolve()
+
+        shutil.move(tmp_path, dest_path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
 
 
 def aws_configure_set(profile: str, key: str, value: str) -> None:
-    """Write a key into ~/.aws/config under profile section."""
-    cfg = _configparser_read()
-    sect = f"profile {profile}"
-    if not cfg.has_section(sect):
-        cfg.add_section(sect)
-    cfg.set(sect, key, value)
-    _configparser_write(cfg)
+    if "\n" in value or "\r" in value:
+        raise ValueError("Configuration values cannot contain newlines.")
+
+    with _config_file_lock():
+        _check_unsafe_config()
+        cfg = _configparser_read()
+        sect = f"profile {profile}"
+        if not cfg.has_section(sect):
+            cfg.add_section(sect)
+        cfg.set(sect, key, value)
+        _configparser_write(cfg)
 
 
-def _set_section(section: str, pairs: Dict[str, str]) -> None:
-    cfg = _configparser_read()
+def _set_section(cfg: configparser.RawConfigParser, section: str, pairs: Dict[str, str]) -> None:
     if not cfg.has_section(section):
         cfg.add_section(section)
     for k, v in pairs.items():
+        if "\n" in v or "\r" in v:
+            raise ValueError(f"Invalid config value for {k}: {v}")
         cfg.set(section, k, v)
-    _configparser_write(cfg)
 
 
 def ensure_sso_base_profile(org: Dict[str, Any]) -> str:
-    """Create or update the base SSO profile and sso-session."""
-    profile = f"sso-{org['name']}"
-    region = org.get("default_region") or "eu-west-2"
+    with _config_file_lock():
+        _check_unsafe_config()
 
-    # Profile block
-    aws_configure_set(profile, "sso_session", org["name"])
-    aws_configure_set(profile, "sso_start_url", org["sso_start_url"])
-    aws_configure_set(profile, "sso_region", org["sso_region"])
-    aws_configure_set(profile, "region", region)
+        # [FIX] PYBH-0064: Prevent profile collisions for similar org names (org.a vs org_a)
+        # by appending a hash of the original name.
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", org["name"])
+        org_hash = hashlib.sha256(org["name"].encode()).hexdigest()[:6]
 
-    # Session block
-    _set_section(
-        f"sso-session {org['name']}",
-        {
-            "sso_start_url": org["sso_start_url"],
-            "sso_region": org["sso_region"],
-            "sso_registration_scopes": "sso:account:access",
-        },
-    )
-    return profile
+        profile = f"sso-{safe_name}-{org_hash}"
+        region = org.get("default_region") or "eu-west-2"
 
-
-def write_target_profile(
-    org: Dict[str, Any],
-    account_id: str,
-    role_name: str,
-    region: str,
-) -> str:
-    """Create a specific profile target for a given role context."""
-    base = ensure_sso_base_profile(org)
-    profile = f"{base}-{account_id}-{role_name}-{region}"
-    aws_configure_set(profile, "sso_start_url", org["sso_start_url"])
-    aws_configure_set(profile, "sso_region", org["sso_region"])
-    aws_configure_set(profile, "region", region)
-    aws_configure_set(profile, "sso_account_id", account_id)
-    aws_configure_set(profile, "sso_role_name", role_name)
-    return profile
+        cfg = _configparser_read()
+        _set_section(
+            cfg,
+            f"profile {profile}",
+            {
+                "sso_session": safe_name,
+                "sso_start_url": org["sso_start_url"],
+                "sso_region": org["sso_region"],
+                "region": region,
+            },
+        )
+        _set_section(
+            cfg,
+            f"sso-session {safe_name}",
+            {
+                "sso_start_url": org["sso_start_url"],
+                "sso_region": org["sso_region"],
+                "sso_registration_scopes": "sso:account:access",
+            },
+        )
+        _configparser_write(cfg)
+        return profile
 
 
-# -----------------------------------------------------------------------------
-# Legacy Shims (SSO Token & Listing)
-# -----------------------------------------------------------------------------
+def write_target_profile(org: Dict[str, Any], account_id: str, role_name: str, region: str) -> str:
+    # Lock for read/modify/write cycle
+    with _config_file_lock():
+        pass
+
+    base_profile = ensure_sso_base_profile(org)
+
+    with _config_file_lock():
+        sso_session_name = base_profile.split("-", 1)[1].rsplit("-", 1)[0]  # Extract session part roughly
+        # Actually safer to reuse the logic from ensure_sso_base_profile or just rely on the fact
+        # that base_profile is sso-{name}-{hash}.
+        # sso_session in config points to {name} (safe_name).
+
+        # Re-derive session name safely
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", org["name"])
+        sso_session_name = safe_name
+
+        # [FIX] PYBH-0048: Avoid profile collisions (Role-A vs Role_A)
+        safe_role = re.sub(r"[^a-zA-Z0-9_-]", "-", role_name)
+        role_hash = hashlib.sha256(role_name.encode()).hexdigest()[:6]
+
+        target_profile = f"{base_profile}-{account_id}-{safe_role}-{role_hash}-{region}"
+
+        _check_unsafe_config()
+        cfg = _configparser_read()
+
+        _set_section(
+            cfg,
+            f"profile {target_profile}",
+            {
+                "sso_session": sso_session_name,
+                "sso_account_id": account_id,
+                "sso_role_name": role_name,
+                "region": region,
+            },
+        )
+        _configparser_write(cfg)
+        return target_profile
+
+
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -136,75 +291,129 @@ def _parse_iso8601(value: str) -> Union[datetime, None]:
 
 
 def get_valid_sso_access_token(start_url: str, sso_region: str) -> Union[str, None]:
-    """Minimal reader for AWS SSO cached token."""
     if not SSO_CACHE_DIR.exists():
         return None
 
+    want_url = _normalize_start_url(start_url)
+
     for p in SSO_CACHE_DIR.glob("*.json"):
         try:
+            # [FIX] PYBH-0031: Read with limit
+            if p.stat().st_size > 1024 * 1024:
+                continue
             doc = json.loads(p.read_text(encoding="utf-8"))
-        # Catch specific file/parsing errors
-        except (json.JSONDecodeError, UnicodeDecodeError, FileNotFoundError):
+        except (json.JSONDecodeError, UnicodeDecodeError, FileNotFoundError, OSError):
             continue
-        if doc.get("startUrl") != start_url:
+
+        cached_url = _normalize_start_url(str(doc.get("startUrl", "")))
+        if cached_url != want_url:
             continue
+
         if doc.get("region") not in (sso_region, None):
             continue
-        exp = _parse_iso8601(doc.get("expiresAt", ""))
-        if not exp or exp <= _now_utc():
+
+        exp_raw = doc.get("expiresAt", "")
+        if not isinstance(exp_raw, str):
             continue
+
+        exp = _parse_iso8601(exp_raw)
+        if not exp or exp <= (_now_utc() + timedelta(seconds=15)):
+            continue
+
         tok = doc.get("accessToken")
         if isinstance(tok, str) and tok:
             return tok
+
     return None
 
 
 def sso_list_accounts(
-    start_url: str,  # noqa: ARG001
+    start_url: str,
     region: str,
     profile: Union[str, None] = None,
+    access_token: Union[str, None] = None,
 ) -> list[Dict[str, Any]]:
-    """Legacy helper: list accounts via CLI."""
-    args = ["aws", "sso", "list-accounts", "--output", "json", "--region", region]
-    if profile:
-        args += ["--profile", profile]
-    proc = run_aws(args)
-    if proc.returncode != 0 or not proc.stdout.strip():
-        return []
-    try:
-        data = json.loads(proc.stdout)
-    except Exception:
-        return []
-    return data.get("accountList", []) or []
+    results: list[Dict[str, Any]] = []
+    next_token = None
+    page_count = 0
+
+    while True:
+        if page_count > 100:
+            raise RuntimeError("AWS SSO pagination limit exceeded.")
+        page_count += 1
+
+        args = ["aws", "sso", "list-accounts", "--output", "json", "--region", region]
+        if profile:
+            args += ["--profile", profile]
+        if access_token:
+            args += ["--access-token", access_token]
+        if next_token:
+            args += ["--next-token", next_token]
+
+        proc = run_aws(args)
+
+        if proc.returncode != 0:
+            raise RuntimeError(f"Failed to list accounts: {proc.stderr}")
+
+        try:
+            data = json.loads(proc.stdout)
+            page = data.get("accountList", []) or []
+            results.extend(page)
+            next_token = data.get("nextToken")
+            if not next_token:
+                break
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Invalid JSON from AWS CLI: {proc.stdout}") from e
+
+    return results
 
 
 def sso_list_account_roles(
-    start_url: str,  # noqa: ARG001
+    start_url: str,
     account_id: str,
     region: str,
     profile: Union[str, None] = None,
+    access_token: Union[str, None] = None,
 ) -> list[str]:
-    """Legacy helper: list roles via CLI."""
-    args = [
-        "aws",
-        "sso",
-        "list-account-roles",
-        "--account-id",
-        account_id,
-        "--output",
-        "json",
-        "--region",
-        region,
-    ]
-    if profile:
-        args += ["--profile", profile]
-    proc = run_aws(args)
-    if proc.returncode != 0 or not proc.stdout.strip():
-        return []
-    try:
-        data = json.loads(proc.stdout)
-    except Exception:
-        return []
-    return [
-        r.get("roleName", "") for r in data.get("roleList", []) if r.get("roleName")
-    ]
+    results = []
+    next_token = None
+    page_count = 0
+
+    while True:
+        if page_count > 100:
+            raise RuntimeError("AWS SSO pagination limit exceeded.")
+        page_count += 1
+
+        args = [
+            "aws",
+            "sso",
+            "list-account-roles",
+            "--account-id",
+            account_id,
+            "--output",
+            "json",
+            "--region",
+            region,
+        ]
+        if profile:
+            args += ["--profile", profile]
+        if access_token:
+            args += ["--access-token", access_token]
+        if next_token:
+            args += ["--next-token", next_token]
+
+        proc = run_aws(args)
+        if proc.returncode != 0:
+            raise RuntimeError(f"Failed to list roles: {proc.stderr}")
+
+        try:
+            data = json.loads(proc.stdout)
+            page = [r.get("roleName", "") for r in data.get("roleList", []) if r.get("roleName")]
+            results.extend(page)
+            next_token = data.get("nextToken")
+            if not next_token:
+                break
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Invalid JSON from AWS CLI: {proc.stdout}") from e
+
+    return results

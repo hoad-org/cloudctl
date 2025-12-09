@@ -1,9 +1,10 @@
 # file: tests/test_strategy.py
 # SPDX-License-Identifier: MIT
 """
-Tests for the 'Trojan Horse' strategy router in awsctl.cli.
+Tests for the 'Context Bridge' strategy router in awsctl.cli.
 Ensures the shell wrapper knows when to EVAL output vs EXEC commands.
 """
+
 import pytest
 
 from awsctl.cli import determine_strategy

@@ -1,49 +1,74 @@
 #!/usr/bin/env bash
 # file: tools/comprehensive_smoke.sh
-# End-to-end smoke test using Hydration Model.
-# v1.3.0 - Updated for Trojan Horse Architecture
+# End-to-end smoke test using Hydration Model & Mock AWS CLI.
 set -Eeuo pipefail
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VENV_DIR="${REPO_ROOT}/.venv_smoke"
+
+# --------------------------
+# 0. Platform Normalization
+# --------------------------
+IS_WINDOWS=0
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
+    IS_WINDOWS=1
+    if ! command -v python3 >/dev/null 2>&1; then
+        PYTHON_BIN="python"
+    fi
+fi
+
+export PYTHONUTF8=1
+REPO_ROOT="$(pwd)"
+VENV_DIR="${REPO_ROOT}/.venv_smoke"
 TS_UTC="$(date -u +"%Y%m%dT%H%M%SZ")"
-ART_DIR="${REPO_ROOT}/tools/smoke_artifacts/${TS_UTC}"
-mkdir -p "${ART_DIR}"
-SUMMARY="${ART_DIR}/summary.txt"
-SETUP_LOG="${ART_DIR}/setup.log"
 
-# [CRITICAL] We test the hidden binary directly because the shell function 
-# is not available in this non-interactive script environment.
-BIN="_awsctl_bin"
+SHELL_ART_DIR="./tools/smoke_artifacts/${TS_UTC}"
+mkdir -p "${SHELL_ART_DIR}"
+SUMMARY="${SHELL_ART_DIR}/summary.txt"
+SETUP_LOG="${SHELL_ART_DIR}/setup.log"
 
+export AWSCTL_TEST_MODE=1
+export BROWSER="echo"
+FAILURES=0
+
+exec 3>&1
 echo "--- Starting comprehensive_smoke.sh log ---" > "${SETUP_LOG}"
-echo "Log file initialized at ${SETUP_LOG}"
+echo "Log file initialized at ${SETUP_LOG}" >&3
 
 {
   set -x
 
-  # -------- helpers --------
+  # Small helpers
   log()  { printf "[smoke] %s\n" "$*"; }
-  h()    { printf "\n[smoke] === %s ===\n" "$*"; }
-  die()  { printf "❌ %s\n" "$*" >&2; exit 1; }
+  h()    { printf "\n[smoke] === %s ===\n" "$*"; printf "\n\033[1;34m📂 %s\033[0m\n" "$*" >&3; }
 
   record() {
     local name="$1" rc="$2" msg="$3"
-    if [[ "${rc}" -eq 0 ]]; then
+    if [ "${rc}" -eq 0 ]; then
       printf "PASS  ✅  %s :: %s\n" "${name}" "${msg}" | tee -a "${SUMMARY}"
+      printf "  ✅ \033[0;32m%s\033[0m\n" "${name}" >&3
     else
       printf "FAIL  ❌  %s :: %s\n" "${name}" "${msg}" | tee -a "${SUMMARY}" >&2
+      printf "  ❌ \033[0;31m%s\033[0m\n" "${name}" >&3
+      FAILURES=$((FAILURES + 1))
     fi
+  }
+
+  run_python() {
+      if [ "$IS_WINDOWS" -eq 1 ]; then
+          env HOME="$PYTHON_HOME" USERPROFILE="$PYTHON_HOME" "${PYTHON_BIN}" -m awsctl "$@"
+      else
+          "${PYTHON_BIN}" -m awsctl "$@"
+      fi
   }
 
   run_and_capture() {
     local name="$1"; shift
-    [[ "$1" == "--" ]] && shift
-    local out="${ART_DIR}/${name}.out"
-    local logf="${ART_DIR}/${name}.log"
+    [ "$1" == "--" ] && shift
+    local out="${SHELL_ART_DIR}/${name}.out"
+    local logf="${SHELL_ART_DIR}/${name}.log"
     printf "%s CMD: %s\n" "${TS_UTC}" "$*" >> "${logf}"
+
     set +e
-    # [FIX] Capture both streams (2>&1) so grep finds UI messages (stderr) and exports (stdout)
     "$@" > "${out}" 2>&1
     local rc=$?
     set -e
@@ -52,152 +77,376 @@ echo "Log file initialized at ${SETUP_LOG}"
 
   expect_rc() {
     local name="$1" rc="$2" want="$3"
-    if [[ "${rc}" -eq "${want}" ]]; then
+    local out="${SHELL_ART_DIR}/${name}.out"
+    if [ "${rc}" -eq "${want}" ]; then
       record "${name}" 0 "rc=${rc}"
     else
       record "${name}" 1 "rc=${rc}, want=${want}"
+      if [ -f "${out}" ]; then
+          printf "\n    🔻 ERROR LOG (%s):\n" "${name}" >&3
+          cat "${out}" >&3
+          printf "    🔺 END LOG\n\n" >&3
+      fi
     fi
   }
 
   expect_grep() {
     local name="$1" rc="$2" pat="$3"
-    local out="${ART_DIR}/${name}.out"
-    if [[ "${rc}" -eq 0 && -s "${out}" ]] && grep -qiE "${pat}" "${out}"; then
-      record "${name}" 0 "found /${pat}/"
+    local out="${SHELL_ART_DIR}/${name}.out"
+    if [ "${rc}" -eq 0 -a -s "${out}" ] && grep -qiE "${pat}" "${out}"; then
+      record "grep-${name}" 0 "found pattern /${pat}/"
     else
-      record "${name}" 1 "missing /${pat}/"
+      record "grep-${name}" 1 "missing pattern /${pat}/"
+      if [ -f "${out}" ]; then
+          printf "\n    🔻 ERROR LOG (%s):\n" "${name}" >&3
+          cat "${out}" >&3
+          printf "    🔺 END LOG\n\n" >&3
+      fi
     fi
   }
 
-  # -------- venv setup --------
-  h "Create virtualenv"
-  if [[ ! -d "${VENV_DIR}" ]]; then
+
+  # -------------------------
+  # 1. Environment Setup
+  # -------------------------
+  h "1. Environment Setup"
+
+  SHELL_HOME="$(mktemp -d)"
+  export HOME="${SHELL_HOME}"
+
+  if [ "$IS_WINDOWS" -eq 1 ]; then
+      PYTHON_HOME="$(cygpath -w "${SHELL_HOME}")"
+  else
+      PYTHON_HOME="${SHELL_HOME}"
+  fi
+  export SHELL="/bin/bash"
+
+  mkdir -p "${HOME}/.aws" "${HOME}/.awsctl"
+
+  if [ ! -d "${VENV_DIR}" ]; then
+    printf "  Creating virtualenv...\n" >&3
     "${PYTHON_BIN}" -m venv "${VENV_DIR}"
   fi
-  source "${VENV_DIR}/bin/activate"
+
+  # Activate venv
+  if [ -f "${VENV_DIR}/Scripts/activate" ]; then
+      source "${VENV_DIR}/Scripts/activate"
+  else
+      source "${VENV_DIR}/bin/activate"
+  fi
+
   python -m pip install --upgrade pip wheel setuptools
 
-  h "Install awsctl (editable)"
+
+  # -------------------------
+  # 2. Install awsctl
+  # -------------------------
+  h "2. Installation"
   pip install -e ."[dev]"
 
-  # -------- QA Checks (Lint/Test) --------
-  h "Running QA Suite"
-  
-  # 1) Ruff
+
+  # -------------------------
+  # 3. QA Static Analysis
+  # -------------------------
+  h "3. QA Static Analysis"
   rc=$(run_and_capture "ruff" -- ruff check src tests)
   expect_rc "ruff" "${rc}" 0
-
-  # 2) Black (Format first to ensure check passes)
-  black src tests > /dev/null 2>&1
   rc=$(run_and_capture "black-check" -- black --check src tests)
   expect_rc "black-check" "${rc}" 0
-
-  # 3) Pytest (Unit tests)
   rc=$(run_and_capture "pytest" -- pytest -q)
   expect_rc "pytest" "${rc}" 0
 
-  # -------- CLI in isolated HOME --------
-  h "CLI smoke in temp HOME"
-  TMP_HOME="$(mktemp -d)"
-  export HOME="${TMP_HOME}"
-  
-  # [FIX] Allow overrides for Zsh testing (Defaults to bash)
-  export SHELL="${TEST_SHELL:-/bin/bash}"
-  
-  mkdir -p "${HOME}/.aws" "${HOME}/.awsctl"
-  
-  # Mock shell rc files
-  # Ensure NO .bash_profile exists so logic falls back to .bashrc
-  rm -f "${HOME}/.bash_profile"
-  touch "${HOME}/.bashrc" "${HOME}/.zshrc"
 
-  # Write Modern Config
-  echo "enabled_orgs: [engineering]" > "${HOME}/.awsctl/orgs.yaml"
+  # -------------------------
+  # 4. CLI Setup & Hydration
+  # -------------------------
+  h "4. CLI Setup & Configuration"
 
-  # Seed context
-  echo '{"current_org": "engineering"}' > "${HOME}/.aws/awsctl-context.json"
+  echo "broken_yaml: [" > "${HOME}/.awsctl/orgs.yaml"
 
-  # 4) version
-  rc=$(run_and_capture "version" -- $BIN --version)
+  export AWSCTL_HEADLESS=1
+  rc=$(run_and_capture "setup-fail-safe" -- run_python setup)
+  expect_rc "setup-fail-safe" "${rc}" 1
+
+  rm -f "${HOME}/.awsctl/orgs.yaml"
+  rc=$(run_and_capture "setup-clean" -- run_python setup)
+  expect_rc "setup-clean" "${rc}" 0
+
+  # Enable ONLY bt-avm
+  echo "enabled_orgs: ['bt-avm']" > "${HOME}/.awsctl/orgs.yaml"
+
+  if grep -q "AWSCTL SHELL INTEGRATION" "${HOME}/.bashrc"; then
+      record "shell-integration" 0 "function present in .bashrc"
+  else
+      record "shell-integration" 1 "missing function in .bashrc"
+  fi
+
+
+  # -------------------------
+  # 5. Mock State & Context Bridge
+  # -------------------------
+  h "5. Mock State & Context Bridge"
+
+  MOCK_CACHE_DIR="${HOME}/.aws/sso/cache"
+  mkdir -p "${MOCK_CACHE_DIR}"
+
+  # Mock fresh token for bt-avm
+  cat <<EOF > "${MOCK_CACHE_DIR}/bt_avm_token.json"
+{
+  "startUrl": "https://d-9067dbbf5a.awsapps.com/start",
+  "region": "us-east-1",
+  "accessToken": "btavm-token-123",
+  "expiresAt": "$(date -u -d '+8 hours' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -v+8H -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+
+  # Preload context (current + previous)
+  cat <<EOF > "${HOME}/.aws/awsctl-context.json"
+{
+  "current_org": "bt-avm",
+  "account": "338630860507",
+  "role": "SecurityAuditor",
+  "region": "us-east-1",
+  "previous": {
+      "org": "bt-avm",
+      "account": "235494790978",
+      "role": "SecurityAuditor",
+      "region": "us-east-1"
+  }
+}
+EOF
+
+
+  # -------------------------
+  # Mock AWS CLI
+  # -------------------------
+  MOCK_BIN="${HOME}/bin"
+  mkdir -p "${MOCK_BIN}"
+
+  cat <<'EOF' > "${MOCK_BIN}/aws.py"
+import sys, json
+
+args = sys.argv[1:]
+cmd = " ".join(args)
+
+# SSO role credentials
+if "sso get-role-credentials" in cmd:
+    if "expired-token" in cmd:
+        print("An error occurred (UnauthorizedException): Session token not found", file=sys.stderr)
+        sys.exit(255)
+
+    # Default credentials
+    creds = {
+        "roleCredentials": {
+            "accessKeyId": "AK_NEW",
+            "secretAccessKey": "SK_NEW",
+            "sessionToken": "TOK_NEW",
+            "expiration": 0
+        }
+    }
+
+    # If previous context account ID used
+    if "235494790978" in cmd:
+        creds["roleCredentials"]["accessKeyId"] = "AK_OLD"
+
+    print(json.dumps(creds))
+    sys.exit(0)
+
+# List accounts
+if "sso list-accounts" in cmd:
+    print(json.dumps({
+        "accountList": [
+            {
+                "accountId": "338630860507",
+                "accountName": "PrimaryAccount",
+                "emailAddress": "primary@example.com"
+            },
+            {
+                "accountId": "235494790978",
+                "accountName": "PreviousAccount",
+                "emailAddress": "previous@example.com"
+            }
+        ]
+    }))
+    sys.exit(0)
+
+# List roles
+if "sso list-account-roles" in cmd:
+    print(json.dumps({
+        "roleList": [
+            {"roleName": "AWSReservedSSO_SecurityAuditor_12345"},
+            {"roleName": "AWSReservedSSO_AdministratorAccess_56789"},
+            {"roleName": "AWSReservedSSO_DatabaseAdministrator_99999"}
+        ]
+    }))
+    sys.exit(0)
+
+# Caller identity
+if "sts get-caller-identity" in cmd:
+    print(json.dumps({
+        "Account": "338630860507",
+        "Arn": "arn:aws:iam::338630860507:role/SecurityAuditor",
+        "UserId": "EXAMPLE:SecurityAuditor"
+    }))
+    sys.exit(0)
+
+if "sso login" in cmd or "sso logout" in cmd:
+    sys.exit(0)
+
+if "mock-verify" in cmd:
+    print("{}")
+    sys.exit(0)
+
+sys.exit(0)
+EOF
+
+  if [ "$IS_WINDOWS" -eq 1 ]; then
+      WIN_MOCK_SCRIPT="$(cygpath -w "${MOCK_BIN}/aws.py")"
+      cat <<EOF > "${MOCK_BIN}/aws"
+#!/bin/sh
+"${PYTHON_BIN}" "${WIN_MOCK_SCRIPT}" "\$@"
+EOF
+  else
+      cat <<EOF > "${MOCK_BIN}/aws"
+#!/bin/sh
+"${PYTHON_BIN}" "${MOCK_BIN}/aws.py" "\$@"
+EOF
+  fi
+  chmod +x "${MOCK_BIN}/aws"
+
+  export PATH="${MOCK_BIN}:${PATH}"
+
+  if aws mock-verify >/dev/null; then
+      record "mock-aws" 0 "Mock AWS CLI is active"
+  else
+      record "mock-aws" 1 "Mock AWS CLI failed setup"
+  fi
+
+
+  # -------------------------
+  # 6. Core Features
+  # -------------------------
+  h "6. Core Features (Happy Path)"
+
+  rc=$(run_and_capture "version" -- awsctl --version)
   expect_rc "version" "${rc}" 0
 
-  # 5) help
-  rc=$(run_and_capture "help" -- $BIN --help)
-  expect_grep "help" "${rc}" "Enterprise AWS Context Switcher"
+  rc=$(run_and_capture "doctor" -- awsctl doctor)
+  expect_grep "doctor" "${rc}" "Everything looks good"
 
-  # 6) doctor
-  rc=$(run_and_capture "doctor" -- $BIN doctor)
-  expect_grep "doctor" "${rc}" "System Health Check"
+  # Login into bt-avm
+  rc=$(run_and_capture "login" -- awsctl login --org bt-avm --force)
+  expect_rc "login" "${rc}" 0
+  expect_grep "login" "${rc}" "Login Successful"
 
-  # 7) orgs list (should be hydrated)
-  # [FIX] grep case-insensitive for robustness
-  rc=$(run_and_capture "orgs" -- $BIN list orgs)
-  expect_grep "orgs" "${rc}" "Engineering"
+  # Status must show Active Role
+  rc=$(run_and_capture "status" -- awsctl status)
+  expect_grep "status" "${rc}" "Active Role"
 
-  # 8) Setup (Mocked Headless)
-  export AWSCTL_HEADLESS=1
-  rc=$(run_and_capture "setup" -- $BIN setup)
-  expect_rc "setup" "${rc}" 0
+  # Console URL check (must match bt-avm)
+  rc=$(run_and_capture "console-url" -- run_python console)
+  expect_grep "console-url" "${rc}" "https://d-9067dbbf5a.awsapps.com/start"
 
-  # 9) Shell Integration Check
-  # [FIX] Dynamically check correct RC file based on SHELL
-  if [[ "${SHELL}" == *"zsh"* ]]; then
-      TARGET_RC="${HOME}/.zshrc"
+  # Role list must show SecurityAuditor (alias-correct)
+  rc=$(run_and_capture "list-roles" -- run_python list roles)
+  expect_grep "list-roles" "${rc}" "SecurityAuditor"
+
+
+  # -------------------------
+  # 7. JSON Validity
+  # -------------------------
+  run_python list accounts --json > "${SHELL_ART_DIR}/list_json.out"
+  python3 - <<EOF > /dev/null || record "json-validity" 1 "bad json"
+import json
+data = json.load(open("${SHELL_ART_DIR}/list_json.out"))
+p = data["accountList"][0]["accountName"]
+EOF
+  record "json-validity" 0 "output is valid JSON"
+
+
+  # -------------------------
+  # 8. Switch + EVAL + Toggle
+  # -------------------------
+  unset AWS_ACCESS_KEY_ID
+
+  # Switch to primary account (should return AK_NEW)
+  awsctl switch --target 338630860507 --role SecurityAuditor --region us-east-1 \
+      > "${SHELL_ART_DIR}/switch.out" 2>&1
+
+  if [[ "${AWS_ACCESS_KEY_ID:-}" == "AK_NEW" ]]; then
+      record "switch-eval" 0 "Environment updated to primary context"
   else
-      TARGET_RC="${HOME}/.bashrc"
+      record "switch-eval" 1 "Switch did not set AK_NEW"
   fi
 
-  # The new wrapper header is "AWSCTL SHELL INTEGRATION"
-  if grep -q "AWSCTL SHELL INTEGRATION" "${TARGET_RC}"; then
-      record "shell-integration" 0 "function present in $(basename ${TARGET_RC})"
+  # Toggle to previous context (must return AK_OLD)
+  awsctl switch - > "${SHELL_ART_DIR}/toggle.out" 2>&1
+  if [[ "${AWS_ACCESS_KEY_ID:-}" == "AK_OLD" ]]; then
+      record "toggle-eval" 0 "Toggle switched to previous account"
   else
-      record "shell-integration" 1 "missing function in $(basename ${TARGET_RC})"
-      cat "${TARGET_RC}" >> "${SETUP_LOG}"
+      record "toggle-eval" 1 "Toggle failed to activate previous context"
   fi
 
-  # 10) Config Sync Check
-  if grep -q "profile sso-engineering" "${HOME}/.aws/config"; then
-      record "config-sync" 0 "profile sso-engineering created"
-  else
-      record "config-sync" 1 "missing sso profile"
-  fi
 
-  # 11) Guardrail Check: Region Violation
-  # [FIX] Use 12-digit account ID to bypass lookup call and hit guardrail directly
+  # -------------------------
+  # 9. Plugin Enforcement
+  # -------------------------
+  h "7. Security Plugin Enforcement"
+
+  PLUGIN_DIR="${REPO_ROOT}/src/awsctl/plugins"
+  PLUGIN_FILE="${PLUGIN_DIR}/smoke_blocker.py"
+
+  echo "def pre_login(org):" > "${PLUGIN_FILE}"
+  echo "    print('🛑 SECURITY BLOCK: Smoke Test Plugin')" >> "${PLUGIN_FILE}"
+  echo "    import sys; sys.exit(1)" >> "${PLUGIN_FILE}"
+
+  cat <<EOF > "${HOME}/.awsctl/orgs.yaml"
+enabled_orgs:
+  - bt-avm
+plugins:
+  enabled: ['awsctl.plugins.smoke_blocker']
+EOF
+
   set +e
-  $BIN switch --account 123456789012 --role Admin --region us-west-1 > "${ART_DIR}/guardrail.out" 2>&1
+  awsctl login --org bt-avm --force > "${SHELL_ART_DIR}/plugin_block.out" 2>&1
   rc=$?
   set -e
-  
-  # [FIX] Check for "Guardrail Violation" OR "not permitted" (handle smart switch variance)
-  if [[ "${rc}" -ne 0 ]] && grep -qiE "Guardrail Violation|not permitted" "${ART_DIR}/guardrail.out"; then
-      record "guardrail-region" 0 "blocked invalid region"
+
+  if [[ "${rc}" -ne 0 ]] && grep -q "SECURITY BLOCK" "${SHELL_ART_DIR}/plugin_block.out"; then
+      record "security-plugin" 0 "Plugin correctly blocked login"
   else
-      record "guardrail-region" 1 "failed to block invalid region (rc=${rc})"
+      record "security-plugin" 1 "Plugin failed to block login"
   fi
 
-  # 12) Accounts Offline (Should fail gracefully without SSO token)
-  set +e
-  $BIN list accounts > "${ART_DIR}/accounts-offline.out" 2>&1
-  rc=$?
-  set -e
-  if [[ "${rc}" -ne 0 ]]; then
-      record "accounts-offline" 0 "failed as expected (no token)"
-  else
-      record "accounts-offline" 1 "unexpected success"
-  fi
+  rm -f "${PLUGIN_FILE}"
 
-  # 13) New Command: env
-  rc=$(run_and_capture "env" -- $BIN env)
-  expect_grep "env" "${rc}" "# No active context"
+  echo "enabled_orgs: ['bt-avm']" > "${HOME}/.awsctl/orgs.yaml"
 
-  # 14) New Command: cache-clear
-  rc=$(run_and_capture "cache-clear" -- $BIN cache-clear)
+
+  # -------------------------
+  # 10. Cleanup
+  # -------------------------
+  h "10. Cleanup"
+
+  rc=$(run_and_capture "cache-clear" -- awsctl cache-clear)
   expect_grep "cache-clear" "${rc}" "Cache cleared"
 
-  # -------- cleanup --------
-  rm -rf "${TMP_HOME}"
-  h "Smoke Test Complete"
-  cat "${SUMMARY}"
+  awsctl logout
+
+  if [[ -z "${AWS_ACCESS_KEY_ID:-}" ]]; then
+     record "logout-unset" 0 "Variables cleared"
+  else
+     record "logout-unset" 1 "Variables still set"
+  fi
+
+  rm -rf "${SHELL_HOME}"
+
+  printf "\n\033[1;32m✨ Smoke Test Complete.\033[0m\n" >&3
+  printf "📝 Full logs: \033[4m%s\033[0m\n\n" "${SETUP_LOG}" >&3
+
+  if [ "$FAILURES" -ne 0 ]; then
+      printf "\n❌ FAILED: %d checks failed.\n" "$FAILURES" >&3
+      exit 1
+  fi
 
 } >> "${SETUP_LOG}" 2>&1

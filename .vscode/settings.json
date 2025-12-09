@@ -3,61 +3,48 @@
   "explorer.confirmDragAndDrop": false,
   "explorer.confirmDelete": false,
   "workbench.iconTheme": "vscode-icons",
-
-  "chat.mcp.discovery.enabled": {
-    "claude-desktop": false,
-    "windsurf": false,
-    "cursor-global": false,
-    "cursor-workspace": false
-  },
-  "chat.mcp.gallery.enabled": true,
-  "chat.mcp.access": "all",
-  "chat.mcp.autostart": true,
-  "chat.agent.enabled": true,
-
   "http.systemCertificates": true,
   "http.proxySupport": "on",
   "http.proxyStrictSSL": false,
-
+  "chat.mcp.gallery.enabled": true,
+  "chat.mcp.autostart": true,
+  "chat.agent.enabled": true,
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.exclude": {
+    "**/.git": true,
+    "**/.svn": true,
+    "**/.hg": true,
+    "**/CVS": true,
+    "**/.DS_Store": true,
+    "**/__pycache__": true,
+    "**/.venv": true,
+    "**/.pytest_cache": true,
+    "**/.mypy_cache": true,
+    "**/*.egg-info": true
+  },
+  "python.defaultInterpreterPath": ".venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+  "python.linting.enabled": true,
+  "python.linting.pylintEnabled": false,
+  "python.linting.flake8Enabled": false,
+  "flake8.enabled": false,
   "[python]": {
-    "editor.formatOnSave": true,
     "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
       "source.organizeImports": "explicit"
     }
   },
-  "python.linting.enabled": true,
-  "python.linting.flake8Enabled": true,
-
-  "[terraform]": {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "hashicorp.terraform"
-  },
-
-  "[yaml]": {
-    "editor.defaultFormatter": "redhat.vscode-yaml"
-  },
-  "[jsonc]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "[dockercompose]": {
-    "editor.insertSpaces": true,
-    "editor.tabSize": 2,
-    "editor.autoIndent": "advanced",
-    "editor.quickSuggestions": {
-      "other": true,
-      "comments": false,
-      "strings": true
-    },
-    "editor.defaultFormatter": "redhat.vscode-yaml"
-  },
-  "[github-actions-workflow]": {
-    "editor.defaultFormatter": "redhat.vscode-yaml"
-  },
-
-  "chat.mcp.serverSampling": {
-    "awsctl/.vscode/mcp.json: github": {
-      "allowedModels": ["copilot/gpt-4.1"]
-    }
-  }
+  "black-formatter.args": ["--config=pyproject.toml"],
+  "ruff.enable": true,
+  "ruff.lint.args": ["--config=pyproject.toml"],
+  "ruff.organizeImports.args": ["--config=pyproject.toml"],
+  "mypy.enable": true,
+  "mypy.configFile": "mypy.ini",
+  "mypy.runUsingActiveInterpreter": true,
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.cwd": "${workspaceFolder}",
+  "python.testing.pytestArgs": ["-c", "pytest.ini"]
 }

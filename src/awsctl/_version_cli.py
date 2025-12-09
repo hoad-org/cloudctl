@@ -1,4 +1,3 @@
-# file: awsctl/_version_cli.py
 # SPDX-License-Identifier: MIT
 """
 Tiny console entry that prints only the version to stdout.
@@ -7,7 +6,10 @@ Used for robust testing where shell shims may vary.
 
 from __future__ import annotations
 
-from . import __version__
+try:
+    from ._version import __version__
+except ImportError:
+    __version__ = "0.0.0"
 
 
 def main() -> int:

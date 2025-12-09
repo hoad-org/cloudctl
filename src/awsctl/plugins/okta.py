@@ -4,6 +4,7 @@
 Okta plugin implementation.
 Performs pre-flight connectivity checks (VPN/Internet).
 """
+
 import sys
 from typing import Any, Dict
 
@@ -27,17 +28,23 @@ def pre_login(org: Dict[str, Any]) -> None:
         console.print("[warning]⚠ 'sso_start_url' missing. Skipping checks.[/]")
         return
 
+    # 🛡️ SECURITY FIX: Prevent SSRF against local/internal non-HTTPS services
+    if not url.lower().startswith("https://"):
+        console.print(f"[error]✗ Security Risk: SSO URL must be HTTPS: {url}[/]")
+        sys.exit(1)
+
     # 2. Connectivity Check
     try:
         # Short timeout (3s) to detect VPN issues quickly
         resp = requests.head(url, timeout=3, allow_redirects=True)
 
         if resp.status_code >= 400:
-            # 401/403 means reachable but unauthenticated (which is fine for pre-check)
-            if resp.status_code not in (401, 403):
-                console.print(f"[error]✗ SSO URL returned error {resp.status_code}[/]")
-                console.print(f"  URL: {url}")
-                sys.exit(1)
+            # [FIX] PYBH-0070: Treat 401/403 as potential VPN/Geo-block issues.
+            # Captive portals often return 200, so we can't detect that easily,
+            # but we shouldn't assume 403 is "Success".
+            console.print(f"[error]✗ SSO URL returned error {resp.status_code}[/]")
+            console.print(f"  URL: {url}")
+            sys.exit(1)
 
         console.print(f"[success]✓ SSO Endpoint reachable ({url})[/]")
 

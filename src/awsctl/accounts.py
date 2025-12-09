@@ -1,105 +1,68 @@
 # file: src/awsctl/accounts.py
+# SPDX-License-Identifier: MIT
+"""
+awsctl.accounts
+---------------
+Domain logic for AWS Account and Role retrieval.
+"""
+
 from __future__ import annotations
 
-import json
-from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Dict, List, Union
+from typing import List
 
-from awsctl.utils import run
+from awsctl import aws
+from awsctl.sso_cache import OrgRef, load_active_sso_token
 
-from .sso_cache import OrgRef, load_active_sso_token
 
-
-@dataclass(frozen=True)
+@dataclass
 class Account:
     account_id: str
     account_name: str
     email: str
 
 
-def _aws_json(args: List[str]) -> Dict[str, Any]:
-    # Enforce 5s timeout to prevent zombie hangs
-    p = run(args, check=False, timeout=5.0)
+def list_accounts(ref: OrgRef) -> List[Account]:
+    """
+    Retrieve list of accounts for the given organization.
+    Uses aws.sso_list_accounts which handles the CLI call and timeouts.
+    """
+    # [FIX] PYBH-0044: Use raise_error=False to allow checking token validity manually
+    token = load_active_sso_token(ref, raise_error=False)
+    if not token or not token.access_token:
+        # Check specific error message in sso_list_accounts wrapper.
+        raise RuntimeError("No active session found. Please run `awsctl login`.")
 
-    if p.returncode != 0:
-        raise RuntimeError(f"AWS CLI failed: {' '.join(args)}\n{p.stderr.strip()}")
+    # Pass the token explicitly to the AWS CLI wrapper
+    raw_list = aws.sso_list_accounts(ref.sso_start_url, ref.sso_region, access_token=token.access_token)
 
-    # Explicitly type the result of json.loads
-    try:
-        result: Dict[str, Any] = json.loads(p.stdout or "{}")
-        return result
-    except json.JSONDecodeError:
-        return {}
-
-
-def _paginate(
-    base: List[str],
-    token_key: str = "nextToken",  # nosec B107
-) -> Iterable[Dict[str, Any]]:
-    token: Union[str, None] = None
-    while True:
-        args = list(base)
-        if token:
-            args += ["--next-token", token]
-        data = _aws_json(args)
-        yield data
-        token = data.get(token_key)
-        if not token:
-            break
-
-
-def list_accounts(org: OrgRef) -> list[Account]:
-    tok = load_active_sso_token(org)
-
-    # [FIX] Validate token before calling CLI
-    if not tok or not tok.access_token:
-        raise RuntimeError("No valid SSO access token found. Please login again.")
-
-    base = [
-        "aws",
-        "sso",
-        "list-accounts",
-        "--region",
-        tok.region,
-        "--access-token",
-        tok.access_token,
-    ]
-    out: list[Account] = []
-    for page in _paginate(base):
-        for a in page.get("accountList", []):
-            out.append(
-                Account(
-                    a.get("accountId", ""),
-                    a.get("accountName", ""),
-                    a.get("emailAddress", ""),
-                )
+    results = []
+    for item in raw_list:
+        results.append(
+            Account(
+                account_id=str(item.get("accountId", "")),
+                account_name=str(item.get("accountName", "")),
+                email=str(item.get("emailAddress", "")),
             )
-    return out
+        )
+
+    # Sort by name for consistency
+    results.sort(key=lambda x: x.account_name)
+    return results
 
 
-def list_roles(org: OrgRef, account_id: str) -> list[str]:
-    tok = load_active_sso_token(org)
+def list_roles(ref: OrgRef, account_id: str) -> List[str]:
+    """
+    Retrieve list of roles for a specific account.
+    """
+    token = load_active_sso_token(ref, raise_error=False)
+    if not token or not token.access_token:
+        raise RuntimeError("No active session found. Please run `awsctl login`.")
 
-    # [FIX] Validate token before calling CLI
-    if not tok or not tok.access_token:
-        raise RuntimeError("No valid SSO access token found. Please login again.")
-
-    base = [
-        "aws",
-        "sso",
-        "list-account-roles",
-        "--region",
-        tok.region,
-        "--access-token",
-        tok.access_token,
-        "--account-id",
+    roles = aws.sso_list_account_roles(
+        ref.sso_start_url,
         account_id,
-    ]
-    roles: list[str] = []
-    for page in _paginate(base):
-        for r in page.get("roleList", []):
-            n = r.get("roleName")
-            if n:
-                roles.append(n)
-    return roles
+        ref.sso_region,
+        access_token=token.access_token,
+    )
+    return sorted(roles)

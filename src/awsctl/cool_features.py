@@ -5,7 +5,10 @@ awsctl.cool_features
 --------------------
 Hidden 'Matrix' mode visualizer.
 """
-import random  # nosec B311 (Used for visual flair/random delay, not crypto)
+
+import random  # nosec B311
+
+# (Used for visual flair...)
 import time
 
 from rich.console import Console
@@ -15,7 +18,9 @@ from rich.table import Table
 
 
 def run_matrix_login() -> None:
-    console = Console()
+    # [FIX] PYBH-0141: Force terminal output to preserve animation over pipe
+    # [FIX] PYBH-0021: Send to stderr to allow EVAL strategy to capture clean stdout
+    console = Console(force_terminal=True, stderr=True)
 
     table = Table(show_header=False, box=None, expand=True)
     table.add_column("Status", style="green")
@@ -34,6 +39,7 @@ def run_matrix_login() -> None:
     with Live(
         Panel(table, title="[bold green]AWSCTL SYSTEM LINK[/]", border_style="green"),
         refresh_per_second=12,
+        console=console,
     ) as live:
         for step in steps:
             delay = random.uniform(0.1, 0.4)  # nosec B311

@@ -1,58 +1,73 @@
-# file: Makefile
-# awsctl — build, lint, and test automation
+# awsctl — Seamless Developer Makefile
+# Zero Trust CLI — developer workflow
 
-PYTHON ?= python3
-SRC = src
-TESTS = tests
+# ********************
+#  Environment
+# ********************
 
-.PHONY: help install lint format typecheck security test smoke build clean all
+VENV := .venv
+PYTHON := $(VENV)/bin/python3
+PIP := $(VENV)/bin/pip
 
-# --- Default Goal: Help ---
+SRC := src
+TESTS := tests
+
+.PHONY: help setup install lint format typecheck security test smoke build clean all
+
+# ********************
+#  Help
+# ********************
+
 help:
-	@echo "awsctl developer Makefile"
+	@echo "awsctl Developer Workflow"
 	@echo "========================="
-	@echo "make setup      : Create local venv"
-	@echo "make install    : Install dependencies in editable mode"
-	@echo "make lint       : Check code style (Black + Ruff)"
-	@echo "make format     : Fix code style (Black + Ruff)"
-	@echo "make typecheck  : Run static typing (Mypy)"
-	@echo "make security   : Audit dependencies and code (Bandit + Pip-audit)"
+	@echo "make setup      : Create local virtualenv (.venv)"
+	@echo "make install    : Install dev dependencies into .venv"
+	@echo "make lint       : Check formatter + linter"
+	@echo "make format     : Run Black + Ruff auto-fix"
+	@echo "make typecheck  : Run Mypy strict type checks"
+	@echo "make security   : Run Bandit + pip-audit"
 	@echo "make test       : Run unit tests"
-	@echo "make smoke      : Run comprehensive integration smoke test"
-	@echo "make build      : Build distribution artifacts (Wheel/Tarball)"
-	@echo "make clean      : Remove all build and test artifacts"
+	@echo "make smoke      : Run comprehensive smoke test"
+	@echo "make build      : Build wheel + sdist"
+	@echo "make clean      : Remove build and cache artifacts"
 
-# --- User Commands ---
+# ********************
+#  Environment Setup
+# ********************
 
 setup:
-	$(PYTHON) -m venv venv
-	@echo "Run 'source venv/bin/activate' then 'make install'"
+	python3.12 -m venv $(VENV)
+	$(PIP) install pre-commit
+	$(VENV)/bin/pre-commit install
+	@echo "Run: source .venv/bin/activate"
 
 install:
-	$(PYTHON) -m pip install --upgrade pip
-	pip install -e .[dev]
-	@echo "Run 'awsctl setup' to configure shell integration."
+	$(PIP) install --upgrade pip setuptools wheel
+	$(PIP) install -e ".[dev]" -c constraints.txt
+	@echo "Developer environment ready."
 
-# --- Dev Commands ---
+# ********************
+#  Dev Commands
+# ********************
 
 lint:
-	black --check $(SRC) $(TESTS)
-	ruff check $(SRC) $(TESTS)
+	$(VENV)/bin/black --check $(SRC) $(TESTS)
+	$(VENV)/bin/ruff check $(SRC) $(TESTS)
 
 format:
-	black $(SRC) $(TESTS)
-	ruff check $(SRC) $(TESTS) --fix
+	$(VENV)/bin/black $(SRC) $(TESTS)
+	$(VENV)/bin/ruff check $(SRC) $(TESTS) --fix
 
 typecheck:
-	$(PYTHON) -m mypy src --strict
+	$(PYTHON) -m mypy $(SRC) --strict
 
 security:
-	pip-audit
-	# [FIX] Use $(SRC) variable for consistency
-	bandit -r $(SRC) -s B101,B404,B603,B607
+	$(VENV)/bin/pip-audit
+	$(VENV)/bin/bandit -r $(SRC) -s B101,B404,B603,B607
 
 test:
-	pytest -v --cov=awsctl --cov-report=term-missing
+	$(VENV)/bin/pytest -v --cov=awsctl --cov-report=term-missing
 
 smoke:
 	tools/comprehensive_smoke.sh
@@ -60,18 +75,15 @@ smoke:
 build: clean
 	$(PYTHON) -m build
 
+# ********************
+#  Cleanup (Safe)
+# ********************
+
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type d -name ".pytest_cache" -exec rm -rf {} +
 	find . -type d -name ".mypy_cache" -exec rm -rf {} +
 	find . -type d -name ".ruff_cache" -exec rm -rf {} +
 	rm -rf build dist .coverage coverage.xml .tox
-	find . -type d -name "smoke_artifacts" -exec rm -rf {} +
-	# [CRITICAL] Remove egg-info to reset setuptools_scm version cache
-	find . -type d -name "*.egg-info" -exec rm -rf {} +
-	# Remove venvs (Optional - aggressive clean)
-	find . -type d -name ".venv" -exec rm -rf {} +
-	find . -type d -name ".venv_smoke" -exec rm -rf {} +
-	find . -type d -name "venv" -exec rm -rf {} +
 
 all: install lint typecheck security test

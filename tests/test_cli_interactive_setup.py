@@ -2,6 +2,7 @@
 """
 Coverage boost for interactive setup path in cli.py.
 """
+
 from unittest.mock import MagicMock
 
 from awsctl import cli

@@ -1,9 +1,8 @@
+# file: docs/GUARDRAILS.md
 # Guardrails
 
-This document describes the guardrail system used by `awsctl` to enforce safe, consistent, and centralized AWS access boundaries across an engineering organization.
-
-Guardrails are **not** user-configurable.  
-They are defined exclusively in the Corporate Registry (`src/awsctl/registry.py`) and enforced at runtime.
+This document describes the guardrail system used by **awsctl** (v2.7.0+).
+Guardrails are **not** user-configurable. They are defined exclusively in the Corporate Registry (Embedded or Remote).
 
 ---
 
@@ -12,204 +11,101 @@ They are defined exclusively in the Corporate Registry (`src/awsctl/registry.py`
 Guardrails ensure that all developers operate within the same secure boundaries:
 
 - **Region Locking:** Restrict access to approved AWS regions.
-- **Role Prioritization:** Promote least-privilege roles (for example, `ViewOnlyAccess`).
-- **Plugin Enforcement:** Mandatory security checks (VPN, device posture, Okta, MFA).
-- **Version Enforcement (Roadmap):** Block outdated clients from authenticating.
-
-These policies **cannot be overridden locally**.  
-This is validated by the test suite (for example, `test_user_cannot_override_guardrails`).
+- **Role Prioritization:** Promote least-privilege roles.
+- **Plugin Enforcement:** Mandatory security checks (VPN, device posture).
+- **Namespace Isolation:** Prevent execution of untrusted code.
+- **Audit & Compliance:** Enforce justification for high-privilege access.
 
 ---
 
-## 2. Source of Truth
+## 2. Hydration Model
 
-All guardrails live in:
-
-    src/awsctl/registry.py
-
-The Registry is a list of dictionaries.  
-Each dictionary represents the complete, authoritative policy for a single organization.
-
-Example Registry Definition:
-
-    KNOWN_ORGS = [
-        {
-            "name": "engineering",
-            "label": "Engineering (Main)",
-            "start_url": "https://d-123456.awsapps.com/start",
-            "default_region": "eu-west-2",
-
-            # --- GUARDRAILS ---
-            "allowed_regions": ["eu-west-1", "eu-west-2"],
-            "preferred_roles": ["AdministratorAccess", "ViewOnlyAccess"],
-            "plugins": ["awsctl.plugins.okta"],
-        },
-        # ...
-    ]
-
-Important:
-
-- Administrators must maintain the exact shape of these dictionaries.
-- Changing field names or structure will break hydration.
-
----
-
-## 3. Hydration Model
-
-User config (`orgs.yaml`):
-
-    enabled_orgs:
-      - engineering
-
-Registry entry (`registry.py`):
-
-    {
-        "name": "engineering",
-        "allowed_regions": ["eu-west-1"],
-        # ...
-    }
+User config (`orgs.yaml`) only enables an org and optionally configures the Remote Registry URL.
+The Registry acts as the immutable policy source.
 
 At runtime, `awsctl`:
 
-1. Reads enabled org names from the user file.
-2. Loads matching Registry entries.
-3. Hydrates the full org definition in memory.
-4. Applies guardrails before any AWS action (login, region selection, role selection).
+1.  Reads enabled org names.
+2.  Hydrates the full definition from the Registry (Embedded `registry.py` or Signed Remote JSON).
+3.  Applies guardrails before any AWS action.
 
-Users cannot override hydrated fields.  
-All policy comes from the Registry.
+**Local overrides are ignored.**
 
 ---
 
-## 4. Guardrail Types
+## 3. Guardrail Types
 
-### 4.1 Region Restrictions
+### 3.1 Region Restrictions
 
 Definition:
 
     "allowed_regions": ["eu-west-2"]
 
-Enforcement Points:
+Enforced during `login`, `switch`, and `exec`. Violations return `exit code: 1` immediately.
 
-- `awsctl login`
-- `awsctl switch`
-- Interactive region selector
-- `--region` flag
-- Shell export
-
-Example Violation:
-
-    ERROR: region us-east-1 is not permitted for org 'production'
-    exit code: 1
-
----
-
-### 4.2 Preferred Roles
-
-Definition:
-
-    "preferred_roles": ["ViewOnlyAccess"]
-
-Behavior:
-
-- Preferred roles appear at the top of the interactive selector.
-- Reduces human error.
-- Encourages least-privilege access.
-- Deprecated or unsafe roles naturally fall lower in the list when not listed as preferred.
-
----
-
-### 4.3 Required Plugins
+### 3.2 Required Plugins
 
 Definition:
 
     "plugins": ["awsctl.plugins.okta"]
 
+Plugins run before login. If they fail (exit code != 0), the process aborts.
+
+### 3.3 Role Prioritization (Least Privilege)
+Definition:
+
+    "preferred_roles": ["ViewOnlyAccess"]
+
 Behavior:
+Promotes least-privilege roles to the top of the interactive selector, making it the default choice and encouraging developers to choose the lowest necessary access level.
 
-- Plugins run before login and before region/account selection.
-- Enforced plugins cannot be disabled locally.
+### 3.4 Namespace Isolation (ACE Prevention)
+Definition:
 
-Typical use cases:
+    "plugins": ["awsctl.plugins.internal_check"]
 
-- VPN enforcement.
-- MFA validation.
-- Okta session checks.
-- Device posture / compliance checks.
+Enforcement:
+Blocks dynamically loaded plugins that do not adhere to approved internal namespaces (e.g., `awsctl.plugins.*` or `myorg.plugins.*`). This prevents **Arbitrary Code Execution (ACE)** via config file tampering.
 
-Example Plugin Failure:
+### 3.5 TTY Guard (Operational Safety)
 
-    ✗ VPN connection NOT detected.
-    exit code: 1
+The binary detects if it is running in an interactive terminal during an export operation.
+If detected, it refuses to print credentials to the screen to prevent accidental exposure.
 
----
-
-### 4.4 Minimum Client Version (Roadmap)
+### 3.6 Break Glass Audit (New in v2.5)
 
 Definition:
 
-    "min_client_version": "2.0.0"
+    "sensitive_roles": ["AdministratorAccess"]
 
-Purpose:
+Enforcement:
+If a user selects a role flagged as sensitive, `awsctl` pauses execution. The user must explicitly provide a text justification (e.g., "JIRA-1234"). This justification is logged locally to `~/.awsctl/audit.log` for compliance auditing.
 
-- Ensure consistent adoption of new guardrails.
-- Prevent outdated or noncompliant clients from authenticating.
+### 3.7 Minimum Version Enforcement (New in v2.5)
 
-(Behavior is planned for a future version.)
+Definition:
 
----
+    "min_client_version": "2.5.0"
 
-## 5. Ignored Local Overrides
-
-Any attempt by a developer to override guardrails locally is ignored:
-
-    # ~/.awsctl/orgs.yaml
-    enabled_orgs:
-      - engineering
-
-    # 🚫 This is ignored entirely
-    allowed_regions:
-      - us-east-1
-
-Verified By:
-
-- `tests/test_config.py::test_user_cannot_override_guardrails`
-
-Registry definitions always prevail.
+Enforcement:
+During login or context switching, the client checks its own version against the Registry requirement. If the client is too old, it aborts with a message instructing the user to upgrade (e.g., `pipx upgrade awsctl`).
 
 ---
 
-## 6. Lifecycle of a Guardrail Change
+### 4. Evolution of Controls
 
-1. Admin edits the Registry:
-
-       vim src/awsctl/registry.py
-
-2. Run CI:
-
-       make test
-
-3. Tag release:
-
-       git tag v2.0.1
-       git push origin v2.0.1
-
-4. Developers upgrade:
-
-       pipx upgrade awsctl
-
-5. Enforcement begins immediately.  
-   Users cannot bypass the new policy.  
-   All updated guardrails are applied on the next run.
+* **v2.2:** Added Role Prioritization and Namespace Isolation.
+* **v2.5:** Added Break Glass Audit and Minimum Version Enforcement to support Enterprise Governance.
 
 ---
 
-## 7. Admin Checklist
+## 5. Potential Future Guardrails (Supported by Current Architecture)
 
-- Update Registry definitions.
-- Validate policy via `make test`.
-- Update version tag.
-- Publish upgrade instructions.
-- Verify enforcement in production contexts.
+The Registry-backed architecture is flexible enough to implement contextual guardrails by simply defining new fields in `src/awsctl/registry.py` and writing corresponding code validation.
 
-Guardrails, combined with the Registry-backed Hydration Model, ensure that `awsctl` provides consistent, least-privilege, and centrally governed access patterns across the organization.
+| Team/Scenario | Potential Guardrail | Definition / Enforcement Mechanism |
+| :--- | :--- | :--- |
+| **Data Security** | **Service Allow/Deny List** | Define a field listing `allowed_services: ["s3", "ec2"]`. Enforcement requires intercepting the `aws exec` command to check the first argument against the list. |
+| **Audit/Compliance** | **Remote Audit Hook** | Define `audit_webhook: "https://..."`. Instead of local logging, Break Glass justifications are sent to a SIEM/Slack via HTTPS. |
+| **Security Operations** | **Role Deny List (Exceptions)** | Define a field `denied_roles_in_account: ["BreachResponder"]`. Used to block specific high-privilege roles in specific accounts even if they exist in the AWS API. |
+| **FinOps** | **Mandatory Region Tagging** | Define `enforce_tags: ["CostCenter"]`. The tool could check IAM policy tags for compliance upon assumption. |

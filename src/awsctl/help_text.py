@@ -4,8 +4,10 @@
 Help text definitions using Markdown for Rich rendering.
 """
 
-HELP_MARKDOWN = """
-# awsctl: Enterprise AWS Context Switcher (v2.0.0)
+from awsctl._version import __version__
+
+HELP_MARKDOWN = f"""
+# awsctl: Enterprise AWS Context Switcher (v{__version__})
 
 **awsctl** is your copilot for AWS Identity Center (SSO).
 

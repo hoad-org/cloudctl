@@ -1,6 +1,7 @@
+# file: CONTRIBUTING.md
 # Contributing to awsctl
 
-Thank you for considering a contribution to `awsctl`.  
+Thank you for considering a contribution to `awsctl`.
 This project is intended to be production-grade, security-conscious, and pleasant to work with.
 
 ---
@@ -16,7 +17,7 @@ This project is intended to be production-grade, security-conscious, and pleasan
 
 ### 1.2 Setup
 
-    git clone https://github.com/your-org/awsctl.git
+    git clone https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git
     cd awsctl
 
     # Create and activate a virtual environment
@@ -30,7 +31,7 @@ This project is intended to be production-grade, security-conscious, and pleasan
 
 ## 2. Versioning
 
-`awsctl` uses `setuptools_scm` for versioning.  
+`awsctl` uses `setuptools_scm` for versioning.
 The version is derived automatically from Git tags.
 
 Always fetch tags:
@@ -39,9 +40,8 @@ Always fetch tags:
 
 Releases are tagged in the form:
 
-- `v2.0.0`
-- `v2.0.1`
-- `v2.1.0` (minor feature release)
+- `v2.7.0`
+- `v2.2.1`
 
 Do not hard-code the version string in the code – let `setuptools_scm` handle it.
 
@@ -51,24 +51,26 @@ Do not hard-code the version string in the code – let `setuptools_scm` handle 
 
 We aim for high confidence in behavior across platforms.
 
-### 3.1 Running Tests
+### 3.1 The Testing Matrix
+
+We run a comprehensive matrix to validate shell-specific security and compatibility:
+
+| Environment | OS | Shells Tested | Focus |
+| :--- | :--- | :--- | :--- |
+| **POSIX** | Linux, macOS | Bash, Zsh, Fish | Core logic, TTY guards, `eval` fidelity |
+| **Cross-Platform** | **Windows** | **PowerShell/Python** | `os.path` stability, dependency isolation |
+
+### 3.2 Running Tests
 
     # Run unit tests
     make test
 
-    # Or run pytest directly
-    pytest
+    # Run security audit (Bandit + Pip-audit)
+    make security
 
-    # Run a single test file
-    pytest tests/test_cli.py
-
-### 3.2 Multi-Python Testing
-
-If you have multiple Python versions available:
+### 3.3 Multi-Python Testing
 
     tox
-
-This will execute the test suite across the configured environments (for example, `py39`, `py310`, `py311`).
 
 ---
 
@@ -88,41 +90,11 @@ We use:
 Before submitting a PR, make sure:
 
 - `make format` produces no changes.
-- `make lint` and `make test` both pass.
+- `make lint`, `make typecheck`, and `make test` all pass.
 
 ---
 
-## 5. Adding Dependencies
-
-All dependencies are declared in `pyproject.toml`.
-
-- Runtime dependencies → `project.dependencies`
-- Dev/Test dependencies → `project.optional-dependencies.dev`
-
-Steps:
-
-1. Add the package to the appropriate section.
-2. Run `pip install -e ".[dev]"` again to sync your environment.
-3. Update any relevant docs if the dependency changes user-visible behavior.
-
----
-
-## 6. Pull Request Checklist
-
-Before opening a PR:
-
-- Code is formatted (`make format`).
-- Linting passes (`make lint`).
-- Tests pass locally (`make test` / `tox` where applicable).
-- New functionality is covered by tests.
-- Any user-visible changes are reflected in:
-  - `README.md`
-  - Relevant `docs/*.md`
-- Security-relevant changes (auth flows, plugins, guardrails) are called out in the PR description.
-
----
-
-## 7. Security-Sensitive Areas
+## 5. Security-Sensitive Areas
 
 Extra care should be taken when editing:
 
@@ -134,27 +106,18 @@ Extra care should be taken when editing:
 
 If your change touches these:
 
-- Add or update tests under `tests/` to prove behavior.
-- Update:
-  - `docs/GUARDRAILS.md`
-  - `docs/SECURITY_APPRAISAL.md`
-  - `docs/ADMIN_GUIDE.md` (if Registry semantics change)
+- Add or update tests under `tests/`.
+- Ensure no new `bandit` warnings are introduced.
+- Verify `docs/SECURITY_APPRAISAL.md` remains accurate.
 
 ---
 
-## 8. Release Process (High Level)
+## 6. Release Process (High Level)
 
 1. Ensure `main` is green in CI (tests, lint, security scans).
-2. Update any release notes / changelog (if used).
-3. Tag the release:
+2. Tag the release:
 
-       git tag -a v2.0.0 -m "awsctl 2.0.0"
-       git push origin v2.0.0
+       git tag -a v2.7.0 -m "awsctl 2.7.0"
+       git push origin v2.7.0
 
-4. CI will build and publish artifacts as configured.
-5. Verify installation from a clean environment:
-
-       pipx install "git+https://github.com/your-org/awsctl.git@v2.0.0"
-       awsctl --version
-
-If you are unsure about any part of the process, open a draft PR and ask for feedback.
+3. CI will build and publish artifacts as configured.

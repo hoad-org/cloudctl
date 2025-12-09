@@ -1,14 +1,7 @@
 # awsctl configuration
-
-orgs:
-- name: myorg
-  sso_start_url: https://d-9c67661145.awsapps.com/start
-  sso_region: eu-west-2
-  default_region: eu-west-2
-  allowed_regions: [eu-west-1, eu-west-2, eu-central-1]   # optional business rule
-  preferred_roles:
-  - AdministratorAccess
-  - ViewOnlyAccess
+# [FIX] PYBH-0125: Use correct v2 structure (enabled_orgs)
+enabled_orgs:
+  - myorg
 
 plugins:
   enabled: []   # e.g. ['okta']

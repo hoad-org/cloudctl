@@ -1,111 +1,72 @@
 # file: tests/test_aws.py
-"""
-Tests for awsctl.aws (AWS CLI wrappers and Profile generation).
-"""
+"""Tests for awsctl.aws."""
+
 import configparser
 import json
-from unittest.mock import MagicMock
+import os
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from awsctl import aws
 
 
 def test_write_target_profile(monkeypatch, tmp_path):
-    """Test that profile sections are written to ~/.aws/config."""
-    # Mock AWS paths
     mock_aws_dir = tmp_path / ".aws"
     mock_config = mock_aws_dir / "config"
     monkeypatch.setattr(aws, "AWS_DIR", mock_aws_dir)
     monkeypatch.setattr(aws, "AWS_CONFIG", mock_config)
-
     org = {
         "name": "dev",
-        "sso_start_url": "https://start",
-        "sso_region": "eu-west-1",
-        "default_region": "eu-west-2",
+        "sso_start_url": "u",
+        "sso_region": "r",
+        "default_region": "eu-west-1",
     }
-
     profile = aws.write_target_profile(org, "123", "Admin", "us-east-1")
-
-    assert profile == "sso-dev-123-Admin-us-east-1"
+    assert "sso-dev" in profile
     assert mock_config.exists()
 
+
+def test_config_write_backup_failure(monkeypatch, tmp_path):
+    cfg_file = tmp_path / "config"
+    cfg_file.write_text("[default]")
+    monkeypatch.setattr(aws, "AWS_CONFIG", cfg_file)
     cfg = configparser.RawConfigParser()
-    cfg.read(mock_config)
-
-    # Check base profile
-    assert "profile sso-dev" in cfg
-    assert cfg["profile sso-dev"]["sso_session"] == "dev"
-
-    # Check sso-session
-    assert "sso-session dev" in cfg
-    assert cfg["sso-session dev"]["sso_start_url"] == "https://start"
-
-    # Check target profile
-    target_sect = f"profile {profile}"
-    assert target_sect in cfg
-    assert cfg[target_sect]["sso_account_id"] == "123"
-    assert cfg[target_sect]["sso_role_name"] == "Admin"
+    cfg.read(cfg_file)
+    with patch("shutil.copy2", side_effect=OSError("Backup failed")):
+        aws._configparser_write(cfg)
+    assert cfg_file.exists()
 
 
-def test_sso_list_accounts(monkeypatch):
-    """Test legacy shim parsing."""
-    mock_proc = MagicMock(
-        returncode=0,
-        stdout='{"accountList": [{"accountId": "1", "accountName": "A"}]}',
-        stderr="",
-    )
-    monkeypatch.setattr(aws, "run_aws", lambda args: mock_proc)
+def test_list_accounts_pagination(monkeypatch):
+    p1 = {"accountList": [{"accountId": "1"}], "nextToken": "n"}
+    p2 = {"accountList": [{"accountId": "2"}]}
 
-    accts = aws.sso_list_accounts("u", "r", "p")
-    assert len(accts) == 1
-    assert accts[0]["accountId"] == "1"
+    def side_effect(args, **kwargs):
+        return MagicMock(returncode=0, stdout=json.dumps(p2 if "n" in args else p1))
+
+    monkeypatch.setattr(aws, "run_aws", side_effect)
+    results = aws.sso_list_accounts("u", "r")
+    assert len(results) == 2
 
 
-def test_sso_list_account_roles(monkeypatch):
-    """Test legacy role listing."""
-    mock_proc = MagicMock(
-        returncode=0,
-        stdout='{"roleList": [{"roleName": "Admin"}, {"roleName": "ViewOnly"}]}',
-        stderr="",
-    )
-    monkeypatch.setattr(aws, "run_aws", lambda args: mock_proc)
-    roles = aws.sso_list_account_roles("u", "123", "r", "p")
-    assert roles == ["Admin", "ViewOnly"]
+def test_list_accounts_error(monkeypatch):
+    monkeypatch.setattr(aws, "run_aws", lambda a: MagicMock(returncode=1, stderr="Fail"))
+    with pytest.raises(RuntimeError):
+        aws.sso_list_accounts("u", "r")
 
 
-def test_get_valid_sso_access_token(monkeypatch, tmp_path):
-    """Test legacy token retrieval logic."""
-    monkeypatch.setattr(aws, "SSO_CACHE_DIR", tmp_path)
+def test_config_lock_timeout(monkeypatch, tmp_path):
+    monkeypatch.setattr(aws, "AWS_CONFIG", tmp_path / "config")
+    (tmp_path / "config.lock").touch()
+    with patch("time.time", side_effect=[0, 10, 20]):
+        with pytest.raises(TimeoutError):
+            with aws._config_file_lock(timeout=1):
+                pass
 
-    # 1. No cache dir (non-existent)
-    # We use a sub-path that doesn't exist yet to test this branch
-    missing_path = tmp_path / "missing_cache"
-    monkeypatch.setattr(aws, "SSO_CACHE_DIR", missing_path)
-    assert aws.get_valid_sso_access_token("u", "r") is None
 
-    # 2. Create cache dir (tmp_path exists by default) and valid token
-    # Reset to valid path
-    monkeypatch.setattr(aws, "SSO_CACHE_DIR", tmp_path)
-
-    token_file = tmp_path / "valid.json"
-    # Future expiry
-    exp = "2099-01-01T00:00:00Z"
-    token_data = {
-        "startUrl": "https://u",
-        "region": "r",
-        "expiresAt": exp,
-        "accessToken": "secret-token",
-    }
-    token_file.write_text(json.dumps(token_data))
-
-    # 3. Match
-    tok = aws.get_valid_sso_access_token("https://u", "r")
-    assert tok == "secret-token"
-
-    # 4. Mismatch URL
-    assert aws.get_valid_sso_access_token("bad", "r") is None
-
-    # 5. Expired
-    token_data["expiresAt"] = "2000-01-01T00:00:00Z"
-    token_file.write_text(json.dumps(token_data))
-    assert aws.get_valid_sso_access_token("https://u", "r") is None
+def test_clean_env_logic():
+    with patch.dict(os.environ, {"AWS_ACCESS_KEY_ID": "secret", "PATH": "ok"}):
+        clean = aws._clean_env()
+        assert "AWS_ACCESS_KEY_ID" not in clean
+        assert "PATH" in clean

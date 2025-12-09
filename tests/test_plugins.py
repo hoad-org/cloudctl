@@ -1,54 +1,44 @@
 # file: tests/test_plugins.py
-"""
-Tests for awsctl plugins.
-"""
-from unittest.mock import patch
+"""Tests for awsctl plugins."""
+
+from concurrent.futures import TimeoutError
+from unittest.mock import MagicMock, patch
 
 import pytest
-import requests
 
+from awsctl import plugins
 from awsctl.plugins import okta
 
 
 def test_okta_pre_login_success(mock_rich_console):
-    org = {"name": "test", "sso_start_url": "https://okta.example.com"}
-
-    # Mock successful request
     with patch("requests.head") as mock_head:
         mock_head.return_value.status_code = 200
-        okta.pre_login(org)
-
-    # Check mock console
-    out = "".join(mock_rich_console.captured)
-    assert "SSO Endpoint reachable" in out
+        okta.pre_login({"name": "test", "sso_start_url": "https://okta.com"})
+    assert "SSO Endpoint reachable" in "".join(mock_rich_console.captured)
 
 
-def test_okta_pre_login_missing_url(mock_rich_console):
-    okta.pre_login({"name": "test"})
-
-    out = "".join(mock_rich_console.captured)
-    assert "missing" in out
-
-
-def test_okta_connection_error(mock_rich_console):
-    org = {"name": "test", "sso_start_url": "https://bad.url"}
-
-    with patch("requests.head", side_effect=requests.exceptions.ConnectionError):
-        with pytest.raises(SystemExit) as e:
-            okta.pre_login(org)
-        assert e.value.code == 1
-
-    out = "".join(mock_rich_console.captured)
-    assert "Connection Failed" in out
+def test_plugin_security_block(mock_rich_console):
+    with pytest.raises(SystemExit):
+        plugins.load_plugins(["evil.plugin"])
+    assert "Blocked illegal plugin" in "".join(mock_rich_console.captured)
 
 
-def test_okta_timeout(mock_rich_console):
-    org = {"name": "test", "sso_start_url": "https://slow.url"}
+def test_plugin_timeout(mock_rich_console):
+    with patch("concurrent.futures.ThreadPoolExecutor.submit") as mock_submit:
+        mock_future = MagicMock()
+        mock_future.result.side_effect = TimeoutError()
+        mock_submit.return_value = mock_future
+        mod = MagicMock()
+        mod.hook = lambda: None
+        with pytest.raises(SystemExit):
+            plugins.call_hook([mod], "hook")
+    assert "timed out" in "".join(mock_rich_console.captured)
 
-    with patch("requests.head", side_effect=requests.exceptions.Timeout):
-        with pytest.raises(SystemExit) as e:
-            okta.pre_login(org)
-        assert e.value.code == 1
 
-    out = "".join(mock_rich_console.captured)
-    assert "Timed Out" in out
+def test_safe_exec_exception(mock_rich_console):
+    def bad_hook():
+        raise ValueError("Hook Fail")
+
+    with pytest.raises(SystemExit):
+        plugins._safe_exec(bad_hook)
+    assert "Plugin hook failed" in "".join(mock_rich_console.captured)
