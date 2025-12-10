@@ -51,7 +51,9 @@ def _redact_args(args: List[str]) -> List[str]:
 
 def _aws_json(args: List[str]) -> Dict[str, Any]:
     try:
-        p = subprocess.run(args, check=False, capture_output=True, text=True, timeout=30)
+        p = subprocess.run(
+            args, check=False, capture_output=True, text=True, timeout=30
+        )
     except subprocess.TimeoutExpired:
         # [FIX B904] Chain exception
         raise SystemExit("AWS CLI timed out.") from None
@@ -64,8 +66,11 @@ def _aws_json(args: List[str]) -> Dict[str, Any]:
         result: Dict[str, Any] = json.loads(p.stdout or "{}")
         return result
     except json.JSONDecodeError:
-        # [FIX B904] Chain exception
-        raise SystemExit(f"AWS CLI returned invalid JSON:\nOutput:\n{p.stdout}") from None
+        # [SECURITY FIX] Do NOT dump p.stdout here.
+        # It may contain partial credentials if the JSON is malformed.
+        raise SystemExit(
+            "AWS CLI returned invalid JSON. Output suppressed for security."
+        ) from None
 
 
 def emit_exports(
@@ -77,7 +82,6 @@ def emit_exports(
 ) -> str:
     """
     Generate shell export commands for the given context.
-
     :param safe_output: If True, enforce TTY Guard to prevent dumping credentials
                         to screen. Set to False only for explicit 'env' commands.
     """
@@ -91,13 +95,17 @@ def emit_exports(
 
     if is_tty and safe_output and not is_test:
         sys.stderr.write("❌ Security Error: Refusing to print credentials to TTY.\n")
-        sys.stderr.write("   Do not run _awsctl_bin directly. Use the 'awsctl' wrapper.\n")
+        sys.stderr.write(
+            "   Do not run _awsctl_bin directly. Use the 'awsctl' wrapper.\n"
+        )
         sys.exit(1)
 
     tok = load_active_sso_token(org)
 
     if not tok or not tok.access_token:
-        raise SystemExit(f"No valid SSO token found for {org.name}. Run `awsctl login`.")
+        raise SystemExit(
+            f"No valid SSO token found for {org.name}. Run `awsctl login`."
+        )
 
     data = _aws_json(
         [
@@ -121,8 +129,25 @@ def emit_exports(
     if not (ak and sk and st):
         raise SystemExit("No role credentials returned. Check account/role assignment.")
 
-    return "#AWSCTL-EVAL:\n" f"export AWS_ACCESS_KEY_ID={shlex.quote(ak)}\n" f"export AWS_SECRET_ACCESS_KEY={shlex.quote(sk)}\n" f"export AWS_SESSION_TOKEN={shlex.quote(st)}\n" f"export AWS_REGION={shlex.quote(region)}\n" f"export AWS_DEFAULT_REGION={shlex.quote(region)}\n" "unset AWS_PROFILE\n"
+    return (
+        "#AWSCTL-EVAL:\n"
+        f"export AWS_ACCESS_KEY_ID={shlex.quote(ak)}\n"
+        f"export AWS_SECRET_ACCESS_KEY={shlex.quote(sk)}\n"
+        f"export AWS_SESSION_TOKEN={shlex.quote(st)}\n"
+        f"export AWS_REGION={shlex.quote(region)}\n"
+        f"export AWS_DEFAULT_REGION={shlex.quote(region)}\n"
+        "unset AWS_PROFILE\n"
+    )
 
 
 def emit_unset() -> str:
-    return "#AWSCTL-EVAL:\n" "unset AWS_ACCESS_KEY_ID\n" "unset AWS_SECRET_ACCESS_KEY\n" "unset AWS_SESSION_TOKEN\n" "unset AWS_REGION\n" "unset AWS_DEFAULT_REGION\n" "unset AWS_PROFILE\n" "echo '🔒 AWS session cleared from shell.'\n"
+    return (
+        "#AWSCTL-EVAL:\n"
+        "unset AWS_ACCESS_KEY_ID\n"
+        "unset AWS_SECRET_ACCESS_KEY\n"
+        "unset AWS_SESSION_TOKEN\n"
+        "unset AWS_REGION\n"
+        "unset AWS_DEFAULT_REGION\n"
+        "unset AWS_PROFILE\n"
+        "echo '🔒 AWS session cleared from shell.'\n"
+    )

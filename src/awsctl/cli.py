@@ -17,7 +17,15 @@ from typing import Any, Dict, Generator, List, Optional, Union, cast
 from rich.markdown import Markdown
 from rich.table import Table
 
-from awsctl import cli_accounts, context_manager, core, doctor, guardrails, wizard
+from awsctl import (
+    cli_accounts,
+    context_manager,
+    core,
+    doctor,
+    guardrails,
+    shell,
+    wizard,
+)
 from awsctl.accounts import Account, list_accounts
 from awsctl.help_text import HELP_MARKDOWN
 from awsctl.sso_cache import OrgRef
@@ -79,7 +87,6 @@ def determine_strategy(argv: List[str]) -> str:
     if "-h" in argv or "--help" in argv:
         return "EXEC"
 
-    # Filter out global flags that might confuse positional detection
     clean_argv = []
     for arg in argv:
         if arg == "--":
@@ -87,33 +94,23 @@ def determine_strategy(argv: List[str]) -> str:
         if not arg.startswith("--debug"):
             clean_argv.append(arg)
 
-    # Find the subcommand (first non-flag argument)
     cmds = [arg for arg in clean_argv if not arg.startswith("-")]
     if not cmds:
         return "EXEC"
 
     cmd = cmds[0]
 
-    # Commands that ALWAYS modify the shell environment
     if cmd in ("switch", "use", "logout"):
         return "EVAL"
 
-    # Login is special:
-    # 'awsctl login' -> EXEC (Interactive/Browser)
-    # 'awsctl login --account ...' -> EVAL (Chain context switch)
     if cmd == "login":
-        # [FIX] Robust check for context flags, handling both "--flag value" and "--flag=value"
         trigger_prefixes = ("--account", "-a", "--role", "-r", "--region")
-
         for arg in argv:
-            # Check exact match (e.g. '--account' '123')
             if arg in trigger_prefixes:
                 return "EVAL"
-            # Check prefix match (e.g. '--account=123')
             for prefix in trigger_prefixes:
                 if arg.startswith(prefix + "="):
                     return "EVAL"
-
         return "EXEC"
 
     return "EXEC"
@@ -124,13 +121,15 @@ def cmd_whoami() -> int:
         try:
             p = core.run_aws(["aws", "sts", "get-caller-identity", "--output", "json"])
             if p.returncode != 0:
-                console.print(f"[red]✗ Failed to get identity:[/]\n{p.stderr.strip()}\n{p.stdout.strip()}")
+                console.print(
+                    f"[red]✗ Failed to get identity:[/]\n"
+                    f"{p.stderr.strip()}\n{p.stdout.strip()}"
+                )
                 return 1
             stdout_console.print_json(p.stdout.strip())
             return 0
         except Exception as e:
             console.print(f"[red]✗ Error: {e}[/]")
-
     return 1
 
 
@@ -143,7 +142,6 @@ def cmd_open() -> int:
     try:
         cfg = core.load_orgs_config()
         ref = _get_org_ref(cfg, current_org)
-
         console.print(f"Opening [link={ref.sso_start_url}]{ref.sso_start_url}[/] ...")
         open_browser(ref.sso_start_url)
         return 0
@@ -153,12 +151,7 @@ def cmd_open() -> int:
 
 
 def cmd_env() -> int:
-    # 🛡️ SMART SECURITY:
-    # Determine where stdout is pointing.
-    # If it's a TTY (screen), we ENFORCE the guard (safe_output=True).
-    # If it's a Pipe/File (script/redirection), we BYPASS the guard (safe_output=False).
     is_tty = sys.stdout.isatty()
-
     sys.stdout.write(core.cmd_env(safe_output=is_tty))
     return 0
 
@@ -177,7 +170,9 @@ def cmd_orgs(args: Union[object, None]) -> int:
     if not orgs:
         console.print("[yellow]No organizations configured.[/]")
         return 0
-    table = Table(title="Enabled Organizations", show_header=True, header_style="bold cyan")
+    table = Table(
+        title="Enabled Organizations", show_header=True, header_style="bold cyan"
+    )
     table.add_column("Name", style="cyan", no_wrap=True)
     table.add_column("Description", style="white")
     table.add_column("Region", style="magenta")
@@ -187,7 +182,6 @@ def cmd_orgs(args: Union[object, None]) -> int:
             str(o.get("description", "")),
             str(o.get("sso_region", "-")),
         )
-
     stdout_console.print(table)
     return 0
 
@@ -195,21 +189,16 @@ def cmd_orgs(args: Union[object, None]) -> int:
 def _resolve_account_id(ref: OrgRef, target: Optional[str]) -> str:
     if not target:
         raise SystemExit("No account specified.")
-
     if target.isdigit() and len(target) == 12:
         return target
-
     accts: List[Account] = list_accounts(ref)
     target_lower = target.lower()
-
     for a in accts:
         if a.account_name.lower() == target_lower:
             return cast(str, a.account_id)
-
     for a in accts:
         if a.account_id == target:
             return cast(str, a.account_id)
-
     raise SystemExit(f"Account '{target}' not found.")
 
 
@@ -218,36 +207,27 @@ def cmd_login(args: argparse.Namespace) -> int:
     if not org_name:
         ctx = load_context()
         org_name = ctx.get("current_org")
-
     if not org_name:
         console.print("[red]Error: Could not determine organization. Use --org.[/]")
         return 1
-
     force = getattr(args, "force", False)
-
     rc = core.cmd_login(org_name, force=force)
     if rc != 0:
         return int(rc)
-
     try:
         context_manager.save_context_update(org=org_name)
     except Exception as e:
         debug_print(f"Failed to save context after login: {e}")
-
     account = getattr(args, "account", None)
-    role = getattr(args, "role", None)
-
-    if account or role:
+    if account or getattr(args, "role", None):
         if account:
             try:
                 cfg = core.load_orgs_config()
                 ref = _get_org_ref(cfg, org_name)
                 args.target = _resolve_account_id(ref, str(account))
             except (Exception, SystemExit):
-                # [FIX] Bandit B110
                 debug_print("Account resolution failed, falling back to raw ID")
                 args.target = account
-
         return cmd_switch(args)
     return 0
 
@@ -258,30 +238,30 @@ def cmd_list(args: argparse.Namespace) -> int:
         ctx = context_manager.load_context()
         current_org = ctx.get("current_org")
         as_json = getattr(args, "json", False)
-
         if args.resource == "orgs":
             return cmd_orgs(args)
-
         if args.resource == "accounts":
             if not current_org:
                 console.print("[bold red]No active org. Run `awsctl login` first.[/]")
                 return 1
             return int(cli_accounts.cmd_accounts(cfg, str(current_org), as_json))
-
         if args.resource == "roles":
             if not current_org:
                 console.print("[bold red]No active org. Run `awsctl login` first.[/]")
                 return 1
             account = ctx.get("account")
             if not account:
-                console.print("[bold red]No account selected. Use `awsctl switch` first.[/]")
+                console.print(
+                    "[bold red]No account selected. Use `awsctl switch` first.[/]"
+                )
                 return 1
-            return int(cli_accounts.cmd_roles(cfg, str(current_org), str(account), as_json))
+            return int(
+                cli_accounts.cmd_roles(cfg, str(current_org), str(account), as_json)
+            )
     except Exception as e:
         debug_print(f"List error: {e}")
         console.print(f"[red]Error listing resources: {e}[/]")
         return 1
-
     return 0
 
 
@@ -290,58 +270,63 @@ def cmd_switch(args: argparse.Namespace) -> int:
         ctx = context_manager.load_context()
         current_org = getattr(args, "org", None) or ctx.get("current_org")
         target = getattr(args, "target", None)
-
         try:
-            # 1. Toggle Mode
             if target == "-":
                 prev = context_manager.get_previous_context()
                 if not prev:
                     console.print("[red]No previous context to switch to.[/]")
                     return 1
-
                 account = prev.get("account")
                 role = prev.get("role")
                 region = prev.get("region")
                 org_name = prev.get("org")
-
                 if not (account and role and region and org_name):
                     console.print("[red]Previous context is incomplete.[/]")
                     return 1
-
                 try:
                     org_data = core.get_org(org_name)
                 except (SystemExit, Exception):
-                    console.print(f"[red]Previous org '{org_name}' no longer exists.[/]")
+                    console.print(
+                        f"[red]Previous org '{org_name}' no longer exists.[/]"
+                    )
                     return 1
-
-                # Security Checks for Toggle
                 guardrails.check_min_version(org_data)
                 guardrails.check_break_glass(org_data, str(role))
-
-                ref = OrgRef(org_data["name"], org_data["sso_start_url"], org_data["sso_region"])
-
-                export_cmd = emit_exports(ref, str(account), str(role), str(region), safe_output=True)
-
-                context_manager.save_context_update(org=org_name, account=account, role=role, region=region)
+                ref = OrgRef(
+                    org_data["name"],
+                    org_data["sso_start_url"],
+                    org_data["sso_region"],
+                )
+                export_cmd = emit_exports(
+                    ref, str(account), str(role), str(region), safe_output=True
+                )
+                context_manager.save_context_update(
+                    org=org_name, account=account, role=role, region=region
+                )
                 safe_out.write(export_cmd)
+                safe_out.flush()
                 return 0
 
-            # 2. Alias Mode (Quick Switch)
             if target and target.startswith("@"):
                 alias_name = target[1:]
                 cfg = core.load_orgs_config()
                 aliases = cfg.get("aliases", {})
                 definition = aliases.get(alias_name)
-
                 if not definition:
-                    console.print(f"[red]Alias '@{alias_name}' not defined in orgs.yaml[/]")
+                    console.print(
+                        f"[red]Alias '@{alias_name}' not defined in orgs.yaml[/]"
+                    )
                     return 1
 
                 required_fields = ["org", "account", "role", "region"]
                 if not all(k in definition for k in required_fields):
-                    console.print(f"[red]Alias '@{alias_name}' is missing required fields " "(org, account, role, region).[/]")
+                    console.print(
+                        f"[red]Alias '@{alias_name}' is missing required fields "
+                        "(org, account, role, region).[/]"
+                    )
                     return 1
 
+                # [FIX] Removed redundant casts (Mypy infers correctly)
                 current_org = definition["org"]
                 account = str(definition["account"])
                 role = definition["role"]
@@ -350,25 +335,30 @@ def cmd_switch(args: argparse.Namespace) -> int:
                 try:
                     org_data = core.get_org(current_org)
                 except (SystemExit, ValueError):
-                    console.print(f"[red]Org '{current_org}' in alias is not enabled or invalid.[/]")
+                    console.print(
+                        f"[red]Org '{current_org}' in alias is not enabled or invalid.[/]"
+                    )
                     return 1
 
-                # Security Checks for Alias
                 guardrails.check_min_version(org_data)
                 guardrails.validate_region(org_data, region)
                 guardrails.check_break_glass(org_data, role)
-
-                ref = OrgRef(org_data["name"], org_data["sso_start_url"], org_data["sso_region"])
-
-                export_cmd = emit_exports(ref, str(account), str(role), str(region), safe_output=True)
-
-                context_manager.save_context_update(org=current_org, account=account, role=role, region=region)
+                ref = OrgRef(
+                    org_data["name"],
+                    org_data["sso_start_url"],
+                    org_data["sso_region"],
+                )
+                export_cmd = emit_exports(
+                    ref, str(account), str(role), str(region), safe_output=True
+                )
+                context_manager.save_context_update(
+                    org=current_org, account=account, role=role, region=region
+                )
                 safe_out.write(export_cmd)
+                safe_out.flush()
                 return 0
 
             legacy_account = getattr(args, "account", None)
-
-            # 3. Interactive Mode
             if not target and not legacy_account:
                 if not current_org:
                     console.print("[red]No active org. Run `awsctl login` first.[/]")
@@ -377,23 +367,21 @@ def cmd_switch(args: argparse.Namespace) -> int:
 
                 role = getattr(args, "role", None)
                 region = getattr(args, "region", None)
-
-                # Security checks happen inside run_interactive_use now (for UX flow)
-                account, role, region = run_interactive_use(current_org, preselected_role=role, preselected_region=region)
-
+                account, role, region = run_interactive_use(
+                    current_org, preselected_role=role, preselected_region=region
+                )
                 ref = _get_org_ref(core.load_orgs_config(), current_org)
                 export_cmd = emit_exports(ref, account, role, region, safe_output=True)
-
-                context_manager.save_context_update(org=current_org, account=account, role=role, region=region)
+                context_manager.save_context_update(
+                    org=current_org, account=account, role=role, region=region
+                )
                 safe_out.write(export_cmd)
+                safe_out.flush()
                 return 0
 
-            # 4. Explicit / Non-Interactive Mode
             raw_account = target or legacy_account
-
             org_conf = core.get_org(current_org)
             ref = _get_org_ref(core.load_orgs_config(), current_org)
-
             try:
                 if raw_account and raw_account.isdigit() and len(raw_account) == 12:
                     account = raw_account
@@ -402,27 +390,25 @@ def cmd_switch(args: argparse.Namespace) -> int:
             except (SystemExit, Exception) as e:
                 console.print(f"[red]Resolution Error: {e}[/]")
                 return 1
-
             role = getattr(args, "role", None)
             region = getattr(args, "region", None)
-
             if not role:
                 console.print("[red]Switching non-interactively requires --role.[/]")
                 return 1
             if not region:
                 region = org_conf.get("default_region", "us-east-1")
-
-            # Security Checks for Explicit Mode
             guardrails.check_min_version(org_conf)
             guardrails.validate_region(org_conf, str(region))
             guardrails.check_break_glass(org_conf, str(role))
-
-            export_cmd = emit_exports(ref, str(account), str(role), str(region), safe_output=True)
-
-            context_manager.save_context_update(org=current_org, account=account, role=role, region=region)
+            export_cmd = emit_exports(
+                ref, str(account), str(role), str(region), safe_output=True
+            )
+            context_manager.save_context_update(
+                org=current_org, account=account, role=role, region=region
+            )
             safe_out.write(export_cmd)
+            safe_out.flush()
             return 0
-
         except KeyboardInterrupt:
             console.print("[yellow]\nOperation cancelled.[/]")
             return 1
@@ -443,43 +429,33 @@ def cmd_exec(args: argparse.Namespace) -> int:
     role = getattr(args, "role", None) or ctx.get("role")
     region = getattr(args, "region", None) or ctx.get("region")
     current_org = ctx.get("current_org")
-
     if not region and current_org:
         try:
             org_conf = core.get_org(current_org)
             region = org_conf.get("default_region", "us-east-1")
         except Exception:
-            # [FIX] Bandit B110: Log lookup failure
             debug_print("Default region lookup failed")
-
     if not current_org:
         console.print("[red]No active org. Run `awsctl login` first.[/]")
         return 1
-
     cfg = core.load_orgs_config()
     ref = _get_org_ref(cfg, current_org)
-
-    # Security: Check Version
     try:
         org_data = core.get_org(current_org)
         guardrails.check_min_version(org_data)
-        # We don't check break-glass on exec yet to avoid blocking automation,
-        # but region guardrails are checked by token scope implicitly.
     except Exception as e:
-        # [FIX] Bandit B110: Log the error
         debug_print(f"Exec version check skipped: {e}")
-
     if account and not account.isdigit():
         try:
             account = _resolve_account_id(ref, str(account))
         except Exception:
-            # [FIX] Bandit B110
             debug_print("Account resolution fail in exec")
-
     if not (account and role and region):
-        console.print("[red]Error: Missing context. Provide --account/--role/--region or switch context first.[/]")
+        console.print(
+            "[red]Error: Missing context. Provide --account/--role/--region "
+            "or switch context first.[/]"
+        )
         return 1
-
     cmd_list = args.command
     if cmd_list and cmd_list[0] == "--":
         cmd_list = cmd_list[1:]
@@ -491,11 +467,9 @@ def cmd_exec(args: argparse.Namespace) -> int:
 
 def cmd_setup(args: Union[object, None]) -> int:
     if os.environ.get("CI") or os.environ.get("AWSCTL_HEADLESS"):
-        # [FIX] Use rich console print to avoid encoding errors on Windows/Legacy terminals
         console.print("⚡ Headless mode detected.")
         return int(core.cmd_setup())
     try:
-        # [FIX] PYBH-0042: Check return value
         success = wizard.run_wizard()
         return 0 if success else 1
     except KeyboardInterrupt:
@@ -504,6 +478,21 @@ def cmd_setup(args: Union[object, None]) -> int:
     except Exception as e:
         print(f"✗ Setup failed: {e}", file=sys.stderr)
         return 1
+
+
+def cmd_unlink(args: Union[object, None]) -> int:
+    rc_file = shell.detect_shell_profile()
+    if shell.remove_shell_function(rc_file):
+        console.print(
+            f"[bold green]Unlinked:[/] Removed shell integration from {rc_file}"
+        )
+        console.print("Please reload your shell.")
+        return 0
+    console.print(
+        f"[yellow]Skipped:[/] No integration found in {rc_file} "
+        "(or it was modified manually)."
+    )
+    return 0
 
 
 def cmd_doctor(args: Union[object, None]) -> int:
@@ -523,18 +512,17 @@ def _get_org_ref(cfg: Dict[str, Any], name: Optional[str]) -> OrgRef:
 def main(argv: Union[list[str], None] = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
-
     p = argparse.ArgumentParser(prog="awsctl", add_help=False)
     p.add_argument("--debug", action="store_true")
     p.add_argument("--version", "-V", action="store_true")
     p.add_argument("--help", "-h", action="store_true")
     p.add_argument("--whoami", action="store_true")
     p.add_argument("--open", action="store_true")
-    p.add_argument("--matrix", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--check-strategy", action="store_true", help=argparse.SUPPRESS)
 
     sub = p.add_subparsers(dest="sub")
     sub.add_parser("setup")
+    sub.add_parser("unlink")
     sub.add_parser("doctor")
     sub.add_parser("env")
     sub.add_parser("cache-clear")
@@ -575,25 +563,24 @@ def main(argv: Union[list[str], None] = None) -> int:
 
     try:
         args, unknown = p.parse_known_args(argv)
-
+        # 🛡️ GLOBAL EXCEPTION HANDLER
+        # Wrapped in an inner try block to catch logic errors during dispatch
         if args.check_strategy:
             real_args = [a for a in argv if a != "--check-strategy"]
             print(determine_strategy(real_args))
             return 0
-
         if args.debug:
             set_debug(True)
-
         if args.version:
             stdout_console.print(f"awsctl [bold cyan]v{_resolved_version()}[/]")
             return 0
-
-        if args.help or (not args.sub and not args.whoami and not args.open and not args.matrix):
+        if args.help or (not args.sub and not args.whoami and not args.open):
             print_rich_help()
             return 0
-
         if args.sub == "setup":
             return cmd_setup(args)
+        if args.sub == "unlink":
+            return cmd_unlink(args)
         if args.sub == "doctor":
             return cmd_doctor(args)
         if args.sub == "env":
@@ -609,7 +596,6 @@ def main(argv: Union[list[str], None] = None) -> int:
             return 0
         if args.sub in ("refresh", "cache-clear"):
             return int(core.cmd_cache_clear())
-
         if args.sub in ("switch", "use"):
             return cmd_switch(args)
         if args.sub == "exec":
@@ -620,17 +606,15 @@ def main(argv: Union[list[str], None] = None) -> int:
             return cmd_whoami()
         if getattr(args, "open", False):
             return cmd_open()
-        if getattr(args, "matrix", False):
-            from .cool_features import run_matrix_login
-
-            run_matrix_login()
-            return 0
-
+        return 0
     except KeyboardInterrupt:
         console.print("\n[yellow]Operation cancelled.[/]")
         return 1
     except Exception as e:
-        console.print(f"[red]Fatal Error: {e}[/]")
+        # [FIX] Friendly error reporting for unhandled exceptions
+        if "--debug" in argv or os.environ.get("AWSCTL_DEBUG"):
+            console.print_exception(show_locals=True)
+        else:
+            console.print(f"[bold red]Fatal Error:[/bold red] {e}")
+            console.print("[dim]Run with --debug for detailed traceback.[/]")
         return 1
-
-    return 0

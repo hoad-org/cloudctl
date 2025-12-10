@@ -1,50 +1,29 @@
 {
-  "security.workspace.trust.untrustedFiles": "open",
-  "explorer.confirmDragAndDrop": false,
-  "explorer.confirmDelete": false,
-  "workbench.iconTheme": "vscode-icons",
-  "http.systemCertificates": true,
-  "http.proxySupport": "on",
-  "http.proxyStrictSSL": false,
-  "chat.mcp.gallery.enabled": true,
-  "chat.mcp.autostart": true,
-  "chat.agent.enabled": true,
-  "files.trimTrailingWhitespace": true,
-  "files.insertFinalNewline": true,
-  "files.exclude": {
-    "**/.git": true,
-    "**/.svn": true,
-    "**/.hg": true,
-    "**/CVS": true,
-    "**/.DS_Store": true,
-    "**/__pycache__": true,
-    "**/.venv": true,
-    "**/.pytest_cache": true,
-    "**/.mypy_cache": true,
-    "**/*.egg-info": true
-  },
-  "python.defaultInterpreterPath": ".venv/bin/python",
-  "python.terminal.activateEnvironment": true,
-  "python.linting.enabled": true,
-  "python.linting.pylintEnabled": false,
-  "python.linting.flake8Enabled": false,
-  "flake8.enabled": false,
-  "[python]": {
-    "editor.defaultFormatter": "ms-python.black-formatter",
+    "python.defaultInterpreterPath": ".venv/bin/python",
+    "python.analysis.typeCheckingMode": "strict",
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
     "editor.formatOnSave": true,
-    "editor.codeActionsOnSave": {
-      "source.organizeImports": "explicit"
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+    "ruff.importStrategy": "fromEnvironment",
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "**/.DS_Store": true,
+        "**/__pycache__": true,
+        "**/.pytest_cache": true,
+        "**/.mypy_cache": true,
+        "**/.ruff_cache": true,
+        "**/*.egg-info": true
     }
-  },
-  "black-formatter.args": ["--config=pyproject.toml"],
-  "ruff.enable": true,
-  "ruff.lint.args": ["--config=pyproject.toml"],
-  "ruff.organizeImports.args": ["--config=pyproject.toml"],
-  "mypy.enable": true,
-  "mypy.configFile": "mypy.ini",
-  "mypy.runUsingActiveInterpreter": true,
-  "python.testing.pytestEnabled": true,
-  "python.testing.unittestEnabled": false,
-  "python.testing.cwd": "${workspaceFolder}",
-  "python.testing.pytestArgs": ["-c", "pytest.ini"]
 }

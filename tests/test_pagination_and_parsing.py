@@ -1,4 +1,4 @@
-# file: tests/test_coverage_finish.py
+# file: tests/test_pagination_and_parsing.py
 """
 Targeting low-coverage modules: use_exports, aws pagination, and core error paths.
 """

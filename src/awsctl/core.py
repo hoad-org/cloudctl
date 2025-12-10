@@ -17,7 +17,9 @@ from typing import Any, Dict, List, Union
 import yaml
 from rich.panel import Panel
 
-from awsctl import aws, config, doctor, plugins, shell
+# [FIX] Direct import to satisfy Mypy
+import awsctl.doctor
+from awsctl import aws, config, plugins, shell
 from awsctl.sso_cache import OrgRef, load_active_sso_token
 from awsctl.use_exports import emit_unset
 from awsctl.utils import console, debug_print
@@ -47,7 +49,7 @@ def cmd_login(org: Union[str, None], force: bool = False) -> int:
     try:
         o: Dict[str, Any] = config.get_org(org)
     except (SystemExit, ValueError) as e:
-        console.print(f"[error]{e}[/]")
+        console.print(f"[bold red]Error:[/bold red] {e}")
         return 1
 
     cfg = config.load_orgs_config()
@@ -68,7 +70,9 @@ def cmd_login(org: Union[str, None], force: bool = False) -> int:
             expiry_str = existing_token.expires_at.strftime("%H:%M UTC")
             console.print(
                 Panel(
-                    f"[bold green]✔ Already logged in[/]\n\n" f"Organization: [bold white]{o['name']}[/]\n" f"Valid until:  [dim]{expiry_str}[/]",
+                    f"[bold green]✔ Already logged in[/]\n\n"
+                    f"Organization: [bold white]{o['name']}[/]\n"
+                    f"Valid until:  [dim]{expiry_str}[/]",
                     title="SSO Session Valid",
                     border_style="green",
                     expand=False,
@@ -80,7 +84,8 @@ def cmd_login(org: Union[str, None], force: bool = False) -> int:
 
     console.print(
         Panel(
-            f"authenticating to [bold cyan]{o['name']}[/]\n" f"URL: [underline]{o['sso_start_url']}[/]",
+            f"authenticating to [bold cyan]{o['name']}[/]\n"
+            f"URL: [underline]{o['sso_start_url']}[/]",
             title="AWS SSO Login",
             border_style="blue",
         )
@@ -96,16 +101,20 @@ def cmd_login(org: Union[str, None], force: bool = False) -> int:
             check=True,
         )
     except Exception as e:
-        console.print(f"[error]Login failed: {e}[/]")
+        console.print(f"[bold red]Login failed:[/bold red] {e}")
         return 1
 
     if not load_active_sso_token(ref, raise_error=False):
-        console.print("[error]Login reported success but no token found in cache.[/]")
+        console.print(
+            "[bold red]Error:[/bold red] Login reported success but no token found in cache."
+        )
         return 1
 
     console.print(
         Panel(
-            "[bold green]✔ Login Successful[/]\n\n" "You can now run:\n" "  [bold white on black] awsctl switch [/]",
+            "[bold green]✔ Login Successful[/]\n\n"
+            "You can now run:\n"
+            "  [bold white on black] awsctl switch [/]",
             title="Ready",
             border_style="green",
             expand=False,
@@ -146,7 +155,6 @@ def cmd_logout_str() -> str:
 def cmd_cache_clear() -> int:
     cache_dir = AWS_DIR / "cli" / "cache"
 
-    # [FIX] Mypy: Add type annotations to inner function
     def on_rm_error(func: Any, path: str, exc_info: Any) -> None:
         debug_print(f"Ignored error clearing {path}: {exc_info[1]}")
 
@@ -172,7 +180,7 @@ def cmd_cache_clear() -> int:
                 except Exception as e:
                     debug_print(f"Failed to remove {item}: {e}")
 
-    console.print("[success]✔ Cache cleared.[/]")
+    console.print("[bold green]✔ Cache cleared.[/]")
     return 0
 
 
@@ -188,17 +196,27 @@ def cmd_exec(account: str, role: str, region: str, command: List[str]) -> int:
     org_name = ctx.get("current_org")
 
     if not org_name:
-        console.print("[error]No active org. Run `awsctl login` first.[/]")
+        console.print(
+            "[bold red]Error:[/bold red] No active org. Run `awsctl login` first."
+        )
         return 1
 
     try:
         org_conf = config.get_org(org_name)
-        ref = OrgRef(org_conf["name"], org_conf["sso_start_url"], org_conf["sso_region"])
+        ref = OrgRef(
+            org_conf["name"], org_conf["sso_start_url"], org_conf["sso_region"]
+        )
 
         tok = load_active_sso_token(ref)
 
-        # [FIX] PYBH-0029: Catch potential token expiry race condition here
-        # _aws_json may raise SystemExit if the AWS CLI call fails (e.g. ExpiredToken)
+        # [FIX] Null Guard: Explicitly check for None to satisfy Mypy
+        # Even though load_active_sso_token raises by default, Mypy sees Optional return type.
+        if tok is None:
+            console.print(
+                "[bold red]Error:[/bold red] No valid SSO token found. Please login."
+            )
+            return 1
+
         try:
             data = _aws_json(
                 [
@@ -218,16 +236,17 @@ def cmd_exec(account: str, role: str, region: str, command: List[str]) -> int:
         except SystemExit as e:
             err_msg = str(e)
             if "UnauthorizedException" in err_msg or "ExpiredToken" in err_msg:
-                console.print("\n[bold red]Session expired.[/] The token expired while processing.")
+                console.print(
+                    "\n[bold red]Session expired.[/] The token expired while processing."
+                )
                 console.print("Please run [bold white]awsctl login[/] to refresh.")
                 return 1
-            # Re-raise other errors
             raise
 
         creds = data.get("roleCredentials") or {}
 
         if not creds:
-            console.print("[error]Failed to get credentials.[/]")
+            console.print("[bold red]Error:[/bold red] Failed to get credentials.")
             return 1
 
         env = os.environ.copy()
@@ -241,15 +260,12 @@ def cmd_exec(account: str, role: str, region: str, command: List[str]) -> int:
 
         keys_to_unset = [
             "AWS_SECURITY_TOKEN",
-            # [FIX] PYBH-0070: Allow users to override AWS_CONFIG_FILE in child proc
-            # "AWS_CONFIG_FILE",
             "AWS_SHARED_CREDENTIALS_FILE",
             "AWS_WEB_IDENTITY_TOKEN_FILE",
             "AWS_ROLE_ARN",
             "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
             "AWS_CONTAINER_CREDENTIALS_FULL_URI",
             "AWS_EC2_METADATA_DISABLED",
-            # [FIX] PYBH-0040: Prevent AWS_PROFILE from polluting exec context
             "AWS_PROFILE",
         ]
 
@@ -261,17 +277,20 @@ def cmd_exec(account: str, role: str, region: str, command: List[str]) -> int:
         try:
             sys.stdout.flush()
             sys.stderr.flush()
-            # [FIX] Bandit B606: nosec must be on the line of the call
             os.execvpe(command[0], command, env)  # nosec B606
         except FileNotFoundError:
-            console.print(f"[error]Command not found: {command[0]}[/]")
+            console.print(
+                f"[bold red]Error:[/bold red] Command not found: {command[0]}"
+            )
             return 127
         except PermissionError:
-            console.print(f"[error]Permission denied: {command[0]}[/]")
+            console.print(
+                f"[bold red]Error:[/bold red] Permission denied: {command[0]}"
+            )
             return 126
 
     except Exception as e:
-        console.print(f"[error]Exec failed: {e}[/]")
+        console.print(f"[bold red]Exec failed:[/bold red] {e}")
         return 1
 
 
@@ -284,7 +303,9 @@ def cmd_env(safe_output: bool = True) -> str:
 
     try:
         org_conf = config.get_org(ctx["current_org"])
-        ref = OrgRef(org_conf["name"], org_conf["sso_start_url"], org_conf["sso_region"])
+        ref = OrgRef(
+            org_conf["name"], org_conf["sso_start_url"], org_conf["sso_region"]
+        )
         from .use_exports import emit_exports
 
         return emit_exports(
@@ -306,11 +327,31 @@ def cmd_config_sync() -> int:
             if {"name", "sso_start_url", "sso_region"} <= set(o):
                 aws.ensure_sso_base_profile(o)
 
-    console.print(f"[success]✔ Synchronized {len(orgs)} org(s) into {aws.AWS_CONFIG}[/]")
+    console.print(
+        f"[bold green]✔ Synchronized {len(orgs)} org(s) into {aws.AWS_CONFIG}[/]"
+    )
     return 0
 
 
 def cmd_setup() -> int:
+    # -----------------------------------------------------------------------
+    # 🛡️ ROOT GUARD: Prevent users from running setup as root/sudo
+    # -----------------------------------------------------------------------
+    if os.name == "posix" and os.geteuid() == 0:
+        console.print(
+            Panel(
+                "[bold white on red] 🛑 CRITICAL ERROR: ROOT DETECTED [/]\n\n"
+                "You are running [bold]awsctl setup[/] as root (sudo).\n"
+                "This will break file permissions for your normal user account.\n\n"
+                "[bold green]Solution:[/]\n"
+                "  1. Run: [cyan]exit[/] (or drop sudo)\n"
+                "  2. Run: [cyan]awsctl setup[/] (as your normal user)",
+                title="Permission Guard",
+                border_style="red",
+            )
+        )
+        return 1
+
     p = config.get_orgs_path(ensure=True)
 
     present: Dict[str, Any] = {}
@@ -318,7 +359,9 @@ def cmd_setup() -> int:
         try:
             present = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
         except Exception as e:
-            console.print(f"[bold red]Error:[/bold red] Existing config at {p} is invalid: {e}")
+            console.print(
+                f"[bold red]Error:[/bold red] Existing config at {p} is invalid: {e}"
+            )
             console.print("Please fix or remove the file manually.")
             return 1
 
@@ -342,7 +385,7 @@ def cmd_setup() -> int:
                 raise
 
         except Exception as e:
-            console.print(f"[error]Failed to merge defaults: {e}[/]")
+            console.print(f"[bold red]Error:[/bold red] Failed to merge defaults: {e}")
             return 1
 
     cmd_config_sync()
@@ -350,14 +393,16 @@ def cmd_setup() -> int:
     rc_file = shell.detect_shell_profile()
     try:
         if shell.inject_shell_function(rc_file):
-            console.print(f"[success]✅ Shell wrapper appended to {rc_file}[/]")
+            console.print(f"[bold green]✅ Shell wrapper appended to {rc_file}[/]")
         else:
-            console.print(f"✓ Shell wrapper already present in {rc_file}")
+            console.print(f"✓ Shell wrapper already present in [dim]{rc_file}[/]")
     except Exception as e:
-        console.print(f"[warning]Could not inject shell wrapper: {e}[/]")
+        console.print(
+            f"[bold yellow]Warning:[/bold yellow] Could not inject shell wrapper: {e}"
+        )
 
     return 0
 
 
 def cmd_doctor(args: Union[object, None]) -> int:
-    return int(doctor.run_diagnostics(getattr(args, "fix_path", False)))
+    return int(awsctl.doctor.run_diagnostics(getattr(args, "fix_path", False)))

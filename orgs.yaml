@@ -1,7 +1,0 @@
-# awsctl configuration
-# [FIX] PYBH-0125: Use correct v2 structure (enabled_orgs)
-enabled_orgs:
-  - myorg
-
-plugins:
-  enabled: []   # e.g. ['okta']

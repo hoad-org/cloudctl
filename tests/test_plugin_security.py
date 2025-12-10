@@ -1,4 +1,4 @@
-# file: tests/test_coverage_90.py
+# file: tests/test_plugin_security.py
 """
 Aggressive coverage tests to reach 90%.
 """
@@ -80,7 +80,10 @@ def test_run_timeout_kill(monkeypatch):
 
 def test_normalize_url_variations():
     assert sso_cache._normalize_start_url("http://example.com") == "http://example.com"
-    assert sso_cache._normalize_start_url("example.com/start/") == "https://example.com/start"
+    assert (
+        sso_cache._normalize_start_url("example.com/start/")
+        == "https://example.com/start"
+    )
     assert sso_cache._normalize_start_url("") == ""
 
 
@@ -95,7 +98,9 @@ def test_load_token_permission_error(tmp_path):
     bad_dir.mkdir()
     with patch("pathlib.Path.glob", side_effect=OSError("Perm Denied")):
         with pytest.raises(RuntimeError) as e:
-            sso_cache.load_active_sso_token(sso_cache.OrgRef("n", "u", "r"), cache_dir=bad_dir)
+            sso_cache.load_active_sso_token(
+                sso_cache.OrgRef("n", "u", "r"), cache_dir=bad_dir
+            )
         assert "Permission denied" in str(e.value)
 
 

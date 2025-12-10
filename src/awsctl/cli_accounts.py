@@ -1,3 +1,4 @@
+# file: src/awsctl/cli_accounts.py
 # SPDX-License-Identifier: MIT
 """
 CLI glue: `awsctl accounts` and `awsctl roles`

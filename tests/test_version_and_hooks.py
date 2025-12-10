@@ -1,4 +1,5 @@
-# file: tests/test_coverage_gap_fix.py
+# file: tests/test_version_and_hooks.py
+# SPDX-License-Identifier: MIT
 """
 Supplemental tests to close coverage gaps.
 """
@@ -8,15 +9,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from awsctl import _version_cli, use_exports
+# [FIX] Removed _version_cli import as the file was deleted
+from awsctl import use_exports
 from awsctl.plugins import call_hook, load_plugins
 from awsctl.sso_cache import SsoToken
-
-
-def test_version_cli_main(capsys):
-    assert _version_cli.main() == 0
-    out, _ = capsys.readouterr()
-    assert len(out.strip()) > 0
 
 
 def test_plugins_lifecycle():
@@ -55,7 +51,9 @@ def test_aws_json_failure(monkeypatch):
 
 def test_emit_exports_success(monkeypatch):
     mock_token = SsoToken("tok", "u", "r", datetime.now(timezone.utc), {})
-    monkeypatch.setattr("awsctl.use_exports.load_active_sso_token", lambda o: mock_token)
+    monkeypatch.setattr(
+        "awsctl.use_exports.load_active_sso_token", lambda o: mock_token
+    )
 
     creds = {
         "roleCredentials": {
@@ -67,7 +65,7 @@ def test_emit_exports_success(monkeypatch):
     monkeypatch.setattr("awsctl.use_exports._aws_json", lambda args: creds)
 
     org = MagicMock()
-    org.name = "myorg"
+    org.name = "btavm"
     org.region = "us-east-1"
 
     out = use_exports.emit_exports(org, "123", "role", "us-east-1")
@@ -78,7 +76,7 @@ def test_emit_exports_success(monkeypatch):
 def test_emit_exports_no_token(monkeypatch):
     monkeypatch.setattr("awsctl.use_exports.load_active_sso_token", lambda o: None)
     org = MagicMock()
-    org.name = "myorg"
+    org.name = "btavm"
     with pytest.raises(SystemExit) as e:
         use_exports.emit_exports(org, "123", "role", "r")
     assert "No valid SSO token" in str(e.value)
@@ -86,7 +84,9 @@ def test_emit_exports_no_token(monkeypatch):
 
 def test_emit_exports_no_creds(monkeypatch):
     mock_token = SsoToken("tok", "u", "r", datetime.now(timezone.utc), {})
-    monkeypatch.setattr("awsctl.use_exports.load_active_sso_token", lambda o: mock_token)
+    monkeypatch.setattr(
+        "awsctl.use_exports.load_active_sso_token", lambda o: mock_token
+    )
     monkeypatch.setattr("awsctl.use_exports._aws_json", lambda args: {})
     org = MagicMock()
     with pytest.raises(SystemExit) as e:

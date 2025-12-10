@@ -97,7 +97,9 @@ def _is_expired(expires_at_value: Any) -> bool:
     return dt <= (datetime.now(timezone.utc) + timedelta(seconds=EXPIRY_BUFFER_SEC))
 
 
-def load_active_sso_token(org: OrgRef, cache_dir: Path | None = None, raise_error: bool = True) -> Optional[SsoToken]:
+def load_active_sso_token(
+    org: OrgRef, cache_dir: Path | None = None, raise_error: bool = True
+) -> Optional[SsoToken]:
     base = cache_dir or (Path.home() / ".aws" / "sso" / "cache")
     want = _normalize_start_url(org.sso_start_url)
 

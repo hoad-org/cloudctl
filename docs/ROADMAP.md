@@ -1,7 +1,7 @@
 # file: docs/ROADMAP.md
 # Product Roadmap
 
-**Current Version:** v2.7.0
+**Current Version:** v2.8.0
 **Status:** Secure / Enterprise Ready (AWS Only)
 **Strategic Direction:** Evolution to Multi-Cloud Identity Broker
 
@@ -19,12 +19,13 @@
 
 ---
 
-## Phase 2: Enterprise Governance (Completed v2.5)
+## Phase 2: Enterprise Governance (Completed v2.8.0)
 
 **Status:** ✅ Live
 
 - [x] **Smart History:** "Recent Contexts" appear at the top of the selector with a `🕒` icon.
 - [x] **Remote Registry (GitOps):** Load `registry.json` from a signed S3/HTTPS URL to update guardrails without rebuilding the binary.
+- [x] **Pinned Trust Anchor:** Hardcoded Public Key enforcement for Remote Registry (Trust Downgrade prevention).
 - [x] **Break Glass Audit:** Intercept sensitive role assumptions (e.g., `AdministratorAccess`) and require a justification ticket/reason.
 - [x] **Quick Switch Aliases:** Support `@alias` syntax (e.g., `awsctl switch @prod-db`).
 - [x] **Min Version Enforcement:** Registry-driven policy to force client upgrades (block login if version < X).

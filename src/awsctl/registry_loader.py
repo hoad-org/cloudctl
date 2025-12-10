@@ -24,7 +24,9 @@ MAX_DECOMPRESSED_SIZE = 10 * 1024 * 1024  # 10 MB Limit (Expanded)
 MAX_SIG_SIZE = 1024  # 1 KB Limit for Minisign signature
 
 
-def fetch_remote_registry(url: str, public_key: Optional[str] = None) -> List[Dict[str, Any]]:
+def fetch_remote_registry(
+    url: str, public_key: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """
     Fetch registry from a remote URL with optional cryptographic verification.
     """
@@ -43,7 +45,9 @@ def fetch_remote_registry(url: str, public_key: Optional[str] = None) -> List[Di
             content = resp.raw.read(MAX_REGISTRY_SIZE + 1)
 
         if len(content) > MAX_REGISTRY_SIZE:
-            console.print(f"[bold red]Error: Registry file exceeds limit ({MAX_REGISTRY_SIZE} bytes)[/]")
+            console.print(
+                f"[bold red]Error: Registry file exceeds limit ({MAX_REGISTRY_SIZE} bytes)[/]"
+            )
             sys.exit(1)
 
         # [FIX] PYBH-0051 & PYBH-0066: Handle Gzip with expansion limits (Zip Bomb Guard)
@@ -55,7 +59,9 @@ def fetch_remote_registry(url: str, public_key: Optional[str] = None) -> List[Di
                     for chunk in iter(lambda: gz.read(4096), b""):
                         decompressed.extend(chunk)
                         if len(decompressed) > MAX_DECOMPRESSED_SIZE:
-                            raise ValueError(f"Decompressed size exceeds limit ({MAX_DECOMPRESSED_SIZE} bytes)")
+                            raise ValueError(
+                                f"Decompressed size exceeds limit ({MAX_DECOMPRESSED_SIZE} bytes)"
+                            )
                 content = bytes(decompressed)
             except Exception as e:
                 console.print(f"[bold red]Error decompressing registry: {e}[/]")
@@ -66,9 +72,13 @@ def fetch_remote_registry(url: str, public_key: Optional[str] = None) -> List[Di
             try:
                 import minisign
             except ImportError:
-                console.print("[bold red]Error: Tier 3 Security (Signed Registry) requires 'minisign' library.[/]")
+                console.print(
+                    "[bold red]Error: Tier 3 Security (Signed Registry) requires 'minisign' library.[/]"
+                )
                 # [FIX] Better UX: Suggest correct PyPI package name
-                console.print("Please install it: [green]pipx inject awsctl minisign-verify[/]")
+                console.print(
+                    "Please install it: [green]pipx inject awsctl minisign-verify[/]"
+                )
                 sys.exit(1)
 
             sig_url = url + ".minisig"

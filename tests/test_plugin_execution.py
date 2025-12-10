@@ -1,4 +1,4 @@
-# file: tests/test_coverage_gap_fix_v10.py
+# file: tests/test_plugin_execution.py
 """
 Final coverage for Plugins logic.
 """

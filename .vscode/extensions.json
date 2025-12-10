@@ -2,12 +2,8 @@
   "recommendations": [
     "ms-python.python",
     "charliermarsh.ruff",
-    "ms-python.black-formatter",
     "ms-python.mypy-type-checker",
-    "tamasfe.even-better-toml"
-  ],
-  "unwantedRecommendations": [
-    "ms-python.flake8",
-    "ms-python.pylint"
+    "tamasfe.even-better-toml",
+    "yzhang.markdown-all-in-one"
   ]
 }

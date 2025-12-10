@@ -1,62 +1,35 @@
 # file: docs/PLUGIN_DEVELOPMENT.md
-# Plugin Development Guide
+# Plugin Framework — awsctl v2.8.0
 
-Plugins allow platform and security teams to add **organization-wide checks** that run automatically before AWS SSO login.
+Plugins allow enforcement of corporate posture (e.g., VPN check, device compliance) before login.
 
----
+## 1. Requirements
 
-## 1. Plugin Requirements (v2.7.0+)
+### 1.1 Namespace Restriction
 
-### 1.1 Namespace Restriction 🛡️
+For security, plugins must be importable via the protected namespace:
 
-To prevent Arbitrary Code Execution (ACE), `awsctl` now enforces strict namespace checking.
-Your plugin module **MUST** start with one of the following prefixes:
+> awsctl.plugins.<name>
 
-* `awsctl.plugins.`
-* `myorg.plugins.` (Replace `myorg` with your organization's internal package namespace)
+### 1.2 Exposed Function
 
-Plugins trying to load from other namespaces (e.g., `os`, `subprocess`, `requests`) via `orgs.yaml` will be blocked with a security error.
+The module must define:
 
-### 1.2 Structure
+> def pre_login(org: dict) -> None:
+>     ...
 
-A plugin is a Python module that exposes a `pre_login` function.
+### 1.3 Execution Model
 
-    # myorg/plugins/vpn_check.py
-    import sys
-    from typing import Any, Dict
+**Threaded:** Runs in a separate thread to prevent blocking the UI loop indefinitely.
 
-    def pre_login(org: Dict[str, Any]) -> None:
-        """
-        Hook executed before AWS SSO login starts.
-        """
-        print(f"Running VPN check for {org['name']}...")
+**Timeout:** Hard limit of 10 seconds. (Best practice: keep under 3 seconds).
 
-        if not _is_vpn_connected():
-            print("✗ VPN Connection NOT detected.", file=sys.stderr)
-            sys.exit(1)  # Abort login
+**Fail-Closed:** Uncaught exceptions or timeouts abort the login process.
 
----
+## 2. Best Practices
 
-## 2. Configuration
+**No Side Effects:** Do not modify the org dictionary or global state.
 
-### 2.1 Enforced Plugins (Registry)
+**StdErr Reporting:** Print user-facing errors to `sys.stderr` using `console.print`.
 
-Defined in `src/awsctl/registry.py` (or the **Remote Registry** if Tier 3 is configured). Users cannot disable these.
-
-    "plugins": ["awsctl.plugins.okta"]
-
-### 2.2 Optional Plugins (User Config)
-
-Enabled by end-users in `~/.awsctl/orgs.yaml`.
-
-    plugins:
-      enabled:
-        - myorg.plugins.dev_tools
-
----
-
-## 3. Best Practices
-
-- **Fail Safe:** If your plugin crashes, `awsctl` fails closed (aborts login).
-- **No Side Effects:** Do not modify credentials directly.
-- **Fast Execution:** Plugins run synchronously in the critical path and must complete within **10 seconds**, otherwise they will be terminated.
+**Exit Codes:** Use `sys.exit(1)` to signal a check failure (e.g., VPN disconnected).

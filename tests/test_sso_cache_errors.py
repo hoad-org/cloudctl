@@ -30,7 +30,7 @@ def test_corrupt_cache_file(tmp_path, capsys):
         )
     )
 
-    org = OrgRef("myorg", "https://target.com", "us-east-1")
+    org = OrgRef("btavm", "https://target.com", "us-east-1")
 
     # [FIX] AWSCTL-0021: Now raises RuntimeError instead of SystemExit
     with pytest.raises(RuntimeError) as e:

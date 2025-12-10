@@ -70,14 +70,18 @@ def test_cmd_login_failure(monkeypatch, mock_rich_console):
 
 
 def test_cmd_exec_missing_creds(monkeypatch, mock_rich_console):
-    monkeypatch.setattr("awsctl.context_manager.load_context", lambda: {"current_org": "myorg"})
+    monkeypatch.setattr(
+        "awsctl.context_manager.load_context", lambda: {"current_org": "btavm"}
+    )
     monkeypatch.setattr(
         "awsctl.config.get_org",
         lambda x: {"name": "o", "sso_start_url": "u", "sso_region": "r"},
     )
     monkeypatch.setattr(
         "awsctl.core.load_active_sso_token",
-        lambda *a, **k: sso_cache.SsoToken("tok", "u", "r", datetime.now(timezone.utc), {}),
+        lambda *a, **k: sso_cache.SsoToken(
+            "tok", "u", "r", datetime.now(timezone.utc), {}
+        ),
     )
     monkeypatch.setattr("awsctl.use_exports._aws_json", lambda cmd: {})
     assert core.cmd_exec("123", "Admin", "us-east-1", ["ls"]) == 1

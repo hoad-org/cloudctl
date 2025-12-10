@@ -52,9 +52,11 @@ def test_cmd_login_dispatch(monkeypatch):
     monkeypatch.setattr("awsctl.core.cmd_login", mock_core_login)
     monkeypatch.setattr("awsctl.cli.load_context", lambda: {})
     monkeypatch.setattr("awsctl.context_manager.save_context_update", MagicMock())
-    args = type("Args", (), {"org": "myorg", "account": None, "role": None, "force": False})
+    args = type(
+        "Args", (), {"org": "btavm", "account": None, "role": None, "force": False}
+    )
     assert cli.cmd_login(args) == 0
-    mock_core_login.assert_called_with("myorg", force=False)
+    mock_core_login.assert_called_with("btavm", force=False)
 
 
 def test_cmd_login_missing_org(monkeypatch, mock_rich_console):
@@ -63,7 +65,9 @@ def test_cmd_login_missing_org(monkeypatch, mock_rich_console):
     monkeypatch.setattr(cli, "console", mock_rich_console)
     args = type("Args", (), {"org": None})
     assert cli.cmd_login(args) == 1
-    assert "Error: Could not determine organization" in "".join(mock_rich_console.captured)
+    assert "Error: Could not determine organization" in "".join(
+        mock_rich_console.captured
+    )
 
 
 def test_cmd_switch_dispatch_simple(monkeypatch):
@@ -80,7 +84,7 @@ def test_cmd_exec_dispatch(monkeypatch):
     monkeypatch.setattr(
         "awsctl.cli.load_context",
         lambda: {
-            "current_org": "myorg",
+            "current_org": "btavm",
             "account": "123",
             "role": "Admin",
             "region": "us-east-1",

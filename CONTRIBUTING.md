@@ -17,15 +17,15 @@ This project is intended to be production-grade, security-conscious, and pleasan
 
 ### 1.2 Setup
 
-    git clone https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git
-    cd awsctl
-
-    # Create and activate a virtual environment
-    python3 -m venv .venv
-    source .venv/bin/activate
-
-    # Install awsctl in editable mode with dev dependencies
-    pip install -e ".[dev]"
+> git clone https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git
+> cd awsctl
+>
+> # Create and activate a virtual environment
+> python3 -m venv .venv
+> source .venv/bin/activate
+>
+> # Install awsctl in editable mode with dev dependencies
+> pip install -e ".[dev]"
 
 ---
 
@@ -36,12 +36,12 @@ The version is derived automatically from Git tags.
 
 Always fetch tags:
 
-    git fetch --tags
+> git fetch --tags
 
 Releases are tagged in the form:
 
-- `v2.7.0`
-- `v2.2.1`
+- `v2.8.0`
+- `v2.8.1`
 
 Do not hard-code the version string in the code – let `setuptools_scm` handle it.
 
@@ -62,15 +62,15 @@ We run a comprehensive matrix to validate shell-specific security and compatibil
 
 ### 3.2 Running Tests
 
-    # Run unit tests
-    make test
-
-    # Run security audit (Bandit + Pip-audit)
-    make security
+> # Run unit tests
+> make test
+>
+> # Run security audit (Bandit + Pip-audit)
+> make security
 
 ### 3.3 Multi-Python Testing
 
-    tox
+> tox
 
 ---
 
@@ -81,11 +81,11 @@ We use:
 - `black` for formatting.
 - `ruff` for linting and import sorting.
 
-    # Auto-format code
-    make format
-
-    # Lint (read-only)
-    make lint
+> # Auto-format code
+> make format
+>
+> # Lint (read-only)
+> make lint
 
 Before submitting a PR, make sure:
 
@@ -117,7 +117,7 @@ If your change touches these:
 1. Ensure `main` is green in CI (tests, lint, security scans).
 2. Tag the release:
 
-       git tag -a v2.7.0 -m "awsctl 2.7.0"
-       git push origin v2.7.0
+> git tag -a v2.8.0 -m "awsctl 2.8.0"
+> git push origin v2.8.0
 
 3. CI will build and publish artifacts as configured.

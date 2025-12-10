@@ -1,4 +1,4 @@
-# file: tests/test_coverage_okta.py
+# file: tests/test_plugin_okta.py
 """
 Final coverage boost for Okta plugin.
 """
@@ -9,6 +9,14 @@ import pytest
 import requests
 
 from awsctl.plugins import okta
+
+
+# [FIX] We must disable test mode for these unit tests.
+# Otherwise, the plugin detects "AWSCTL_TEST_MODE" and returns early,
+# preventing us from testing the failure paths.
+@pytest.fixture(autouse=True)
+def force_enable_plugin(monkeypatch):
+    monkeypatch.delenv("AWSCTL_TEST_MODE", raising=False)
 
 
 def test_okta_missing_url(mock_rich_console):

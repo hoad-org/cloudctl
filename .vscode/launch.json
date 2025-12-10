@@ -2,20 +2,35 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Unit Tests",
-      "type": "python",
+      "name": "Debug: Doctor",
+      "type": "debugpy",
       "request": "launch",
-      "module": "pytest",
-      "args": ["-v"],
-      "console": "integratedTerminal",
-      "justMyCode": false
+      "module": "awsctl",
+      "args": ["doctor"],
+      "console": "integratedTerminal"
     },
     {
-      "name": "Terraform: Validate",
-      "type": "shell",
+      "name": "Debug: Login (btavm)",
+      "type": "debugpy",
       "request": "launch",
-      "command": "terraform validate",
-      "cwd": "${workspaceFolder}"
+      "module": "awsctl",
+      "args": ["login", "--org", "btavm"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Debug: Switch",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "awsctl",
+      "args": ["switch"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Debug: Current File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal"
     }
   ]
 }

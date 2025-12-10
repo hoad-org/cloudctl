@@ -11,18 +11,18 @@ This means the authoritative definitions of organizations, URLs, regions, and gu
 
 ### 1.1 User Enablement File (`~/.awsctl/orgs.yaml`)
 
-**Scope:** User preference & **Remote Registry Configuration**
+**Scope:** User preference & **Remote Registry URL**
 **Content:** Lists enabled orgs and optional remote config source.
 
-    enabled_orgs:
-      - engineering
+> enabled_orgs:
+>   - btavm
+>
+> # [NEW] Remote Registry Support (Tier 3)
+> registry:
+>   url: "https://config.internal.corp/registry.json"
 
-    # [NEW] Remote Registry Support (Tier 2/3)
-    registry:
-      url: "https://config.internal.myorg.com/registry.json"
-      # public_key: "RW..." (Optional: for Minisign Tier 3)
-
-Users do **not** specify `start_url`, `sso_region`, or `allowed_regions`. These are enforced by the Registry.
+Users do **not** specify `start_url`, `sso_region`, or `allowed_regions`.
+These are enforced by the Registry.
 
 ### 1.2 Corporate Registry
 
@@ -52,7 +52,9 @@ You can deploy `awsctl` configuration in three ways:
 1.  **Repo:** Host `registry.json` in a private GitHub repo.
 2.  **Pipeline:** On merge to `main`, sign the JSON using `minisign` and a secured private key.
 3.  **Publish:** Upload `registry.json` and `registry.json.minisig` to a public-read S3 bucket.
-4.  **Client:** Users configure the URL and your Public Key in `orgs.yaml`.
+4.  **Client:** Users simply configure the `url` in `orgs.yaml`.
+    - **Trust Anchor:** The Minisign **Public Key** is pinned inside the `awsctl` binary (`src/awsctl/registry.py`).
+    - **Security:** Even if a user's `orgs.yaml` is compromised, the client will **reject** any payload not signed by your private key.
 
 ---
 
@@ -67,7 +69,7 @@ If using the Embedded Registry strategy:
    - `make security` (Bandit/Pip-Audit)
    - `make test`
 3. Commit: `git commit -m "chore(registry): update prod guardrails"`
-4. Tag release: `git tag -a v2.7.0; git push origin v2.7.0`
+4. Tag release: `git tag -a v2.8.0; git push origin v2.8.0`
 5. Developers upgrade: `pipx upgrade awsctl`
 
 ---
@@ -77,7 +79,8 @@ If using the Embedded Registry strategy:
 ### 4.1 Region Restrictions
 
 Definition:
-    `"allowed_regions": ["eu-west-1"]`
+
+> "allowed_regions": ["eu-west-1"]
 
 Enforced during `login`, `switch`, and `exec`.
 Violations return `exit code: 1` immediately.
@@ -85,7 +88,8 @@ Violations return `exit code: 1` immediately.
 ### 4.2 Role Ordering
 
 Definition:
-    `"preferred_roles": ["ReadOnlyAccess"]`
+
+> "preferred_roles": ["ReadOnlyAccess"]
 
 Promotes least-privilege roles to the top of the fuzzy selector.
 
@@ -96,26 +100,32 @@ Runs before login. If a plugin fails (e.g., VPN check), login aborts.
 
 ### 4.4 Namespace Enforcement
 
-All plugins must reside in `awsctl.plugins.*` or `myorg.plugins.*` namespaces. Arbitrary code execution via other namespaces is blocked.
+All plugins must reside in `awsctl.plugins.*`. Arbitrary code execution via other namespaces is blocked.
 
 ### 4.5 TTY Guard (Operational Safety)
 
-The binary detects if it is running in an interactive terminal during an export operation. If detected, it refuses to print credentials to the screen. This operational control applies to **`awsctl switch`** and **`awsctl exec`** when the binary is incorrectly run directly.
+The binary detects if it is running in an interactive terminal during an export operation.
+If detected, it refuses to print credentials to the screen.
+This operational control applies to **`awsctl switch`** and **`awsctl exec`** when the binary is incorrectly run directly.
 
 ### 4.6 Break Glass Audit (v2.5+)
 
 Definition:
-    `"sensitive_roles": ["AdministratorAccess"]`
+
+> "sensitive_roles": ["AdministratorAccess"]
 
 Behavior:
-* When a user selects this role, `awsctl` halts.
-* Prompts: `Justification (Ticket # / Reason):`.
-* Logs the response to `~/.awsctl/audit.log` (and CloudTrail via session tags).
+
+- When a user selects this role, `awsctl` halts.
+- Prompts: `Justification (Ticket # / Reason):`.
+- Logs the response to `~/.awsctl/audit.log` (and CloudTrail via session tags).
 
 ### 4.7 Client Version Enforcement (v2.5+)
 
 Definition:
-    `"min_client_version": "2.5.0"`
+
+> "min_client_version": "2.8.0"
 
 Behavior:
-Blocks login if the client binary is older than the policy. Forces `pipx upgrade`.
+Blocks login if the client binary is older than the policy.
+Forces `pipx upgrade`.

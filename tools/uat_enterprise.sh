@@ -1,12 +1,16 @@
 #!/bin/bash
+# file: tools/uat_enterprise.sh
 # -----------------------------------------------------------------------------
-# awsctl Enterprise Acceptance Suite (v2.7.0)
+# awsctl Enterprise Acceptance Suite (v2.8.0)
 # Verifies: Shell Integration, Auth, Toggling, Aliases, Exec, and Security
 # -----------------------------------------------------------------------------
 set -e
 
 # [FIX] Enable Test Mode to bypass TTY guards during automation
 export AWSCTL_TEST_MODE=1
+
+# [FIX] Inject the Real URL for btavm (required for successful login)
+export AWSCTL_BTAVM_URL="https://d-9067dbbf5a.awsapps.com/start"
 
 # [FIX] Force usage of local source code to avoid testing stale binaries
 export PYTHONPATH="src"
@@ -25,6 +29,15 @@ fail() { echo -e "${RED}✘ FAIL:${NC} $1"; exit 1; }
 info() { echo -e "\n${CYAN}${BOLD}>>> [Phase $1] $2${NC}"; }
 warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
 
+# --- Cleanup Trap ---
+cleanup() {
+    echo -e "\n${CYAN}Restoring user configuration...${NC}"
+    if [ -f ~/.awsctl/orgs.yaml.bak ]; then
+        mv ~/.awsctl/orgs.yaml.bak ~/.awsctl/orgs.yaml
+    fi
+}
+trap cleanup EXIT
+
 # -----------------------------------------------------------------------------
 # 0. Bootstrap & Wrapper Definition
 # -----------------------------------------------------------------------------
@@ -33,18 +46,15 @@ info "0" "Bootstrapping Test Environment"
 # Robust Context Bridge Wrapper
 awsctl() {
     # 1. Ask strategy using the source code directly
-    # [FIX] Pass flag first to avoid argparse confusion
     local outcome
     outcome=$($BIN_CMD --check-strategy "$@")
 
     # 2. Capture output of the actual command
     local output
-    # We capture stdout/stderr combined to ensure we catch the token even if leaked
     output=$($BIN_CMD "$@")
     local rc=$?
 
     # 3. Universal Interception (Fail-Safe)
-    # If the output contains the magic signature, EVAL it regardless of strategy check.
     if echo "$output" | grep -q "#AWSCTL-EVAL"; then
         eval "$output"
         return 0
@@ -55,32 +65,52 @@ awsctl() {
     return $rc
 }
 
-# Run setup in HEADLESS mode to ensure config exists
+# Run setup in HEADLESS mode to ensure config dir exists
 AWSCTL_HEADLESS=1 awsctl setup > /dev/null
 pass "Wrapper defined and config loaded"
 
 # -----------------------------------------------------------------------------
-# 1. Test Configuration
+# 1. Test Configuration (Forced btavm)
 # -----------------------------------------------------------------------------
 info "1" "Test Configuration"
 
-DEFAULT_ORG=$(grep -m1 "enabled_orgs" -A 1 ~/.awsctl/orgs.yaml | tail -n1 | sed 's/-//g' | tr -d '"' | tr -d "'" | awk '{print $1}')
-echo "We need valid credentials to verify the cloud integration."
-TARGET_ORG=${TARGET_ORG:-$DEFAULT_ORG}
+echo "Backing up existing config..."
+cp ~/.awsctl/orgs.yaml ~/.awsctl/orgs.yaml.bak || true
 
-echo -e "${YELLOW}Priming cache to list accounts...${NC}"
-awsctl login --org "$TARGET_ORG" > /dev/null 2>&1 || true
+echo "Forcing clean 'btavm' configuration..."
+cat <<EOF > ~/.awsctl/orgs.yaml
+enabled_orgs:
+  - btavm
+plugins:
+  enabled: []
+EOF
 
+TARGET_ORG="btavm"
+echo -e "Target Organization: ${BOLD}${TARGET_ORG}${NC}"
+
+# -----------------------------------------------------------------------------
+# 1a. Establishing Session
+# -----------------------------------------------------------------------------
+info "1a" "Establishing Session (Login)"
+echo -e "${YELLOW}⚠️  Browser will open. Please authenticate to AWS.${NC}"
+
+# We allow this specific command to be interactive so the user can login
+if awsctl login --org "$TARGET_ORG"; then
+    pass "Login flow completed successfully"
+else
+    fail "Login failed. UAT cannot proceed."
+fi
+
+# [FIX] Hardcode roles to ensure test stability regardless of user environment
 DEFAULT_ACCT="338630860507"
 TARGET_ACCT=${TARGET_ACCT:-$DEFAULT_ACCT}
-TARGET_ROLE=${TARGET_ROLE:-SecurityAuditor}
+TARGET_ROLE="SecurityAuditor"
 TARGET_REGION=${TARGET_REGION:-us-east-1}
 
 # -----------------------------------------------------------------------------
 # 1b. Auto-Inject Profiles (Aliases)
 # -----------------------------------------------------------------------------
 echo -e "\n${YELLOW}Injecting test aliases into ~/.awsctl/orgs.yaml...${NC}"
-sed -i.bak '/^aliases:/,$d' ~/.awsctl/orgs.yaml || true
 cat <<EOF >> ~/.awsctl/orgs.yaml
 aliases:
   prod:
@@ -90,9 +120,9 @@ aliases:
     region: ${TARGET_REGION}
   qa:
     org: ${TARGET_ORG}
-    account: "821868546447"
+    account: "${TARGET_ACCT}"
     role: ${TARGET_ROLE}
-    region: ${TARGET_REGION}
+    region: us-east-2
 EOF
 pass "Injected aliases: @prod, @qa"
 
@@ -121,7 +151,7 @@ info "3" "Authentication Workflows"
 echo "Testing 'Smart Login' chain (Login + Switch)..."
 unset AWS_ACCESS_KEY_ID
 
-# [FIX] || true prevents crash, output capture handles the logic
+# Note: Since we just logged in, this should be fast (using cache)
 awsctl login --org "$TARGET_ORG" --account "$TARGET_ACCT" --role "$TARGET_ROLE" --region "$TARGET_REGION" || true
 
 if [[ "$AWS_ACCESS_KEY_ID" == "ASIA"* ]]; then
@@ -135,7 +165,9 @@ fi
 # -----------------------------------------------------------------------------
 info "4" "Aliases & Shortcuts"
 
-echo "Testing switch to @qa (821868546447)..."
+echo "Testing switch to @qa (us-east-2)..."
+unset AWS_ACCESS_KEY_ID  # [FIX] Clear creds to prevent false positive
+
 awsctl switch "@qa" || true
 
 if [[ "$AWS_ACCESS_KEY_ID" == "ASIA"* ]]; then
@@ -155,7 +187,6 @@ else
     warn "Status command failed"
 fi
 
-# [FIX] Call binary directly for 'env' to bypass wrapper interception (which consumes output)
 if [[ -n "$AWS_ACCESS_KEY_ID" ]]; then
     if $BIN_CMD env | grep -q "export AWS_SESSION_TOKEN"; then
         pass "Env Dump"
@@ -167,6 +198,7 @@ else
 fi
 
 # Toggle (-)
+unset AWS_ACCESS_KEY_ID  # [FIX] Clear creds to ensure toggle actually works
 awsctl switch - || true
 
 if [[ "$AWS_ACCESS_KEY_ID" == "ASIA"* ]]; then
@@ -180,14 +212,12 @@ fi
 # -----------------------------------------------------------------------------
 info "6" "Advanced Execution"
 
-# [FIX] Expect whoami to FAIL in Zero Trust mode
 if ! awsctl --whoami > /dev/null 2>&1; then
     pass "Verified Zero Trust (Ambient credentials stripped)"
 else
     warn "whoami unexpectedly succeeded (Ambient credentials leaked?)"
 fi
 
-# Test Exec (Explicit Context)
 IDENTITY=$(awsctl exec --account "$TARGET_ACCT" --role "$TARGET_ROLE" --region "$TARGET_REGION" -- aws sts get-caller-identity --query Account --output text || echo "FAIL")
 
 if [[ "$IDENTITY" == "$TARGET_ACCT" ]]; then
@@ -218,4 +248,4 @@ else
     warn "Logout failed to clear variables"
 fi
 
-echo -e "\n${GREEN}${BOLD}✨ ENTERPRISE ACCEPTANCE TEST COMPLETE. v2.7.0 IS READY. ✨${NC}"
+echo -e "\n${GREEN}${BOLD}✨ ENTERPRISE ACCEPTANCE TEST COMPLETE. v2.8.0 IS READY. ✨${NC}"

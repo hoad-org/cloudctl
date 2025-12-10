@@ -65,7 +65,9 @@ def no_real_subprocess(monkeypatch):
     Prevent hitting real system commands.
     """
     mock_run = MagicMock()
-    mock_run.return_value = subprocess.CompletedProcess(args=["cmd"], returncode=0, stdout="", stderr="")
+    mock_run.return_value = subprocess.CompletedProcess(
+        args=["cmd"], returncode=0, stdout="", stderr=""
+    )
     monkeypatch.setattr(subprocess, "run", mock_run)
 
     mock_popen = MagicMock()
@@ -104,8 +106,9 @@ def mock_rich_console(monkeypatch):
         "awsctl.plugins.okta.console",
         "awsctl.plugins.console",
         "awsctl.registry_loader.console",
-        # [FIX] Mock wizard console
         "awsctl.wizard.console",
+        # [FIX] Patch doctor.console so output is captured in tests
+        "awsctl.doctor.console",
         "awsctl.utils.stdout_console",
         "awsctl.cli.stdout_console",
         "awsctl.cli_accounts.stdout_console",

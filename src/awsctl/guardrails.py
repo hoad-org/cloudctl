@@ -31,11 +31,15 @@ def validate_region(org_config: Dict[str, Any], region: str) -> None:
     allowed = org_config.get("allowed_regions")
 
     if allowed is not None and not isinstance(allowed, list):
-        console.print("[bold red]✗ Configuration Error[/]\n'allowed_regions' must be a list.")
+        console.print(
+            "[bold red]✗ Configuration Error[/]\n'allowed_regions' must be a list."
+        )
         sys.exit(1)
 
     if allowed is None:
-        console.print("[bold red]✗ Configuration Error[/]\nNo 'allowed_regions' defined.")
+        console.print(
+            "[bold red]✗ Configuration Error[/]\nNo 'allowed_regions' defined."
+        )
         sys.exit(1)
 
     # Empty list = Deny All
@@ -48,7 +52,8 @@ def validate_region(org_config: Dict[str, Any], region: str) -> None:
 
     if region not in allowed:
         console.print(
-            f"[bold red]✗ Guardrail Violation[/]\n" f"Region [yellow]'{region}'[/] is not permitted for org [cyan]'{org_config.get('name')}'[/].",
+            f"[bold red]✗ Guardrail Violation[/]\n"
+            f"Region [yellow]'{region}'[/] is not permitted for org [cyan]'{org_config.get('name')}'[/].",
         )
         console.print(f"Allowed regions: [green]{', '.join(allowed)}[/]")
         sys.exit(1)
@@ -74,12 +79,19 @@ def check_min_version(org_config: Dict[str, Any]) -> None:
     try:
         # Robust comparison using 'packaging'
         if version.parse(__version__) < version.parse(min_ver):
-            console.print(f"\n[bold white on red] CRITICAL UPDATE REQUIRED [/]\n" f"Your version ({__version__}) is older than the minimum required ({min_ver}).\n" f"Security guardrails may be out of date.\n")
+            console.print(
+                f"\n[bold white on red] CRITICAL UPDATE REQUIRED [/]\n"
+                f"Your version ({__version__}) is older than the minimum required ({min_ver}).\n"
+                f"Security guardrails may be out of date.\n"
+            )
             console.print("Run: [bold green]pipx upgrade awsctl[/]\n")
             sys.exit(1)
     except version.InvalidVersion:
         # [FIX] PYBH-0067: Fail closed on version tampering/corruption
-        console.print(f"\n[bold red]Security Error:[/bold red] Application version string '{__version__}' is invalid.\n" "This may indicate tampering or a corrupted installation.")
+        console.print(
+            f"\n[bold red]Security Error:[/bold red] Application version string '{__version__}' is invalid.\n"
+            "This may indicate tampering or a corrupted installation."
+        )
         sys.exit(1)
 
 
@@ -138,7 +150,9 @@ def _audit_log(org: str, role: str, reason: str) -> None:
         # 3. Collapse multiple spaces
         safe_reason = re.sub(r"\s+", " ", safe_reason).strip()
 
-        entry = f"{ts} | ORG={org} | ROLE={role} | USER={sys.argv} | REASON={safe_reason}\n"
+        entry = (
+            f"{ts} | ORG={org} | ROLE={role} | USER={sys.argv} | REASON={safe_reason}\n"
+        )
 
         with AUDIT_LOG.open("a", encoding="utf-8") as f:
             f.write(entry)

@@ -1,4 +1,4 @@
-# file: tests/test_coverage_gap_fix_v11.py
+# file: tests/test_setup_defaults.py
 from unittest.mock import MagicMock, patch
 
 import yaml

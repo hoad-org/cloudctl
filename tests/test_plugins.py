@@ -10,6 +10,12 @@ from awsctl import plugins
 from awsctl.plugins import okta
 
 
+# [FIX] Disable test mode so the plugin logic actually runs
+@pytest.fixture(autouse=True)
+def force_enable_plugin(monkeypatch):
+    monkeypatch.delenv("AWSCTL_TEST_MODE", raising=False)
+
+
 def test_okta_pre_login_success(mock_rich_console):
     with patch("requests.head") as mock_head:
         mock_head.return_value.status_code = 200

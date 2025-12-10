@@ -1,4 +1,4 @@
-# file: tests/test_coverage_final_push.py
+# file: tests/test_aws_edge_cases.py
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
@@ -10,7 +10,10 @@ def test_sso_token_validation_branches(tmp_path, monkeypatch):
     (tmp_path / "big.json").write_bytes(b"0" * (1024 * 1024 + 100))
     (tmp_path / "bad.json").write_text("{bad")
     org = sso_cache.OrgRef("test", "https://target", "eu-west-1")
-    assert sso_cache.load_active_sso_token(org, cache_dir=tmp_path, raise_error=False) is None
+    assert (
+        sso_cache.load_active_sso_token(org, cache_dir=tmp_path, raise_error=False)
+        is None
+    )
 
 
 def test_aws_parse_iso8601_bad_input():
@@ -46,7 +49,9 @@ def test_core_login_subprocess_error(mock_rich_console, monkeypatch):
     )
     monkeypatch.setattr("awsctl.aws.ensure_sso_base_profile", lambda x: "prof")
     monkeypatch.setattr("awsctl.core.load_active_sso_token", lambda *a, **k: None)
-    monkeypatch.setattr("awsctl.utils.run", MagicMock(side_effect=Exception("Subprocess Fail")))
+    monkeypatch.setattr(
+        "awsctl.utils.run", MagicMock(side_effect=Exception("Subprocess Fail"))
+    )
     assert core.cmd_login("o") == 1
     assert "Login failed" in "".join(mock_rich_console.captured)
 

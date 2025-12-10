@@ -1,4 +1,4 @@
-# file: tests/test_coverage_90_v3.py
+# file: tests/test_core_error_handling.py
 """
 Final wave of coverage tests.
 """
@@ -55,7 +55,9 @@ def test_aws_list_accounts_pagination(monkeypatch):
 
 def test_aws_list_accounts_error(monkeypatch):
     """Test error handling in list accounts."""
-    monkeypatch.setattr(aws, "run_aws", lambda a: MagicMock(returncode=1, stderr="Fail"))
+    monkeypatch.setattr(
+        aws, "run_aws", lambda a: MagicMock(returncode=1, stderr="Fail")
+    )
     with pytest.raises(RuntimeError):
         aws.sso_list_accounts("url", "region")
 
@@ -63,7 +65,9 @@ def test_aws_list_accounts_error(monkeypatch):
 # --- CLI Module Coverage ---
 def test_cli_load_context_error(monkeypatch, mock_rich_console):
     """Test load_context handles corrupt JSON."""
-    monkeypatch.setattr(cli, "CONTEXT_FILE", MagicMock(exists=lambda: True, read_text=lambda e: "{bad"))
+    monkeypatch.setattr(
+        cli, "CONTEXT_FILE", MagicMock(exists=lambda: True, read_text=lambda e: "{bad")
+    )
 
     utils.set_debug(True)
 
@@ -86,7 +90,9 @@ def test_cli_switch_no_prev(monkeypatch, mock_rich_console):
 
 def test_cli_switch_incomplete_prev(monkeypatch, mock_rich_console):
     """Test switch - with partial previous context."""
-    monkeypatch.setattr("awsctl.context_manager.get_previous_context", lambda: {"org": "foo"})
+    monkeypatch.setattr(
+        "awsctl.context_manager.get_previous_context", lambda: {"org": "foo"}
+    )
 
     args = type("Args", (), {"target": "-", "org": None})
     assert cli.cmd_switch(args) == 1
@@ -95,10 +101,10 @@ def test_cli_switch_incomplete_prev(monkeypatch, mock_rich_console):
 
 def test_cli_switch_non_interactive_validation(monkeypatch, mock_rich_console):
     """Test explicit switch validation."""
-    monkeypatch.setattr("awsctl.cli.load_context", lambda: {"current_org": "myorg"})
+    monkeypatch.setattr("awsctl.cli.load_context", lambda: {"current_org": "btavm"})
 
     org_conf = {
-        "name": "myorg",
+        "name": "btavm",
         "sso_start_url": "u",
         "sso_region": "r",
         "default_region": "r",
@@ -106,7 +112,9 @@ def test_cli_switch_non_interactive_validation(monkeypatch, mock_rich_console):
     monkeypatch.setattr("awsctl.core.get_org", lambda x: org_conf)
     monkeypatch.setattr("awsctl.core.load_orgs_config", lambda: {})
     # [FIX] Use sso_cache.OrgRef, not aws.OrgRef
-    monkeypatch.setattr("awsctl.cli._get_org_ref", lambda c, n: sso_cache.OrgRef("n", "u", "r"))
+    monkeypatch.setattr(
+        "awsctl.cli._get_org_ref", lambda c, n: sso_cache.OrgRef("n", "u", "r")
+    )
 
     # [FIX] Mock resolve account ID to avoid it failing
     monkeypatch.setattr("awsctl.cli._resolve_account_id", lambda r, t: "123")

@@ -1,12 +1,35 @@
+# file: CHANGELOG.md
+# Changelog
+
+## [2.8.0] - 2025-12-10 (Phase 2 Enterprise Release)
+
+### 🚀 Enterprise Governance & Usability
+This release marks the completion of the "Phase 2" roadmap, delivering a fully enterprise-ready identity broker with strict compliance guardrails.
+
+* **Official Release:** Validated for production deployment in `btavm`.
+* **Fish Shell Support:** Added explicit detection and guidance for Fish shell users to prevent environment corruption.
+* **Amazon Linux 2 Compatibility:** Added specific installation paths for legacy AL2 environments.
+
+### 🛡️ Security Hardening (Zero Trust)
+* **Pinned Trust Anchor (Tier 3):** The Remote Registry loader now ignores user-supplied public keys in `orgs.yaml`. It strictly enforces the hardcoded corporate root-of-trust key, preventing "Trust Downgrade" attacks.
+* **Leak Prevention (Redaction):** The AWS CLI wrapper now actively suppresses and redacts raw `stdout` in error messages to prevent partial credential leakage during JSON parsing failures.
+* **Plugin Namespace Enforcement:** Strict allowlist now enforces `awsctl.plugins.*`, blocking arbitrary code execution attempts via rogue config files.
+
+---
+
 ## [2.7.0] - 2025-12-08
 
 ### 🛡️ Critical Security & Stability
 This release addresses a critical regression in shell integration and hardens the Zero Trust architecture.
-
 * **Fix:** Solved "Smart Login Chain" failure where credentials were printed to stdout instead of being evaluated by the shell.
 * **Fix:** Hardened `awsctl env` command to ensure reliable POSIX export generation.
 * **Security:** Enhanced TTY Guard to prevent accidental credential leakage in non-interactive sessions.
 * **UX:** Moved "Advanced Execution" features to a stable command structure.
+
+### 🚀 Enterprise Governance & Usability
+* **Remote Registry (GitOps):** `awsctl` can now load its configuration and guardrails from a cryptographically signed remote JSON file (via HTTPS/S3).
+* **Break Glass Audit:** Accessing sensitive roles (configured in the Registry, e.g., `AdministratorAccess`) now triggers a mandatory interactive prompt requiring a justification.
+* **Smart History:** The context selector now remembers your last 5 used accounts/roles.
 
 ### 🚀 Enterprise Governance & Usability (v2.6.0)
 This release bridges the gap between strict security compliance and developer velocity with "Smart History" and "Break Glass" workflows.

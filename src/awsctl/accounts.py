@@ -34,7 +34,9 @@ def list_accounts(ref: OrgRef) -> List[Account]:
         raise RuntimeError("No active session found. Please run `awsctl login`.")
 
     # Pass the token explicitly to the AWS CLI wrapper
-    raw_list = aws.sso_list_accounts(ref.sso_start_url, ref.sso_region, access_token=token.access_token)
+    raw_list = aws.sso_list_accounts(
+        ref.sso_start_url, ref.sso_region, access_token=token.access_token
+    )
 
     results = []
     for item in raw_list:

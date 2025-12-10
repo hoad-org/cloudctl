@@ -1,4 +1,4 @@
-# file: tests/test_coverage_gap_fix_v6.py
+# file: tests/test_audit_logging.py
 from unittest.mock import patch
 
 from awsctl import guardrails, utils

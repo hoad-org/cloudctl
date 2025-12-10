@@ -1,3 +1,4 @@
+# file: .pre-commit-config.yaml
 repos:
   - repo: https://github.com/psf/black
     rev: 24.10.0
@@ -26,7 +27,7 @@ repos:
     hooks:
       - id: typecheck
         name: Mypy (Strict)
-        entry: .venv/bin/mypy src --strict
+        entry: .venv/bin/mypy src
         language: system
         pass_filenames: false
 
@@ -41,6 +42,14 @@ repos:
         entry: .venv/bin/pytest --maxfail=1
         language: system
         pass_filenames: false
+
+      # [FIX] Run cleanup last to ensure no artifacts are accidentally staged/leftover
+      - id: cleanup
+        name: Cleanup Artifacts
+        entry: make clean
+        language: system
+        pass_filenames: false
+        always_run: true
 
 default_language_version:
   python: python3

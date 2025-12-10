@@ -1,4 +1,4 @@
-# file: tests/test_coverage_gap_fix_v8.py
+# file: tests/test_env_detection.py
 from unittest.mock import MagicMock
 
 from awsctl import shell, utils

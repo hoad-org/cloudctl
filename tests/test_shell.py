@@ -42,19 +42,6 @@ def test_detect_shell_profile_fallbacks(monkeypatch, mock_home_path):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Sudo logic is Posix only")
-def test_inject_shell_sudo_chown(monkeypatch, tmp_path):
-    rc = tmp_path / ".bashrc"
-    rc.touch()
-    # Mock os.geteuid which might not exist on Windows
-    monkeypatch.setattr(os, "geteuid", lambda: 0, raising=False)
-    monkeypatch.setenv("SUDO_UID", "1000")
-    monkeypatch.setenv("SUDO_GID", "1000")
-    with patch("os.chown") as mock_chown:
-        shell.inject_shell_function(rc)
-        mock_chown.assert_called()
-
-
-@pytest.mark.skipif(os.name == "nt", reason="Sudo logic is Posix only")
 def test_inject_shell_no_sudo_uid(monkeypatch, tmp_path):
     rc = tmp_path / ".bashrc"
     rc.touch()
@@ -83,3 +70,101 @@ def test_shell_injection_read_fail(monkeypatch, tmp_path):
     # [FIX] Explicit utf-8 encoding for Windows
     with open(rc, "r", encoding="utf-8") as f:
         assert "AWSCTL SHELL INTEGRATION" in f.read()
+
+
+# --- New Tests for Full Coverage ---
+
+
+def test_inject_shell_newline_insertion(tmp_path):
+    """Ensure newline is added if file doesn't end with one."""
+    rc = tmp_path / "rc_no_newline"
+    rc.write_text("content_without_newline")
+
+    shell.inject_shell_function(rc)
+
+    content = rc.read_text()
+    # [FIX] The logic adds a newline if missing, plus a spacer newline, plus the wrapper (which starts with a newline)
+    # So we expect 3 newlines total between original content and the header comment.
+    assert "content_without_newline\n\n\n# AWSCTL SHELL INTEGRATION" in content
+
+
+def test_inject_shell_permission_preservation(tmp_path, monkeypatch):
+    """Ensure permissions are copied from original file."""
+    rc = tmp_path / "rc_perms"
+    rc.touch()
+
+    # Mock stat to return specific mode
+    mock_stat = MagicMock()
+    mock_stat.st_mode = 0o777
+
+    # [FIX] Lambda must accept args passed by internal calls
+    monkeypatch.setattr("pathlib.Path.stat", lambda self, *args, **kwargs: mock_stat)
+
+    with patch("os.chmod") as mock_chmod:
+        shell.inject_shell_function(rc)
+        # Should be called on temp path with 0o777
+        assert mock_chmod.called
+        assert mock_chmod.call_args[0][1] == 0o777
+
+
+def test_inject_shell_chmod_fallback(tmp_path, monkeypatch):
+    """Ensure we fallback to 644 if chmod fails."""
+    rc = tmp_path / "rc_perms_fail"
+    rc.touch()
+
+    # [FIX] We must allow .exists() to return True without raising, otherwise code aborts early.
+    # We only want the explicit .stat() call inside the try/except block to fail.
+    monkeypatch.setattr("pathlib.Path.exists", lambda self: True)
+
+    # Mock stat to raise OSError when called
+    monkeypatch.setattr("pathlib.Path.stat", MagicMock(side_effect=OSError))
+
+    with patch("os.chmod") as mock_chmod:
+        shell.inject_shell_function(rc)
+        # Should be called with 0o644 default
+        assert mock_chmod.call_args[0][1] == 0o644
+
+
+def test_remove_shell_function_file_missing(tmp_path):
+    """Return False if file doesn't exist."""
+    rc = tmp_path / "missing_rc"
+    assert shell.remove_shell_function(rc) is False
+
+
+def test_remove_shell_function_read_error(monkeypatch, tmp_path):
+    """Return False on read error."""
+    rc = tmp_path / "readable_rc"
+    rc.touch()
+    with patch.object(Path, "read_text", side_effect=Exception("Read Error")):
+        assert shell.remove_shell_function(rc) is False
+
+
+def test_remove_shell_function_not_present(tmp_path):
+    """Return False if wrapper not in file."""
+    rc = tmp_path / "clean_rc"
+    rc.write_text("some content")
+    assert shell.remove_shell_function(rc) is False
+
+
+def test_remove_shell_function_dirty_removal(tmp_path):
+    """Fail if simple string removal leaves artifacts (dirty edit)."""
+    rc = tmp_path / "dirty_rc"
+
+    # [FIX] Modify the wrapper content internally so it matches the "Detection" check
+    # but fails the "Exact String" replacement.
+    dirty_content = shell.AWSCTL_WRAPPER.replace(
+        "awsctl() {", "awsctl() {\n    # User modified this line"
+    )
+
+    rc.write_text(dirty_content)
+
+    # Should detect it (returns True for "contains") but fail to remove it clean
+    assert shell.remove_shell_function(rc) is False
+
+
+def test_remove_shell_function_success(tmp_path):
+    """Clean removal success."""
+    rc = tmp_path / "valid_rc"
+    rc.write_text(shell.AWSCTL_WRAPPER)
+    assert shell.remove_shell_function(rc) is True
+    assert rc.read_text() == ""

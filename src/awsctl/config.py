@@ -61,7 +61,6 @@ def sample_orgs_yaml() -> str:
     )
 
 
-# [FIX] Code Polish: Removed redundancy, now takes set[str] directly.
 def _hydrate_orgs(enabled_names: Set[str]) -> List[Dict[str, Any]]:
     hydrated_list: List[Dict[str, Any]] = []
 
@@ -77,7 +76,7 @@ def _hydrate_orgs(enabled_names: Set[str]) -> List[Dict[str, Any]]:
 
     for name, reg_org in unique_registry.items():
         if name in enabled_names:
-            item = cast(Dict[str, Any], copy.deepcopy(reg_org))
+            item = copy.deepcopy(reg_org)
             hydrated_list.append(item)
 
     for name in enabled_names:
@@ -110,7 +109,6 @@ def load_orgs_config() -> Dict[str, Any]:
     """
     Full config load with Registry Hydration.
     """
-    # [FIX] MyPy: Removed redundant cast
     raw_data = _load_raw_file()
 
     enabled_set = set(raw_data.get("enabled_orgs", []))
@@ -132,15 +130,12 @@ def load_orgs_config() -> Dict[str, Any]:
     if not isinstance(reg_conf, dict):
         reg_conf = {}
 
-    return cast(
-        Dict[str, Any],
-        {
-            "orgs": final_orgs,
-            "plugins": plugins_conf,
-            "aliases": aliases,
-            "registry": reg_conf,
-        },
-    )
+    return {
+        "orgs": final_orgs,
+        "plugins": plugins_conf,
+        "aliases": aliases,
+        "registry": reg_conf,
+    }
 
 
 def load_user_config() -> Dict[str, Any]:

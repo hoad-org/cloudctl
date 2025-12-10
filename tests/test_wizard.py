@@ -71,7 +71,9 @@ def test_wizard_abort_on_overwrite(monkeypatch, tmp_path):
 
     # Mock inputs
     mock_checkbox = MagicMock()
-    mock_checkbox.execute.return_value = [{"name": "org", "sso_start_url": "u", "sso_region": "r", "default_region": "r"}]
+    mock_checkbox.execute.return_value = [
+        {"name": "org", "sso_start_url": "u", "sso_region": "r", "default_region": "r"}
+    ]
     monkeypatch.setattr(inquirer, "checkbox", lambda **k: mock_checkbox)
 
     # User says NO to overwrite
@@ -110,10 +112,14 @@ def test_wizard_cli_sync_fail(monkeypatch, tmp_path, mock_rich_console):
     mock_cb.execute.return_value = [{"name": "org"}]
     monkeypatch.setattr("awsctl.wizard.inquirer.checkbox", lambda **k: mock_cb)
 
-    monkeypatch.setattr("awsctl.config.get_orgs_path", lambda ensure=True: tmp_path / "orgs.yaml")
+    monkeypatch.setattr(
+        "awsctl.config.get_orgs_path", lambda ensure=True: tmp_path / "orgs.yaml"
+    )
 
     # Mock failure
-    monkeypatch.setattr("awsctl.core.cmd_config_sync", MagicMock(side_effect=Exception("Sync Fail")))
+    monkeypatch.setattr(
+        "awsctl.core.cmd_config_sync", MagicMock(side_effect=Exception("Sync Fail"))
+    )
 
     # Mock shell detection
     monkeypatch.setattr("awsctl.shell.detect_shell_profile", lambda: tmp_path / "rc")

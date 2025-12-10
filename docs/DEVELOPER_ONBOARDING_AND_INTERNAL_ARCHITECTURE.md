@@ -1,0 +1,123 @@
+# file: docs/DEVELOPER_ONBOARDING_AND_INTERNAL_ARCHITECTURE.md
+# Developer Onboarding & Internal Architecture
+
+**Target Audience:** Maintainers, Contributors, and Platform Engineers inheriting `awsctl`.
+**Version:** v2.8.0
+
+---
+
+## 1. Architecture Overview
+
+`awsctl` is not a standard CLI tool; it is a **shell-integrated identity broker**.
+It bridges the gap between Python (where logic lives) and the Shell (where credentials must be exported).
+
+### 1.1 The "Context Bridge" Pattern
+
+Standard CLIs cannot modify the parent shell's environment variables.
+`awsctl` solves this using a **function wrapper** + **evaluation strategy**:
+
+1.  **Wrapper (`awsctl` function):** Intercepts user commands.
+2.  **Binary (`_awsctl_bin`):** Calculates the state change.
+3.  **Strategy Output:** The binary emits a "Strategy" line (`EXEC` or `EVAL`).
+4.  **Execution:**
+    - `EXEC`: The binary runs a subprocess (e.g., `status`, `login`).
+    - `EVAL`: The binary outputs `export VAR=VAL` commands, which the wrapper `eval`s.
+
+### 1.2 Module Breakdown
+
+| Module | Responsibility | Key Security Control |
+| :--- | :--- | :--- |
+| `awsctl.cli` | Entry point & Dispatch | Global Exception Handler (Redaction) |
+| `awsctl.core` | Orchestration (Login/Switch) | Token verification |
+| `awsctl.use_exports` | AWS CLI Subprocess Calls | **TTY Guard** (Prevents leaks) |
+| `awsctl.registry` | Policy Definitions | **Pinned Trust Anchor** (Tier 3) |
+| `awsctl.shell` | Wrapper Injection | Fail-closed logic |
+| `awsctl.plugins` | Extension Runner | Namespace isolation & Timeouts |
+
+---
+
+## 2. State Management
+
+`awsctl` is effectively stateless, relying on the ecosystem for persistence.
+
+- **Identity:** `~/.aws/sso/cache/*.json` (Managed by AWS CLI v2).
+- **Context:** `~/.aws/awsctl-context.json` (Stores current selection for "Smart History").
+- **Config:** `~/.awsctl/orgs.yaml` (User enablement preference).
+- **Policy:** **Immutable.** Hardcoded in `registry.py` or loaded from signed Remote Registry.
+
+---
+
+## 3. Development Workflow
+
+### 3.1 Prerequisites
+
+- Python 3.9+
+- `make`
+- `pre-commit`
+
+### 3.2 Quick Start
+
+The `Makefile` automates the entire lifecycle.
+
+> # 1. Create venv and install dependencies
+> make install
+>
+> # 2. Activate
+> source .venv/bin/activate
+>
+> # 3. Run full test suite
+> make test
+>
+> # 4. Run static analysis (Bandit, MyPy, Ruff)
+> make lint
+
+### 3.3 Testing Strategy
+
+We enforce a **strict >78% coverage floor**.
+
+- **Unit Tests (`tests/`):** Validate logic in isolation.
+- **Integration (`tests/test_integration_full.py`):** "God Mode" mock of AWS CLI and File System.
+- **Smoke Test (`tools/comprehensive_smoke.sh`):** A Bash script that creates a fake `_awsctl_bin` environment to validate the shell wrapper logic and `eval` behavior.
+
+---
+
+## 4. Release Process
+
+Releases are automated via GitHub Actions (`.github/workflows/release.yaml`).
+
+1.  **Verify:** Ensure `make test` and `make security` pass locally.
+2.  **Tag:** Create a semantic version tag (e.g., `v2.8.1`).
+
+    > git tag -a v2.8.1 -m "Fix: handled edge case X"
+    > git push origin v2.8.1
+
+3.  **Build:** GitHub Actions builds the wheel and sdist.
+4.  **Publish:** Artifacts are attached to the GitHub Release. **We do not publish to PyPI public index.**
+
+---
+
+## 5. Security & Maintenance Responsibilities
+
+### 5.1 Registry Updates
+
+Guardrails are defined in `src/awsctl/registry.py`. To update allowed regions or roles:
+
+1.  Edit `_EMBEDDED_ORGS`.
+2.  Update `min_client_version` if the change is mandatory.
+3.  Release a new version.
+
+### 5.2 Signing Key Rotation (Tier 3)
+
+If the Remote Registry private key is compromised:
+
+1.  Generate new Minisign keys.
+2.  Update `_TRUSTED_ROOT_KEY` in `src/awsctl/registry.py`.
+3.  Release a critical patch (`v2.x.x`).
+4.  The new client will reject old signatures immediately.
+
+### 5.3 Dependency Audits
+
+`pip-audit` runs on every CI build.
+
+- **Alert:** If a CVE is found, update `pyproject.toml` immediately.
+- **Lock:** We use `urllib3>=2.2.2` to mitigate specific known vulnerabilities.

@@ -19,7 +19,9 @@ from awsctl.utils import ForceStderr, console
 
 
 def _print_account_table(accounts: List[Account]) -> None:
-    table = Table(title="Available Accounts", show_header=True, header_style="bold cyan")
+    table = Table(
+        title="Available Accounts", show_header=True, header_style="bold cyan"
+    )
     table.add_column("Account Name", style="green")
     table.add_column("Account ID", style="cyan")
 
@@ -63,7 +65,9 @@ def select_account(accounts: List[Account], org_name: str) -> str:
     # 2. Add remaining accounts
     for a in accounts:
         if a.account_id not in seen_ids:
-            choices.append({"name": f"{a.account_name} ({a.account_id})", "value": a.account_id})
+            choices.append(
+                {"name": f"{a.account_name} ({a.account_id})", "value": a.account_id}
+            )
 
     with ForceStderr():
         return str(

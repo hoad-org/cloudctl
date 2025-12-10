@@ -35,9 +35,7 @@ def set_debug(enabled: bool) -> None:
 
 
 def _redact_cmd(cmd: List[str]) -> str:
-    """
-    [FIX] PYBH-0035: Redact sensitive arguments from debug logs.
-    """
+    """Redact sensitive arguments from debug logs."""
     SENSITIVE = {"--access-token", "--session-token", "sessionToken"}
     out = []
     skip = False
@@ -75,71 +73,42 @@ console = Console(theme=custom_theme, stderr=True)
 
 
 class LazyStdoutConsole:
-    """
-    [FIX] PYBH-0036: Lazy proxy for stdout console.
-    This ensures that if sys.stdout is swapped (e.g. by secure_stdout),
-    the console writes to the NEW stream, not the old captured fd.
-    """
+    """Lazy proxy for stdout console."""
 
     def __getattr__(self, name: str) -> Any:
-        # Create a fresh console bound to the current sys.stdout
         _c = Console(theme=custom_theme, file=sys.stdout)
         return getattr(_c, name)
 
 
-# Export the lazy console
 stdout_console = LazyStdoutConsole()
 
 
 class ForceStderr:
-    """
-    Context manager to force stdout to use the TTY explicitly.
-    """
+    """Context manager to force stdout to use the TTY explicitly."""
 
     def __enter__(self) -> ForceStderr:
         global _TTY_HANDLE
-
         try:
             sys.stdout.flush()
             sys.stderr.flush()
         except (OSError, AttributeError):
             pass
 
-        self.original_stdout_fd = -1
-        self.saved_stdout_fd = -1
         self.original_stdout_obj = sys.stdout
 
-        try:
-            self.original_stdout_fd = sys.stdout.fileno()
-            self.saved_stdout_fd = os.dup(self.original_stdout_fd)
-        except (OSError, AttributeError):
-            pass
-
         target_obj = sys.stderr
-        target_fd = sys.stderr.fileno()
-
         try:
             if os.isatty(2):
                 if _TTY_HANDLE is None or _TTY_HANDLE.closed:
-                    # [FIX] Windows does not have /dev/tty. Use CON: instead.
                     dev_tty = "CON:" if sys.platform == "win32" else "/dev/tty"
                     try:
                         _TTY_HANDLE = open(dev_tty, "w", buffering=1, encoding="utf-8")
                     except OSError:
-                        # Fallback if special device fails
                         pass
-
                 if _TTY_HANDLE:
                     target_obj = _TTY_HANDLE
-                    target_fd = _TTY_HANDLE.fileno()
         except OSError:
             pass
-
-        if self.original_stdout_fd != -1:
-            try:
-                os.dup2(target_fd, self.original_stdout_fd)
-            except OSError:
-                pass
 
         sys.stdout = target_obj
         return self
@@ -149,15 +118,7 @@ class ForceStderr:
             sys.stdout.flush()
         except (OSError, AttributeError):
             pass
-
         sys.stdout = self.original_stdout_obj
-
-        if self.saved_stdout_fd != -1 and self.original_stdout_fd != -1:
-            try:
-                os.dup2(self.saved_stdout_fd, self.original_stdout_fd)
-                os.close(self.saved_stdout_fd)
-            except OSError:
-                pass
 
 
 def run(
@@ -167,18 +128,13 @@ def run(
     timeout: Optional[float] = 10.0,
     capture: bool = True,
 ) -> subprocess.CompletedProcess[str]:
-    """
-    Run a command securely with timeout enforcement.
-    """
+    """Run a command securely with timeout enforcement."""
     if _DEBUG_MODE:
-        # [FIX] PYBH-0035: Redact credentials in logs
         debug_print(f"Exec: {_redact_cmd(cmd)}")
 
     stdout_dest = subprocess.PIPE if capture else None
     stderr_dest = subprocess.PIPE if capture else None
 
-    # [FIX] PYBH-0043: Only detach session if capturing.
-    # Interactive commands (capture=False) need the TTY group.
     start_new_session = False
     if os.name == "posix" and capture:
         start_new_session = True
@@ -194,7 +150,6 @@ def run(
         ) as proc:
             try:
                 stdout, stderr = proc.communicate(timeout=timeout)
-
             except subprocess.TimeoutExpired as e:
                 if start_new_session:
                     try:
@@ -207,22 +162,16 @@ def run(
                 if _DEBUG_MODE:
                     debug_print(f"Command timed out after {timeout}s (KILLED)")
 
-                # [FIX] PYBH-0054: If check=False, return a failed process instead of crashing
                 if not check:
                     return subprocess.CompletedProcess(
                         args=cmd,
-                        returncode=124,  # Standard timeout exit code
+                        returncode=124,
                         stdout=e.stdout.decode() if isinstance(e.stdout, bytes) else "",
                         stderr=e.stderr.decode() if isinstance(e.stderr, bytes) else "",
                     )
-
-                out_capture = e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
-                err_capture = e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or "")
-
-                raise RuntimeError(f"Command timed out after {timeout}s: {' '.join(cmd)}\n" f"Stdout: {out_capture.strip()}\n" f"Stderr: {err_capture.strip()}") from e
+                raise RuntimeError("Command timed out") from e
 
             except KeyboardInterrupt:
-                # [FIX] PYBH-0022: Ensure child process group is killed on Ctrl+C
                 if start_new_session:
                     try:
                         os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
@@ -236,7 +185,9 @@ def run(
                 err_msg = stderr if capture else "(Interactive output)"
                 if _DEBUG_MODE:
                     debug_print(f"Command failed (rc={proc.returncode}): {err_msg}")
-                raise subprocess.CalledProcessError(proc.returncode, cmd, output=stdout, stderr=stderr)
+                raise subprocess.CalledProcessError(
+                    proc.returncode, cmd, output=stdout, stderr=stderr
+                )
 
             return subprocess.CompletedProcess(
                 args=cmd,
@@ -258,13 +209,33 @@ def is_wsl() -> bool:
     return False
 
 
+def is_headless() -> bool:
+    """Detect if we are running in a headless environment (SSH, Docker, CI)."""
+
+    if os.environ.get("AWSCTL_HEADLESS") or os.environ.get("AWS_EXECUTION_ENV"):
+        return True
+    if os.environ.get("SSH_CLIENT") or os.environ.get("SSH_TTY"):
+        return True
+    if not os.environ.get("DISPLAY") and not is_wsl() and sys.platform != "darwin":
+        return True
+    return False
+
+
 def open_browser(url: str) -> None:
+    # 1. Headless Check
+    if is_headless():
+        console.print(
+            "[info]Headless session detected. Please open this URL manually:[/]"
+        )
+        console.print(f"[link={url}]{url}[/]")
+        return
+
+    # 2. Try Open
     try:
         if is_wsl():
             if shutil.which("wslview"):
                 subprocess.run(["wslview", url], check=True)
                 return
-
             subprocess.run(["explorer.exe", url], check=False)
             return
 
@@ -280,10 +251,8 @@ def print_kv_table(title: str, data: Dict[str, Any]) -> None:
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column("Key", style="bold cyan")
     table.add_column("Value", style="white")
-
     for k, v in data.items():
         table.add_row(str(k), str(v))
-
     console.print(Panel(table, title=f"[bold]{title}[/]", border_style="blue"))
 
 

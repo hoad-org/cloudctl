@@ -14,7 +14,7 @@ def test_config_sync_direct(monkeypatch):
     # Mock config loader
     monkeypatch.setattr(
         "awsctl.config.load_orgs_config",
-        lambda: {"orgs": [{"name": "myorg", "sso_start_url": "u", "sso_region": "r"}]},
+        lambda: {"orgs": [{"name": "btavm", "sso_start_url": "u", "sso_region": "r"}]},
     )
 
     # Mock ensure_profile

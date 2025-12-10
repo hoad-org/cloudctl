@@ -1,4 +1,4 @@
-# file: tests/test_coverage_gap_fix_v5.py
+# file: tests/test_setup_wizard_errors.py
 import os
 import signal
 import subprocess
@@ -11,22 +11,6 @@ from awsctl import registry, shell, utils, wizard
 
 # [FIX] Skip on Windows
 @pytest.mark.skipif(os.name == "nt", reason="Sudo/chown logic is Posix only")
-def test_inject_shell_sudo_chown(monkeypatch, tmp_path):
-    rc = tmp_path / ".bashrc"
-    rc.touch()
-
-    # [FIX] Mock geteuid safely
-    if hasattr(os, "geteuid"):
-        monkeypatch.setattr("os.geteuid", lambda: 0)
-
-    monkeypatch.setenv("SUDO_UID", "1000")
-    monkeypatch.setenv("SUDO_GID", "1000")
-
-    with patch("os.chown") as mock_chown:
-        shell.inject_shell_function(rc)
-        mock_chown.assert_called()
-
-
 # [FIX] Skip on Windows
 @pytest.mark.skipif(os.name == "nt", reason="Sudo/chown logic is Posix only")
 def test_inject_shell_no_sudo_uid(monkeypatch, tmp_path):
@@ -61,8 +45,12 @@ def test_wizard_cli_sync_fail(monkeypatch, tmp_path, mock_rich_console):
     monkeypatch.setattr(registry, "get_choices", lambda: [])
     monkeypatch.setattr("awsctl.wizard.inquirer.checkbox", lambda **k: mock_cb)
 
-    monkeypatch.setattr("awsctl.config.get_orgs_path", lambda ensure=True: tmp_path / "orgs.yaml")
-    monkeypatch.setattr("awsctl.core.cmd_config_sync", MagicMock(side_effect=Exception("Sync Fail")))
+    monkeypatch.setattr(
+        "awsctl.config.get_orgs_path", lambda ensure=True: tmp_path / "orgs.yaml"
+    )
+    monkeypatch.setattr(
+        "awsctl.core.cmd_config_sync", MagicMock(side_effect=Exception("Sync Fail"))
+    )
     monkeypatch.setattr("awsctl.shell.detect_shell_profile", lambda: tmp_path / "rc")
     monkeypatch.setattr("awsctl.shell.inject_shell_function", lambda x: True)
 

@@ -1,4 +1,4 @@
-# file: tests/test_final_coverage.py
+# file: tests/test_integration_full.py
 """
 Total Coverage Enforcement.
 """
@@ -49,8 +49,10 @@ def god_mode(monkeypatch, tmp_path):
     # Files
     (mock_aws / "sso" / "cache" / "token.json").parent.mkdir(parents=True)
     (mock_aws / "sso" / "cache" / "token.json").write_text(MAGIC_JSON)
-    (mock_awsctl / "orgs.yaml").write_text("enabled_orgs:\n- myorg\n")
-    (mock_aws / "awsctl-context.json").write_text('{"current_org": "myorg", "account": "1"}')
+    (mock_awsctl / "orgs.yaml").write_text("enabled_orgs:\n- btavm\n")
+    (mock_aws / "awsctl-context.json").write_text(
+        '{"current_org": "btavm", "account": "1"}'
+    )
 
     # Registry
     monkeypatch.setattr(
@@ -58,7 +60,7 @@ def god_mode(monkeypatch, tmp_path):
         "KNOWN_ORGS",
         [
             {
-                "name": "myorg",
+                "name": "btavm",
                 "sso_start_url": "https://u",
                 "sso_region": "us-east-1",
                 "default_region": "us-east-1",
@@ -73,13 +75,17 @@ def god_mode(monkeypatch, tmp_path):
     mock_proc = MagicMock(returncode=0, stdout=MAGIC_JSON, stderr="")
     monkeypatch.setattr(aws, "run_aws", lambda *a, **k: mock_proc)
     monkeypatch.setattr("awsctl.utils.open_browser", MagicMock())
-    monkeypatch.setattr("awsctl.shell.detect_shell_profile", lambda: mock_home / ".bashrc")
+    monkeypatch.setattr(
+        "awsctl.shell.detect_shell_profile", lambda: mock_home / ".bashrc"
+    )
 
     # Mock os.execvpe to prevent killing the pytest runner
     monkeypatch.setattr(os, "execvpe", MagicMock())
 
     # Patch core/helpers that might call AWS
-    monkeypatch.setattr("awsctl.accounts.list_accounts", lambda r: [accounts.Account("1", "d", "e")])
+    monkeypatch.setattr(
+        "awsctl.accounts.list_accounts", lambda r: [accounts.Account("1", "d", "e")]
+    )
     monkeypatch.setattr("awsctl.accounts.list_roles", lambda r, a: ["Admin"])
 
 
@@ -104,7 +110,7 @@ def test_cli_dispatch_full(monkeypatch):
 
     # Core Flows
     run(["doctor"])
-    run(["login", "--org", "myorg"])
+    run(["login", "--org", "btavm"])
     run(["config", "sync"])
     run(["status"])
 
@@ -123,7 +129,9 @@ def test_cli_dispatch_full(monkeypatch):
     run(["list", "roles"])
 
     # Interactive Switch (Mocked)
-    monkeypatch.setattr("awsctl.interactive.run_interactive_use", lambda o, **k: ("1", "r", "us-east-1"))
+    monkeypatch.setattr(
+        "awsctl.interactive.run_interactive_use", lambda o, **k: ("1", "r", "us-east-1")
+    )
     monkeypatch.setattr("awsctl.cli.emit_exports", lambda *a: "export A=B")
     run(["switch"])
 
@@ -131,7 +139,7 @@ def test_cli_dispatch_full(monkeypatch):
     # Setup context with previous
     monkeypatch.setattr(
         "awsctl.context_manager.get_previous_context",
-        lambda: {"org": "myorg", "account": "1", "role": "r", "region": "us-east-1"},
+        lambda: {"org": "btavm", "account": "1", "role": "r", "region": "us-east-1"},
     )
     run(["switch", "-"])
 
@@ -139,8 +147,12 @@ def test_cli_dispatch_full(monkeypatch):
     run(["switch", "1", "--role", "r", "--region", "us-east-1"])
 
     # Exec
-    monkeypatch.setattr("awsctl.use_exports._aws_json", lambda args: json.loads(MAGIC_JSON))
-    run(["exec", "--account", "1", "--role", "r", "--region", "us-east-1", "--", "echo"])
+    monkeypatch.setattr(
+        "awsctl.use_exports._aws_json", lambda args: json.loads(MAGIC_JSON)
+    )
+    run(
+        ["exec", "--account", "1", "--role", "r", "--region", "us-east-1", "--", "echo"]
+    )
 
     # Strategy Check
     run(["--check-strategy", "login", "--account", "123"])
@@ -164,7 +176,7 @@ def test_cli_errors(monkeypatch, mock_rich_console):
     mock_config = {
         "orgs": [
             {
-                "name": "myorg",
+                "name": "btavm",
                 "sso_start_url": "u",
                 "sso_region": "r",
                 "allowed_regions": ["eu-west-1"],
@@ -174,7 +186,7 @@ def test_cli_errors(monkeypatch, mock_rich_console):
     }
     monkeypatch.setattr("awsctl.core.load_orgs_config", lambda: mock_config)
     monkeypatch.setattr("awsctl.config.load_orgs_config", lambda: mock_config)
-    monkeypatch.setattr("awsctl.cli.load_context", lambda: {"current_org": "myorg"})
+    monkeypatch.setattr("awsctl.cli.load_context", lambda: {"current_org": "btavm"})
 
     args = type(
         "A",
@@ -184,7 +196,7 @@ def test_cli_errors(monkeypatch, mock_rich_console):
             "account": "123456789012",
             "role": "r",
             "region": "us-west-1",  # Violation
-            "org": "myorg",
+            "org": "btavm",
         },
     )
 
@@ -201,7 +213,9 @@ def test_cli_errors(monkeypatch, mock_rich_console):
     monkeypatch.setattr("awsctl.context_manager.load_context", lambda: {})
     monkeypatch.setattr(
         "awsctl.core.load_active_sso_token",
-        lambda *a, **k: sso_cache.SsoToken("tok", "u", "r", datetime.now(timezone.utc), {}),
+        lambda *a, **k: sso_cache.SsoToken(
+            "tok", "u", "r", datetime.now(timezone.utc), {}
+        ),
     )
     monkeypatch.setattr("awsctl.use_exports._aws_json", lambda c: {})
 

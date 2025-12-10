@@ -1,5 +1,5 @@
 # file: docs/CLI_REFERENCE.md
-# awsctl Command Reference (v2.7.0 - Enterprise Ready)
+# awsctl Command Reference (v2.8.0)
 
 This document is the **Single Source of Truth** for the `awsctl` CLI.
 
@@ -12,7 +12,9 @@ This document is the **Single Source of Truth** for the `awsctl` CLI.
 - **Strategy:** `EXEC`
 - **Purpose:** Authenticate to AWS IAM Identity Center (SSO).
 - **Security Note:** A **mandatory plugin check** (e.g., VPN status) runs before the browser window opens.
-- **Example:** `awsctl login --org engineering`
+- **Example:**
+
+> awsctl login --org btavm
 
 ### `awsctl switch`
 
@@ -20,10 +22,15 @@ This document is the **Single Source of Truth** for the `awsctl` CLI.
 - **Purpose:** Select a specific Account, Role, and Region to export into the current shell.
 - **Exports (In-Memory):** Exports `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION`, and `AWS_DEFAULT_REGION`.
 - **Example:**
-  - Interactive: `awsctl switch`
-  - Toggle Back: `awsctl switch -`
-  - Quick Alias: `awsctl switch @prod`
-- **Syntax:** `awsctl switch [ @alias | - | --account <id> --role <name> --region <region> ]`
+  - Interactive:
+    > awsctl switch
+  - Toggle Back:
+    > awsctl switch -
+  - Quick Alias:
+    > awsctl switch @prod
+- **Syntax:**
+
+> awsctl switch [ @alias | - | --account <id> --role <name> --region <region> ]
 
 ### `awsctl logout`
 
@@ -58,8 +65,10 @@ This document is the **Single Source of Truth** for the `awsctl` CLI.
 ### `awsctl exec`
 
 - **Strategy:** `EXEC`
-- **Purpose:** Run a command in a specific context *without* changing your current shell's environment variables. The temporary session is **destroyed** upon command completion.
-- **Example:** `awsctl exec --account 123456789012 -- aws s3 ls`
+- **Purpose:** Run a command in a specific context _without_ changing your current shell's environment variables. The temporary session is **destroyed** upon command completion.
+- **Example:**
+
+> awsctl exec --account 123456789012 -- aws s3 ls
 
 ### `awsctl env`
 

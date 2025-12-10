@@ -20,7 +20,7 @@ import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Generator, Optional, Union, cast
+from typing import Any, Dict, Generator, Optional, Union
 
 from awsctl.sso_cache import _normalize_start_url
 from awsctl.utils import run
@@ -30,7 +30,6 @@ HOME = Path.home()
 AWS_DIR = HOME / ".aws"
 SSO_CACHE_DIR = AWS_DIR / "sso" / "cache"
 
-# [FIX] PYBH-0056: Respect standard AWS_CONFIG_FILE environment variable
 if os.environ.get("AWS_CONFIG_FILE"):
     AWS_CONFIG = Path(os.environ["AWS_CONFIG_FILE"])
 else:
@@ -40,27 +39,22 @@ else:
 @contextlib.contextmanager
 def _config_file_lock(timeout: float = 5.0) -> Generator[None, None, None]:
     """
-    [FIX] PYBH-0023: Cross-platform spinlock using atomic file creation.
-    [FIX] PYBH-0028: Added Stale Lock detection. If lock is >30s old, break it.
-    [FIX] PYBH-0045: Raise TimeoutError if lock cannot be acquired.
+    Cross-platform spinlock using atomic file creation.
     """
     lock_path = AWS_CONFIG.with_suffix(".lock")
     start = time.time()
     locked = False
 
-    # Ensure parent dir exists before locking
     if not AWS_CONFIG.parent.exists():
         AWS_CONFIG.parent.mkdir(parents=True, exist_ok=True)
 
     while (time.time() - start) < timeout:
         try:
-            # Atomic creation (O_CREAT | O_EXCL)
             fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_RDWR)
             os.close(fd)
             locked = True
             break
         except FileExistsError:
-            # Lock exists. Check for staleness.
             try:
                 if lock_path.stat().st_mtime < (time.time() - 30):
                     try:
@@ -70,7 +64,6 @@ def _config_file_lock(timeout: float = 5.0) -> Generator[None, None, None]:
                         pass
             except OSError:
                 pass
-
             time.sleep(0.1)
         except OSError:
             time.sleep(0.1)
@@ -91,8 +84,6 @@ def _config_file_lock(timeout: float = 5.0) -> Generator[None, None, None]:
 def _clean_env() -> Dict[str, str]:
     """
     🛡️ SECURITY: Return environment free of AWS identity variables.
-    [FIX] PYBH-0032: Added Web Identity and Role ARN to block list.
-    [FIX] PYBH-0056: Do NOT remove AWS_CONFIG_FILE, allow user override.
     """
     env = os.environ.copy()
     keys = [
@@ -102,7 +93,6 @@ def _clean_env() -> Dict[str, str]:
         "AWS_SESSION_TOKEN",
         "AWS_REGION",
         "AWS_DEFAULT_REGION",
-        # "AWS_CONFIG_FILE",  <-- Kept to support custom config paths
         "AWS_SHARED_CREDENTIALS_FILE",
         "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
         "AWS_CONTAINER_CREDENTIALS_FULL_URI",
@@ -115,11 +105,12 @@ def _clean_env() -> Dict[str, str]:
     return env
 
 
-def run_aws(args: list[str], timeout: Optional[float] = 60.0) -> subprocess.CompletedProcess[str]:
-    return cast(
-        subprocess.CompletedProcess[str],
-        run(args, check=False, timeout=timeout, env=_clean_env()),
-    )
+def run_aws(
+    args: list[str], timeout: Optional[float] = 60.0
+) -> subprocess.CompletedProcess[str]:
+    # [FIX] Mypy return-value error: Removed manual cast to avoid tuple conversion issues.
+    # The utils.run function already returns CompletedProcess[str].
+    return run(args, check=False, timeout=timeout, env=_clean_env())
 
 
 def _ensure_aws_config_file() -> None:
@@ -136,9 +127,11 @@ def _check_unsafe_config() -> None:
         return
     try:
         raw = AWS_CONFIG.read_text(encoding="utf-8")
-        # [FIX] PYBH-0052: Do not match commented out include lines.
         if re.search(r"^(?![ \t]*[#;])\s*include\s*=", raw, re.MULTILINE):
-            raise RuntimeError("Fatal: ~/.aws/config contains 'include' directives.\n" "awsctl cannot modify this file safely without causing corruption.")
+            raise RuntimeError(
+                "Fatal: ~/.aws/config contains 'include' directives.\n"
+                "awsctl cannot modify this file safely without causing corruption."
+            )
     except OSError:
         pass
 
@@ -151,7 +144,6 @@ def _configparser_read() -> configparser.RawConfigParser:
 
 
 def _configparser_write(cfg: configparser.RawConfigParser) -> None:
-    # [FIX] PYBH-0024: Create backup before overwriting
     if AWS_CONFIG.exists():
         backup = AWS_CONFIG.with_suffix(".config.bak")
         try:
@@ -159,14 +151,12 @@ def _configparser_write(cfg: configparser.RawConfigParser) -> None:
         except OSError:
             pass
 
-    # [FIX] PYBH-0056: Use same dir as target for atomic move support
     target_dir = AWS_CONFIG.parent
     fd, tmp_path = tempfile.mkstemp(dir=target_dir, text=True)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             cfg.write(f)
 
-        # [FIX] PYBH-0055: Resolve symlinks to preserve them
         dest_path = AWS_CONFIG
         if dest_path.is_symlink():
             dest_path = dest_path.resolve()
@@ -192,7 +182,9 @@ def aws_configure_set(profile: str, key: str, value: str) -> None:
         _configparser_write(cfg)
 
 
-def _set_section(cfg: configparser.RawConfigParser, section: str, pairs: Dict[str, str]) -> None:
+def _set_section(
+    cfg: configparser.RawConfigParser, section: str, pairs: Dict[str, str]
+) -> None:
     if not cfg.has_section(section):
         cfg.add_section(section)
     for k, v in pairs.items():
@@ -205,8 +197,6 @@ def ensure_sso_base_profile(org: Dict[str, Any]) -> str:
     with _config_file_lock():
         _check_unsafe_config()
 
-        # [FIX] PYBH-0064: Prevent profile collisions for similar org names (org.a vs org_a)
-        # by appending a hash of the original name.
         safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", org["name"])
         org_hash = hashlib.sha256(org["name"].encode()).hexdigest()[:6]
 
@@ -237,24 +227,18 @@ def ensure_sso_base_profile(org: Dict[str, Any]) -> str:
         return profile
 
 
-def write_target_profile(org: Dict[str, Any], account_id: str, role_name: str, region: str) -> str:
-    # Lock for read/modify/write cycle
+def write_target_profile(
+    org: Dict[str, Any], account_id: str, role_name: str, region: str
+) -> str:
     with _config_file_lock():
         pass
 
     base_profile = ensure_sso_base_profile(org)
 
     with _config_file_lock():
-        sso_session_name = base_profile.split("-", 1)[1].rsplit("-", 1)[0]  # Extract session part roughly
-        # Actually safer to reuse the logic from ensure_sso_base_profile or just rely on the fact
-        # that base_profile is sso-{name}-{hash}.
-        # sso_session in config points to {name} (safe_name).
-
-        # Re-derive session name safely
         safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", org["name"])
         sso_session_name = safe_name
 
-        # [FIX] PYBH-0048: Avoid profile collisions (Role-A vs Role_A)
         safe_role = re.sub(r"[^a-zA-Z0-9_-]", "-", role_name)
         role_hash = hashlib.sha256(role_name.encode()).hexdigest()[:6]
 
@@ -298,7 +282,6 @@ def get_valid_sso_access_token(start_url: str, sso_region: str) -> Union[str, No
 
     for p in SSO_CACHE_DIR.glob("*.json"):
         try:
-            # [FIX] PYBH-0031: Read with limit
             if p.stat().st_size > 1024 * 1024:
                 continue
             doc = json.loads(p.read_text(encoding="utf-8"))
@@ -408,7 +391,11 @@ def sso_list_account_roles(
 
         try:
             data = json.loads(proc.stdout)
-            page = [r.get("roleName", "") for r in data.get("roleList", []) if r.get("roleName")]
+            page = [
+                r.get("roleName", "")
+                for r in data.get("roleList", [])
+                if r.get("roleName")
+            ]
             results.extend(page)
             next_token = data.get("nextToken")
             if not next_token:

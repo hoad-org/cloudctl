@@ -27,7 +27,7 @@ def test_select_account(mock_rich_console, mock_inquirer):
     ]
     mock_inquirer.execute.return_value = "123"
     # [FIX] Pass org_name for smart history lookup
-    result = interactive.select_account(accts, "myorg")
+    result = interactive.select_account(accts, "btavm")
     assert result == "123"
     captured = "".join(mock_rich_console.captured)
     assert "Available Accounts" in captured
@@ -69,15 +69,17 @@ def test_select_region_defaults(mock_rich_console, mock_inquirer):
 def test_run_interactive_use_success(monkeypatch, mock_rich_console, mock_inquirer):
     monkeypatch.setattr(
         "awsctl.core.load_orgs_config",
-        lambda: {"orgs": [{"name": "myorg", "sso_start_url": "u", "sso_region": "r"}]},
+        lambda: {"orgs": [{"name": "btavm", "sso_start_url": "u", "sso_region": "r"}]},
     )
-    monkeypatch.setattr("awsctl.interactive.list_accounts", lambda r: [accounts.Account("1", "n", "e")])
+    monkeypatch.setattr(
+        "awsctl.interactive.list_accounts", lambda r: [accounts.Account("1", "n", "e")]
+    )
     monkeypatch.setattr("awsctl.interactive.list_roles", lambda r, a: ["Admin"])
     monkeypatch.setattr("awsctl.guardrails.sort_roles", lambda o, r: r)
 
     mock_inquirer.execute.side_effect = ["1", "Admin", "us-east-1"]
 
-    acct, role, region = interactive.run_interactive_use("myorg")
+    acct, role, region = interactive.run_interactive_use("btavm")
 
     assert acct == "1"
     assert role == "Admin"
@@ -86,22 +88,24 @@ def test_run_interactive_use_success(monkeypatch, mock_rich_console, mock_inquir
 def test_run_interactive_use_no_accounts(monkeypatch, mock_rich_console):
     monkeypatch.setattr(
         "awsctl.core.load_orgs_config",
-        lambda: {"orgs": [{"name": "myorg", "sso_start_url": "u", "sso_region": "r"}]},
+        lambda: {"orgs": [{"name": "btavm", "sso_start_url": "u", "sso_region": "r"}]},
     )
     monkeypatch.setattr("awsctl.interactive.list_accounts", lambda r: [])
 
     # [FIX] Expect RuntimeError, not SystemExit
     with pytest.raises(RuntimeError):
-        interactive.run_interactive_use("myorg")
+        interactive.run_interactive_use("btavm")
 
 
 def test_run_interactive_use_api_error(monkeypatch, mock_rich_console):
     monkeypatch.setattr(
         "awsctl.core.load_orgs_config",
-        lambda: {"orgs": [{"name": "myorg", "sso_start_url": "u", "sso_region": "r"}]},
+        lambda: {"orgs": [{"name": "btavm", "sso_start_url": "u", "sso_region": "r"}]},
     )
-    monkeypatch.setattr("awsctl.interactive.list_accounts", MagicMock(side_effect=Exception("API Fail")))
+    monkeypatch.setattr(
+        "awsctl.interactive.list_accounts", MagicMock(side_effect=Exception("API Fail"))
+    )
 
     # [FIX] Expect RuntimeError
     with pytest.raises(RuntimeError):
-        interactive.run_interactive_use("myorg")
+        interactive.run_interactive_use("btavm")

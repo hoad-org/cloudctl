@@ -51,7 +51,9 @@ def test_list_accounts_pagination(monkeypatch):
 
 
 def test_list_accounts_error(monkeypatch):
-    monkeypatch.setattr(aws, "run_aws", lambda a: MagicMock(returncode=1, stderr="Fail"))
+    monkeypatch.setattr(
+        aws, "run_aws", lambda a: MagicMock(returncode=1, stderr="Fail")
+    )
     with pytest.raises(RuntimeError):
         aws.sso_list_accounts("u", "r")
 

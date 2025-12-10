@@ -1,4 +1,4 @@
-# file: tests/test_utils_coverage.py
+# file: tests/test_utils_extended.py
 """Coverage boost for awsctl.utils"""
 
 import sys
@@ -42,14 +42,18 @@ def test_is_wsl(monkeypatch):
 
 def test_open_browser_wsl(monkeypatch):
     monkeypatch.setattr(utils, "is_wsl", lambda: True)
-    with patch("shutil.which", side_effect=lambda x: "/bin/wslview" if x == "wslview" else None):
+    with patch(
+        "shutil.which", side_effect=lambda x: "/bin/wslview" if x == "wslview" else None
+    ):
         with patch("subprocess.run") as mock_run:
             utils.open_browser("http://example.com")
             mock_run.assert_called_with(["wslview", "http://example.com"], check=True)
     with patch("shutil.which", return_value=None):
         with patch("subprocess.run") as mock_run:
             utils.open_browser("http://example.com")
-            mock_run.assert_called_with(["explorer.exe", "http://example.com"], check=False)
+            mock_run.assert_called_with(
+                ["explorer.exe", "http://example.com"], check=False
+            )
 
 
 def test_open_browser_native(monkeypatch):

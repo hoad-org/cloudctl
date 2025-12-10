@@ -43,7 +43,9 @@ def test_fetch_signed_success(mock_response, mock_rich_console):
         mock_minisign_mod.PublicKey.return_value.verify.return_value = None
 
         with patch.dict(sys.modules, {"minisign": mock_minisign_mod}):
-            data = registry_loader.fetch_remote_registry("https://example.com/reg.json", public_key="RW...")
+            data = registry_loader.fetch_remote_registry(
+                "https://example.com/reg.json", public_key="RW..."
+            )
             assert data[0]["name"] == "remote"
             assert "Signature Verified" in "".join(mock_rich_console.captured)
 
@@ -58,7 +60,9 @@ def test_fetch_signed_tampered(mock_response, mock_rich_console):
 
     with patch("requests.get", side_effect=[mock_response, sig_resp]):
         mock_minisign_mod = MagicMock()
-        mock_minisign_mod.PublicKey.return_value.verify.side_effect = Exception("Forgery detected")
+        mock_minisign_mod.PublicKey.return_value.verify.side_effect = Exception(
+            "Forgery detected"
+        )
 
         with patch.dict(sys.modules, {"minisign": mock_minisign_mod}):
             with pytest.raises(SystemExit):
@@ -72,7 +76,9 @@ def test_fetch_signed_missing_dep(mock_response, mock_rich_console):
     with patch("requests.get", return_value=mock_response):
         with patch.dict(sys.modules, {"minisign": None}):
             with pytest.raises(SystemExit):
-                registry_loader.fetch_remote_registry("https://example.com/reg.json", public_key="RW...")
+                registry_loader.fetch_remote_registry(
+                    "https://example.com/reg.json", public_key="RW..."
+                )
             assert "minisign-verify" in "".join(mock_rich_console.captured)
 
 

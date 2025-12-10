@@ -21,7 +21,9 @@ def run_wizard() -> bool:
     console.clear()
     console.print(
         Panel.fit(
-            "[bold green]Welcome to awsctl![/]\n\n" "This wizard will configure your AWS SSO environment.\n" "No copying or pasting required.",
+            "[bold green]Welcome to awsctl![/]\n\n"
+            "This wizard will configure your AWS SSO environment.\n"
+            "No copying or pasting required.",
             title="Setup Wizard",
             border_style="green",
         )
@@ -61,7 +63,9 @@ def run_wizard() -> bool:
         console.print(f"\n[yellow]Configuration already exists at {config_path}[/]")
 
         with ForceStderr():
-            should_overwrite = inquirer.confirm(message="Overwrite existing configuration?", default=False).execute()  # type: ignore[attr-defined]
+            should_overwrite = inquirer.confirm(
+                message="Overwrite existing configuration?", default=False
+            ).execute()  # type: ignore[attr-defined]
 
         if not should_overwrite:
             console.print("[red]Aborted.[/]")
@@ -114,7 +118,12 @@ def run_wizard() -> bool:
     # ---------------------------------------------------------
     console.print(
         Panel(
-            "[bold green]Setup Complete![/]\n\n" "To activate the new tools, reload your shell:\n\n" f"    [bold white on black] source {rc_file} [/]\n\n" "Then login and switch contexts simply by typing:\n\n" f"    [bold]awsctl login --org {selected_orgs[0]['name']}[/]\n" "    [bold]awsctl switch[/]",
+            "[bold green]Setup Complete![/]\n\n"
+            "To activate the new tools, reload your shell:\n\n"
+            f"    [bold white on black] source {rc_file} [/]\n\n"
+            "Then login and switch contexts simply by typing:\n\n"
+            f"    [bold]awsctl login --org {selected_orgs[0]['name']}[/]\n"
+            "    [bold]awsctl switch[/]",
             title="⚠️  Action Required",
             border_style="yellow",
             expand=False,

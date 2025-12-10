@@ -7,13 +7,10 @@ Detects the user's shell (Bash/Zsh) and injects the 'awsctl' wrapper function.
 
 import os
 import shutil
-import sys
 import tempfile
 from pathlib import Path
 
-# [FIX] PYBH-0111: Pass --check-strategy FIRST to ensure it's parsed as a global flag
-# [FIX] PYBH-0057: Robust output parsing (tail -n1)
-# [SEC-FIX] Fail closed if strategy check fails to prevent token leakage
+# The exact string we inject. Used for detection and removal.
 AWSCTL_WRAPPER = """
 # AWSCTL SHELL INTEGRATION (v2.2-SECURE)
 awsctl() {
@@ -58,18 +55,20 @@ awsctl() {
 
 
 def detect_shell_profile() -> Path:
-    """
-    Heuristic to find the correct rc file.
-    """
+    """Heuristic to find the correct rc file."""
     home = Path.home()
-
-    # We rely on SHELL env var for detection, then fall back to file existence checks
     shell_env = os.environ.get("SHELL", "").lower()
+
+    # [FIX] Explicitly detect Fish shell to prevent writing to .bashrc
+    if "fish" in shell_env:
+        raise RuntimeError(
+            "Fish shell detected. Automatic injection is not supported.\n"
+            "Please see docs/SHELL_INTEGRATION.md for manual setup instructions."
+        )
 
     if "zsh" in shell_env:
         return home / ".zshrc"
 
-    # Assume Bash/generic POSIX for fallback
     candidates = [
         home / ".bash_profile",
         home / ".bash_login",
@@ -84,46 +83,25 @@ def detect_shell_profile() -> Path:
 
 
 def inject_shell_function(rc_file: Path) -> bool:
-    """
-    Appends the wrapper function to the rc_file.
-    [FIX] PYBH-0041: Atomic write with chown to prevent root lockout
-    [FIX] PYBH-0050: Handle missing SUDO_UID
-    [FIX] PYBH-0068: Resolve symlinks to avoid destroying them during move
-    """
-    # Resolve symlinks so we operate on the physical file
+    """Appends the wrapper function to the rc_file."""
     target_file = rc_file.resolve()
 
-    is_posix = sys.platform != "win32"
-    is_root = is_posix and hasattr(os, "geteuid") and os.geteuid() == 0
-
-    # Safely get SUDO_UID, defaulting to -1 (failure)
-    try:
-        sudo_uid = int(os.environ.get("SUDO_UID", -1))
-        sudo_gid = int(os.environ.get("SUDO_GID", -1))
-    except ValueError:
-        sudo_uid = -1
-        sudo_gid = -1
-
-    # Ensure target exists before read
+    # Ensure target exists
     if not target_file.exists():
         try:
             target_file.touch(0o600)
-            if is_root and sudo_uid != -1:
-                os.chown(target_file, sudo_uid, sudo_gid)
         except OSError:
             pass
 
     try:
-        # [FIX] Explicit utf-8 is required on Windows
         content = target_file.read_text(encoding="utf-8")
     except FileNotFoundError:
         content = ""
 
-    if "AWSCTL SHELL INTEGRATION (v2.2-SECURE)" in content:
+    if "AWSCTL SHELL INTEGRATION" in content:
         return False
 
     # Atomic Append
-    # Create temp file in same directory to allow atomic move
     fd, tmp_path = tempfile.mkstemp(dir=target_file.parent, text=True)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -133,18 +111,13 @@ def inject_shell_function(rc_file: Path) -> bool:
             f.write("\n")
             f.write(AWSCTL_WRAPPER)
 
-        # Match permissions
-        if is_root and sudo_uid != -1:
-            os.chown(tmp_path, sudo_uid, sudo_gid)
-
-        # Preserve mode if possible, else 644/600
+        # Preserve permissions roughly
         try:
             st = target_file.stat()
             os.chmod(tmp_path, st.st_mode)
         except OSError:
             os.chmod(tmp_path, 0o644)
 
-        # Atomic swap
         shutil.move(tmp_path, target_file)
         return True
 
@@ -153,4 +126,32 @@ def inject_shell_function(rc_file: Path) -> bool:
             os.remove(tmp_path)
         raise
 
+
+def remove_shell_function(rc_file: Path) -> bool:
+    """Removes the awsctl wrapper function from the rc_file."""
+    target_file = rc_file.resolve()
+    if not target_file.exists():
+        return False
+
+    try:
+        content = target_file.read_text(encoding="utf-8")
+    except Exception:
+        return False
+
+    if "AWSCTL SHELL INTEGRATION" not in content:
+        return False
+
+    # Naive but safe removal: exact string match
+    # We strip whitespace to handle auto-formatting drift
+    clean_content = content.replace(AWSCTL_WRAPPER, "")
+
+    # If naive failed (user edited it?), try a fallback or just leave it.
+    if len(clean_content) == len(content):
+        # Fallback: Try removing with surrounding newlines
+        clean_content = content.replace("\n" + AWSCTL_WRAPPER, "")
+
+    if len(clean_content) == len(content):
+        return False  # Could not cleanly remove
+
+    target_file.write_text(clean_content, encoding="utf-8")
     return True

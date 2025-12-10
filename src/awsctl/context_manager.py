@@ -91,7 +91,15 @@ def _update_history(data: Dict[str, Any], new_entry: Dict[str, str]) -> None:
     history: List[Dict[str, str]] = data.get("history", [])
 
     # Remove duplicates (move to top)
-    history = [h for h in history if not (h.get("org") == new_entry["org"] and h.get("account") == new_entry["account"] and h.get("role") == new_entry["role"])]
+    history = [
+        h
+        for h in history
+        if not (
+            h.get("org") == new_entry["org"]
+            and h.get("account") == new_entry["account"]
+            and h.get("role") == new_entry["role"]
+        )
+    ]
 
     # Add to top
     history.insert(0, new_entry)
@@ -174,13 +182,17 @@ def get_history() -> List[Dict[str, str]]:
     data = load_context()
     raw = data.get("history", [])
     # Type safety filter
-    return [{k: str(v) for k, v in item.items()} for item in raw if isinstance(item, dict)]
+    return [
+        {k: str(v) for k, v in item.items()} for item in raw if isinstance(item, dict)
+    ]
 
 
 def _get_token_health(org_name: str) -> str:
     try:
         org_conf = config.get_org(org_name)
-        ref = OrgRef(org_conf["name"], org_conf["sso_start_url"], org_conf["sso_region"])
+        ref = OrgRef(
+            org_conf["name"], org_conf["sso_start_url"], org_conf["sso_region"]
+        )
         token = sso_cache.load_active_sso_token(ref)
         if not token:
             return "[bold red]No valid token (Login required)[/]"
