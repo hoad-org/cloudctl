@@ -12,7 +12,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional, Union, cast
+from typing import Any, Dict, Generator, List, Optional, Union
 
 from rich.markdown import Markdown
 from rich.table import Table
@@ -195,10 +195,12 @@ def _resolve_account_id(ref: OrgRef, target: Optional[str]) -> str:
     target_lower = target.lower()
     for a in accts:
         if a.account_name.lower() == target_lower:
-            return cast(str, a.account_id)
+            # [FIX] Redundant cast removed
+            return a.account_id
     for a in accts:
         if a.account_id == target:
-            return cast(str, a.account_id)
+            # [FIX] Redundant cast removed
+            return a.account_id
     raise SystemExit(f"Account '{target}' not found.")
 
 
@@ -326,7 +328,6 @@ def cmd_switch(args: argparse.Namespace) -> int:
                     )
                     return 1
 
-                # [FIX] Removed redundant casts (Mypy infers correctly)
                 current_org = definition["org"]
                 account = str(definition["account"])
                 role = definition["role"]
@@ -611,7 +612,6 @@ def main(argv: Union[list[str], None] = None) -> int:
         console.print("\n[yellow]Operation cancelled.[/]")
         return 1
     except Exception as e:
-        # [FIX] Friendly error reporting for unhandled exceptions
         if "--debug" in argv or os.environ.get("AWSCTL_DEBUG"):
             console.print_exception(show_locals=True)
         else:

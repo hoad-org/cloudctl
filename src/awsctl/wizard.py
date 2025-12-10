@@ -36,7 +36,7 @@ def run_wizard() -> bool:
     console.print("[dim]Select the organizations you need access to:[/]")
 
     with ForceStderr():
-        selected_orgs = inquirer.checkbox(  # type: ignore[attr-defined]
+        selected_orgs = inquirer.checkbox(  # type: ignore
             message="Available Orgs:",
             choices=registry.get_choices(),
             instruction="(Use Space to select multiple, Enter to confirm)",
@@ -63,9 +63,10 @@ def run_wizard() -> bool:
         console.print(f"\n[yellow]Configuration already exists at {config_path}[/]")
 
         with ForceStderr():
-            should_overwrite = inquirer.confirm(
+            # [FIX] Suppress mypy module attribute error for dynamic confirm
+            should_overwrite = inquirer.confirm(  # type: ignore
                 message="Overwrite existing configuration?", default=False
-            ).execute()  # type: ignore[attr-defined]
+            ).execute()
 
         if not should_overwrite:
             console.print("[red]Aborted.[/]")

@@ -298,6 +298,11 @@ EOF
 
   if [ "$IS_WINDOWS" -eq 1 ]; then
       WIN_MOCK_SCRIPT="$(cygpath -w "${MOCK_BIN}/aws.py")"
+      # [FIX] Create batch file for Windows execution
+      cat <<EOF > "${MOCK_BIN}/aws.bat"
+@echo off
+"${PYTHON_BIN}" "${WIN_MOCK_SCRIPT}" %*
+EOF
       cat <<EOF > "${MOCK_BIN}/aws"
 #!/bin/sh
 "${PYTHON_BIN}" "${WIN_MOCK_SCRIPT}" "\$@"

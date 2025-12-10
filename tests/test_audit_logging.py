@@ -16,6 +16,9 @@ def test_audit_log_rotation_fail(monkeypatch, tmp_path):
 
 def test_open_browser_fallback_explorer(monkeypatch):
     monkeypatch.setattr(utils, "is_wsl", lambda: True)
+    # [FIX] Force headless check to False so we try to open browser
+    monkeypatch.setattr(utils, "is_headless", lambda: False)
+
     with patch("shutil.which", return_value=None):
         with patch("subprocess.run") as mock_run:
             utils.open_browser("http://url")
@@ -24,6 +27,9 @@ def test_open_browser_fallback_explorer(monkeypatch):
 
 def test_open_browser_exception(monkeypatch, mock_rich_console):
     monkeypatch.setattr(utils, "is_wsl", lambda: False)
+    # [FIX] Force headless check to False so we hit the exception block
+    monkeypatch.setattr(utils, "is_headless", lambda: False)
+
     with patch("webbrowser.open", side_effect=Exception("No Browser")):
         utils.open_browser("http://url")
     assert "Could not open browser" in "".join(mock_rich_console.captured)

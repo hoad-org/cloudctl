@@ -70,3 +70,5 @@ audit.log
 .awsctl/
 .aws/
 src/awsctl/_version.py
+src/awsctl/_version.py
+src/awsctl/_version.py

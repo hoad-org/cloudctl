@@ -36,7 +36,6 @@ def test_run_failure():
 @pytest.mark.skipif(os.name == "nt", reason="Posix-only features (killpg)")
 def test_run_new_session_kill(monkeypatch):
     """Test killpg is called for timeouts in new sessions."""
-    # We can safely patch os.name here because we are skipping on Windows/NT
     monkeypatch.setattr("os.name", "posix")
 
     with patch("subprocess.Popen") as mock_popen:
@@ -64,6 +63,9 @@ def test_is_wsl(monkeypatch):
 
 def test_open_browser_wsl(monkeypatch):
     monkeypatch.setattr(utils, "is_wsl", lambda: True)
+    # [FIX] Ensure headless check allows browser open attempt
+    monkeypatch.setattr(utils, "is_headless", lambda: False)
+
     with patch(
         "shutil.which", side_effect=lambda x: "/bin/wslview" if x == "wslview" else None
     ):
@@ -81,6 +83,9 @@ def test_open_browser_wsl(monkeypatch):
 
 def test_open_browser_native(monkeypatch):
     monkeypatch.setattr(utils, "is_wsl", lambda: False)
+    # [FIX] Mock headless to false
+    monkeypatch.setattr(utils, "is_headless", lambda: False)
+
     with patch("webbrowser.open") as mock_web:
         utils.open_browser("http://example.com")
         mock_web.assert_called_with("http://example.com")
@@ -88,6 +93,9 @@ def test_open_browser_native(monkeypatch):
 
 def test_open_browser_error(monkeypatch, mock_rich_console):
     monkeypatch.setattr(utils, "is_wsl", lambda: False)
+    # [FIX] Mock headless to false
+    monkeypatch.setattr(utils, "is_headless", lambda: False)
+
     with patch("webbrowser.open", side_effect=Exception("Boom")):
         utils.open_browser("http://fail.com")
     assert "Could not open browser" in "".join(mock_rich_console.captured)
