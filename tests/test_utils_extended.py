@@ -61,7 +61,7 @@ def test_open_browser_wsl(monkeypatch):
 
 def test_open_browser_native(monkeypatch):
     monkeypatch.setattr(utils, "is_wsl", lambda: False)
-    # [FIX] Mock headless to false to ensure we hit the browser open logic
+    # [FIX] Mock headless so logic proceeds
     monkeypatch.setattr(utils, "is_headless", lambda: False)
 
     with patch("webbrowser.open") as mock_web:
@@ -71,7 +71,7 @@ def test_open_browser_native(monkeypatch):
 
 def test_open_browser_error(monkeypatch, mock_rich_console):
     monkeypatch.setattr(utils, "is_wsl", lambda: False)
-    # [FIX] Mock headless to false to ensure we hit the browser open logic
+    # [FIX] Mock headless so logic proceeds
     monkeypatch.setattr(utils, "is_headless", lambda: False)
 
     with patch("webbrowser.open", side_effect=Exception("Boom")):
