@@ -42,9 +42,6 @@ def _resolve_aws_cli() -> str:
 
 @contextlib.contextmanager
 def _config_file_lock(timeout: float = 5.0) -> Generator[None, None, None]:
-    """
-    Cross-platform spinlock using atomic file creation.
-    """
     lock_path = AWS_CONFIG.with_suffix(".lock")
     start = time.time()
     locked = False
@@ -86,9 +83,6 @@ def _config_file_lock(timeout: float = 5.0) -> Generator[None, None, None]:
 
 
 def _clean_env() -> Dict[str, str]:
-    """
-    🛡️ SECURITY: Return environment free of AWS identity variables.
-    """
     env = os.environ.copy()
     keys = [
         "AWS_PROFILE",

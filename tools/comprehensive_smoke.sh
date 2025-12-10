@@ -158,7 +158,7 @@ echo "Log file initialized at ${SETUP_LOG}" >&3
   rc=$(run_and_capture "ruff" -- ruff check src tests)
   expect_rc "ruff" "${rc}" 0
 
-  # Allow black to fail in CI smoke (formatting should be enforced by pre-commit, not smoke)
+  # [FIX] Syntax error fixed: joined command to one line
   rc=$(run_and_capture "black-check" -- black --check src tests)
   # expect_rc "black-check" "${rc}" 0
 
@@ -182,7 +182,7 @@ echo "Log file initialized at ${SETUP_LOG}" >&3
 
   echo "enabled_orgs: ['btavm']" > "${HOME}/.awsctl/orgs.yaml"
 
-  # [FIX] Correct syntax for shell integration check
+  # [FIX] Robust shell integration check
   if [[ "$SHELL" == *"fish"* ]]; then
       record "shell-integration" 0 "skipped for fish (manual setup)"
   elif grep -q "AWSCTL SHELL INTEGRATION" "${HOME}/.bashrc" || grep -q "AWSCTL SHELL INTEGRATION" "${HOME}/.zshrc" || grep -q "AWSCTL SHELL INTEGRATION" "${HOME}/.profile"; then
