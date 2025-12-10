@@ -35,7 +35,9 @@ def test_version_reporting():
     # 2. End-to-end CLI flag check
     # We call the module directly to ensure we are testing the code, not the path
     try:
-        out = subprocess.check_output([sys.executable, "-m", "awsctl", "--version"], text=True).strip()
+        out = subprocess.check_output(
+            [sys.executable, "-m", "awsctl", "--version"], text=True
+        ).strip()
     except subprocess.CalledProcessError:
         out = ""
 
