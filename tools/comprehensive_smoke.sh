@@ -65,7 +65,6 @@ echo "Log file initialized at ${SETUP_LOG}" >&3
   }
 
   # [FIX] Shell Wrapper Mock - Updated to use --check-strategy
-  # This aligns with the actual logic in src/awsctl/shell.py
   awsctl() {
       # 1. Ask Python for strategy (suppress stderr debug noise)
       local strategy_out
