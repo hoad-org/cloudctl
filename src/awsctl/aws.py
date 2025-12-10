@@ -82,7 +82,10 @@ def _config_file_lock(timeout: float = 5.0) -> Generator[None, None, None]:
                 pass
 
 
-def _clean_env() -> Dict[str, str]:
+def get_clean_env() -> Dict[str, str]:
+    """
+    🛡️ SECURITY: Return environment free of AWS identity variables.
+    """
     env = os.environ.copy()
     keys = [
         "AWS_PROFILE",
@@ -106,7 +109,7 @@ def _clean_env() -> Dict[str, str]:
 def run_aws(
     args: list[str], timeout: Optional[float] = 60.0
 ) -> subprocess.CompletedProcess[str]:
-    return run(args, check=False, timeout=timeout, env=_clean_env())
+    return run(args, check=False, timeout=timeout, env=get_clean_env())
 
 
 def _ensure_aws_config_file() -> None:

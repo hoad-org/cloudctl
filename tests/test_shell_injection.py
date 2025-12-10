@@ -31,7 +31,8 @@ def test_aws_config_lock_stale_cleanup(tmp_path, monkeypatch):
 
 def test_clean_env_logic():
     with patch.dict(os.environ, {"AWS_ACCESS_KEY_ID": "secret", "PATH": "ok"}):
-        clean = aws._clean_env()
+        # [FIX] Updated function name from _clean_env to get_clean_env
+        clean = aws.get_clean_env()
         assert "AWS_ACCESS_KEY_ID" not in clean
         assert "PATH" in clean
 

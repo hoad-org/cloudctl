@@ -268,6 +268,13 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_switch(args: argparse.Namespace) -> int:
+    # [FIX] Robustness: If unknown args were passed (e.g. invalid flags),
+    # do NOT fall back to interactive mode. Fail fast.
+    unknown = getattr(args, "_unknown_args", [])
+    if unknown:
+        console.print(f"[red]Error: Unrecognized arguments: {' '.join(unknown)}[/]")
+        return 1
+
     with secure_stdout() as safe_out:
         ctx = context_manager.load_context()
         current_org = getattr(args, "org", None) or ctx.get("current_org")
@@ -564,6 +571,10 @@ def main(argv: Union[list[str], None] = None) -> int:
 
     try:
         args, unknown = p.parse_known_args(argv)
+
+        # [FIX] Attach unknown args to namespace so dispatchers can check them
+        args._unknown_args = unknown
+
         # 🛡️ GLOBAL EXCEPTION HANDLER
         # Wrapped in an inner try block to catch logic errors during dispatch
         if args.check_strategy:

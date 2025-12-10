@@ -64,18 +64,33 @@ echo "Log file initialized at ${SETUP_LOG}" >&3
       fi
   }
 
-  # [FIX] Shell Wrapper Mock
+  # [FIX] Shell Wrapper Mock - Updated to use --check-strategy
+  # This aligns with the actual logic in src/awsctl/shell.py
   awsctl() {
-      local output
-      output=$(run_python "$@")
-      local rc=$?
-      # If output contains the magic EVAL string, evaluate it in the current shell
-      if echo "$output" | grep -q "#AWSCTL-EVAL"; then
-          eval "$output"
+      # 1. Ask Python for strategy (suppress stderr debug noise)
+      local strategy_out
+      strategy_out=$(run_python --check-strategy "$@" 2>/dev/null)
+
+      # Extract last line and trim whitespace
+      local strategy
+      strategy=$(echo "$strategy_out" | tail -n 1 | tr -d '[:space:]')
+
+      # 2. Execute based on strategy
+      if [[ "$strategy" == "EVAL" ]]; then
+          local output
+          output=$(run_python "$@")
+          local rc=$?
+          if [[ $rc -eq 0 ]]; then
+              # Critical: Evaluate exports in current shell
+              eval "$output"
+          else
+              echo "$output"
+          fi
+          return $rc
       else
-          echo "$output"
+          # EXEC or default (passthrough)
+          run_python "$@"
       fi
-      return $rc
   }
 
   run_and_capture() {
@@ -372,8 +387,10 @@ EOF
   # -------------------------
   unset AWS_ACCESS_KEY_ID
 
-  # Switch to primary account
-  awsctl switch --target 338630860507 --role SecurityAuditor --region us-east-1 \
+  # [FIX] CRITICAL: Pass account as positional arg, NOT via --target.
+  # Using --target (an unknown flag) caused argparse to ignore it and fall back
+  # to interactive mode, hanging the CI process.
+  awsctl switch 338630860507 --role SecurityAuditor --region us-east-1 \
       > "${SHELL_ART_DIR}/switch.out" 2>&1
 
   if [[ "${AWS_ACCESS_KEY_ID:-}" == "AK_NEW" ]]; then

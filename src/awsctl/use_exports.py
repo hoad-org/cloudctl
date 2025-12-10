@@ -14,8 +14,8 @@ import subprocess
 import sys
 from typing import Any, Dict, List
 
-# [FIX] Import resolve helper
-from awsctl.aws import _resolve_aws_cli
+# [FIX] Import resolve helper and clean env helper
+from awsctl.aws import _resolve_aws_cli, get_clean_env
 
 from .sso_cache import OrgRef
 from .sso_cache import load_active_sso_token as load_active_sso_token
@@ -54,8 +54,15 @@ def _redact_args(args: List[str]) -> List[str]:
 
 def _aws_json(args: List[str]) -> Dict[str, Any]:
     try:
+        # [FIX] Use get_clean_env() to ensure we don't pick up ambient credentials
+        # (like AWS_ACCESS_KEY_ID from a previous run) which might confuse the CLI.
         p = subprocess.run(
-            args, check=False, capture_output=True, text=True, timeout=30
+            args,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=get_clean_env(),
         )
     except subprocess.TimeoutExpired:
         # [FIX B904] Chain exception
@@ -113,47 +120,47 @@ def emit_exports(
     # [FIX] Resolve binary for Windows compatibility
     aws_bin = _resolve_aws_cli()
 
-    data = _aws_json(
-        [
-            aws_bin,
-            "sso",
-            "get-role-credentials",
-            "--region",
-            tok.region,
-            "--access-token",
-            tok.access_token,
-            "--account-id",
-            account_id,
-            "--role-name",
-            role_name,
-        ]
-    )
-    creds = data.get("roleCredentials") or {}
-    ak = creds.get("accessKeyId")
-    sk = creds.get("secretAccessKey")
-    st = creds.get("sessionToken")
-    if not (ak and sk and st):
-        raise SystemExit("No role credentials returned. Check account/role assignment.")
+    cmd = [
+        aws_bin,
+        "sso",
+        "get-role-credentials",
+        "--account-id",
+        account_id,
+        "--role-name",
+        role_name,
+        "--access-token",
+        tok.access_token,
+        "--region",
+        tok.region,
+    ]
 
-    return (
-        "#AWSCTL-EVAL:\n"
-        f"export AWS_ACCESS_KEY_ID={shlex.quote(ak)}\n"
-        f"export AWS_SECRET_ACCESS_KEY={shlex.quote(sk)}\n"
-        f"export AWS_SESSION_TOKEN={shlex.quote(st)}\n"
-        f"export AWS_REGION={shlex.quote(region)}\n"
-        f"export AWS_DEFAULT_REGION={shlex.quote(region)}\n"
-        "unset AWS_PROFILE\n"
-    )
+    data = _aws_json(cmd)
+    creds = data.get("roleCredentials")
+
+    if not creds:
+        raise SystemExit("No role credentials returned from AWS CLI.")
+
+    # Use shlex.quote to prevent shell injection via malicious role/region names
+    exports = [
+        f"export AWS_ACCESS_KEY_ID={shlex.quote(creds['accessKeyId'])}",
+        f"export AWS_SECRET_ACCESS_KEY={shlex.quote(creds['secretAccessKey'])}",
+        f"export AWS_SESSION_TOKEN={shlex.quote(creds['sessionToken'])}",
+        f"export AWS_DEFAULT_REGION={shlex.quote(region)}",
+        f"export AWS_REGION={shlex.quote(region)}",
+    ]
+
+    return "\n".join(exports)
 
 
 def emit_unset() -> str:
-    return (
-        "#AWSCTL-EVAL:\n"
-        "unset AWS_ACCESS_KEY_ID\n"
-        "unset AWS_SECRET_ACCESS_KEY\n"
-        "unset AWS_SESSION_TOKEN\n"
-        "unset AWS_REGION\n"
-        "unset AWS_DEFAULT_REGION\n"
-        "unset AWS_PROFILE\n"
-        "echo '🔒 AWS session cleared from shell.'\n"
-    )
+    """
+    Generate shell unset commands to clear the context.
+    """
+    keys = [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_DEFAULT_REGION",
+        "AWS_REGION",
+    ]
+    return "\n".join(f"unset {k}" for k in keys)
