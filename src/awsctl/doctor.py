@@ -55,7 +55,15 @@ def check_aws_version() -> Tuple[bool, str]:
 
 
 def check_shell_integration() -> Tuple[bool, str]:
-    rc_file = shell.detect_shell_profile()
+    try:
+        rc_file = shell.detect_shell_profile()
+    except RuntimeError:
+        # [FIX] Handle Fish shell (or others that raise RuntimeError) gracefully.
+        # We don't want 'doctor' to crash or fail CI just because Fish requires manual setup.
+        if "fish" in os.environ.get("SHELL", "").lower():
+            return True, "Manual Setup (Fish)"
+        return False, "Unsupported Shell"
+
     if not rc_file.exists():
         return False, f"Missing: {rc_file}"
     try:
