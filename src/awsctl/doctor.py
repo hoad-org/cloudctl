@@ -70,6 +70,10 @@ def check_shell_integration() -> Tuple[bool, str]:
 
 
 def check_permissions() -> Tuple[bool, str]:
+    # [FIX] os.getuid() is POSIX-only. Skip check on Windows.
+    if os.name == "nt":
+        return True, "Skipped (Windows)"
+
     paths = [config.get_orgs_path(ensure=False), Path.home() / ".awsctl"]
     uid = os.getuid()
     issues = [p.name for p in paths if p.exists() and p.stat().st_uid != uid]

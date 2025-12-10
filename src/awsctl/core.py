@@ -390,16 +390,21 @@ def cmd_setup() -> int:
 
     cmd_config_sync()
 
-    rc_file = shell.detect_shell_profile()
+    # [FIX] Handle environments where shell detection fails (e.g. Fish, or weird CI)
     try:
-        if shell.inject_shell_function(rc_file):
-            console.print(f"[bold green]✅ Shell wrapper appended to {rc_file}[/]")
-        else:
-            console.print(f"✓ Shell wrapper already present in [dim]{rc_file}[/]")
-    except Exception as e:
-        console.print(
-            f"[bold yellow]Warning:[/bold yellow] Could not inject shell wrapper: {e}"
-        )
+        rc_file = shell.detect_shell_profile()
+        try:
+            if shell.inject_shell_function(rc_file):
+                console.print(f"[bold green]✅ Shell wrapper appended to {rc_file}[/]")
+            else:
+                console.print(f"✓ Shell wrapper already present in [dim]{rc_file}[/]")
+        except Exception as e:
+            console.print(
+                f"[bold yellow]Warning:[/bold yellow] Could not inject shell wrapper: {e}"
+            )
+    except RuntimeError as e:
+        # Expected for Fish shell or unsupported envs
+        console.print(f"[yellow]Skipping shell injection:[/yellow] {e}")
 
     return 0
 
