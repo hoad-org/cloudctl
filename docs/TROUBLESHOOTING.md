@@ -5,7 +5,6 @@
 
 ### 1.1 Shell wrapper not loaded
 **Symptom:** `awsctl switch` runs but env vars don't change.
-
 **Check:** Run `type awsctl`.
 * *Good:* `awsctl is a function`
 * *Bad:* `awsctl is /usr/local/bin/awsctl`
@@ -18,7 +17,6 @@
 
 ### 1.2 Corrupted wrapper (Dirty Edit)
 **Symptom:** `setup` says "Wrapper already present" but it doesn't work.
-
 **Cause:** You manually edited the wrapper comment block.
 
 **Fix:** Manually delete the `awsctl() { ... }` block from your rc file and re-run `awsctl setup`.
@@ -38,16 +36,38 @@
 
 ---
 
-## 2. SSL & Certificate Issues
+## 2. SSL & Certificate Issues (Corporate Proxies)
 
 ### 2.1 macOS: "SSL: CERTIFICATE_VERIFY_FAILED"
-**Fix:** Export system certs to PEM and set `REQUESTS_CA_BUNDLE`.
+**Cause:** Python does not use the macOS Keychain by default.
+**Fix:** Export **all** system certs (System, Root, and Login) and configure Python to use them globally.
 
-> security find-certificate -a -p /Library/Keychains/System.keychain > ~/macos_certs.pem
+**Step 1: Export All Certs (The "Nuclear" Option)**
+Run this block to combine all keychain sources:
+
+> rm ~/macos_certs.pem
+> security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain >> ~/macos_certs.pem
+> security find-certificate -a -p /Library/Keychains/System.keychain >> ~/macos_certs.pem
+> security find-certificate -a -p "$HOME/Library/Keychains/login.keychain-db" >> ~/macos_certs.pem
+
+**Step 2: Make it Permanent**
+Add this to your `~/.zshrc`:
+
 > export REQUESTS_CA_BUNDLE="$HOME/macos_certs.pem"
 
+Then reload:
+
+> source ~/.zshrc
+
 ### 2.2 Windows / WSL: "Self Signed Certificate"
-**Fix:** Import the corporate root CA into the WSL trust store (`/usr/local/share/ca-certificates/`) and run `update-ca-certificates`.
+**Cause:** WSL (Ubuntu) does not inherit trusted certs from Windows.
+
+**Fix:**
+1. **Export:** In Windows, export your Corporate Root CA to a Base-64 `.cer` file.
+2. **Copy:** Move it into WSL (e.g., `~/corp-root.crt`).
+3. **Configure:** Add to your `~/.bashrc`:
+
+> export REQUESTS_CA_BUNDLE="$HOME/corp-root.crt"
 
 ---
 

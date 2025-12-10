@@ -12,7 +12,6 @@
 It bridges the gap between Python (where logic lives) and the Shell (where credentials must be exported).
 
 ### 1.1 The "Context Bridge" Pattern
-
 Standard CLIs cannot modify the parent shell's environment variables.
 `awsctl` solves this using a **function wrapper** + **evaluation strategy**:
 
@@ -20,8 +19,8 @@ Standard CLIs cannot modify the parent shell's environment variables.
 2.  **Binary (`_awsctl_bin`):** Calculates the state change.
 3.  **Strategy Output:** The binary emits a "Strategy" line (`EXEC` or `EVAL`).
 4.  **Execution:**
-    - `EXEC`: The binary runs a subprocess (e.g., `status`, `login`).
-    - `EVAL`: The binary outputs `export VAR=VAL` commands, which the wrapper `eval`s.
+    * `EXEC`: The binary runs a subprocess (e.g., `status`, `login`).
+    * `EVAL`: The binary outputs `export VAR=VAL` commands, which the wrapper `eval`s.
 
 ### 1.2 Module Breakdown
 
@@ -40,23 +39,36 @@ Standard CLIs cannot modify the parent shell's environment variables.
 
 `awsctl` is effectively stateless, relying on the ecosystem for persistence.
 
-- **Identity:** `~/.aws/sso/cache/*.json` (Managed by AWS CLI v2).
-- **Context:** `~/.aws/awsctl-context.json` (Stores current selection for "Smart History").
-- **Config:** `~/.awsctl/orgs.yaml` (User enablement preference).
-- **Policy:** **Immutable.** Hardcoded in `registry.py` or loaded from signed Remote Registry.
+* **Identity:** `~/.aws/sso/cache/*.json` (Managed by AWS CLI v2).
+* **Context:** `~/.aws/awsctl-context.json` (Stores current selection for "Smart History").
+* **Config:** `~/.awsctl/orgs.yaml` (User enablement preference).
+* **Policy:** **Immutable.** Hardcoded in `registry.py` or loaded from signed Remote Registry.
 
 ---
 
 ## 3. Development Workflow
 
 ### 3.1 Prerequisites
+* Python 3.9+
+* `make`
+* `pre-commit`
 
-- Python 3.9+
-- `make`
-- `pre-commit`
+#### 🔐 Corporate Proxy / SSL Setup
+If you are behind a corporate proxy (Zscaler, Netskope), Python tools like `pip`, `requests`, and `pip-audit` will fail with SSL errors.
+You **must** configure Python to trust your system certificates by exporting them from all keychains:
+
+**macOS:**
+
+> rm ~/macos_certs.pem
+> security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain >> ~/macos_certs.pem
+> security find-certificate -a -p /Library/Keychains/System.keychain >> ~/macos_certs.pem
+> security find-certificate -a -p "$HOME/Library/Keychains/login.keychain-db" >> ~/macos_certs.pem
+>
+> export REQUESTS_CA_BUNDLE="$HOME/macos_certs.pem"
+
+**Add the `export` line to your `~/.zshrc` to make it permanent.**
 
 ### 3.2 Quick Start
-
 The `Makefile` automates the entire lifecycle.
 
 > # 1. Create venv and install dependencies
@@ -72,12 +84,11 @@ The `Makefile` automates the entire lifecycle.
 > make lint
 
 ### 3.3 Testing Strategy
+We enforce a **strict >75% coverage floor**.
 
-We enforce a **strict >78% coverage floor**.
-
-- **Unit Tests (`tests/`):** Validate logic in isolation.
-- **Integration (`tests/test_integration_full.py`):** "God Mode" mock of AWS CLI and File System.
-- **Smoke Test (`tools/comprehensive_smoke.sh`):** A Bash script that creates a fake `_awsctl_bin` environment to validate the shell wrapper logic and `eval` behavior.
+* **Unit Tests (`tests/`):** Validate logic in isolation.
+* **Integration (`tests/test_integration_full.py`):** "God Mode" mock of AWS CLI and File System.
+* **Smoke Test (`tools/comprehensive_smoke.sh`):** A Bash script that creates a fake `_awsctl_bin` environment to validate the shell wrapper logic and `eval` behavior.
 
 ---
 
@@ -99,25 +110,19 @@ Releases are automated via GitHub Actions (`.github/workflows/release.yaml`).
 ## 5. Security & Maintenance Responsibilities
 
 ### 5.1 Registry Updates
-
 Guardrails are defined in `src/awsctl/registry.py`. To update allowed regions or roles:
-
 1.  Edit `_EMBEDDED_ORGS`.
 2.  Update `min_client_version` if the change is mandatory.
 3.  Release a new version.
 
 ### 5.2 Signing Key Rotation (Tier 3)
-
 If the Remote Registry private key is compromised:
-
 1.  Generate new Minisign keys.
 2.  Update `_TRUSTED_ROOT_KEY` in `src/awsctl/registry.py`.
 3.  Release a critical patch (`v2.x.x`).
 4.  The new client will reject old signatures immediately.
 
 ### 5.3 Dependency Audits
-
 `pip-audit` runs on every CI build.
-
-- **Alert:** If a CVE is found, update `pyproject.toml` immediately.
-- **Lock:** We use `urllib3>=2.2.2` to mitigate specific known vulnerabilities.
+* **Alert:** If a CVE is found, update `pyproject.toml` immediately.
+* **Lock:** We use `urllib3>=2.2.2` to mitigate specific known vulnerabilities.
