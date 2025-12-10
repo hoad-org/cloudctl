@@ -93,9 +93,12 @@ def cmd_login(org: Union[str, None], force: bool = False) -> int:
 
     from awsctl.utils import run
 
+    # [FIX] Resolve AWS CLI binary for Windows compatibility
+    aws_bin = aws._resolve_aws_cli()
+
     try:
         run(
-            ["aws", "sso", "login", "--profile", profile],
+            [aws_bin, "sso", "login", "--profile", profile],
             timeout=None,
             capture=False,
             check=True,
@@ -126,9 +129,12 @@ def cmd_login(org: Union[str, None], force: bool = False) -> int:
 def cmd_logout() -> int:
     from .context_manager import save_context_update
 
+    # [FIX] Resolve AWS CLI binary for Windows compatibility
+    aws_bin = aws._resolve_aws_cli()
+
     with console.status("[bold red]Clearing SSO sessions...[/]"):
         try:
-            subprocess.run(["aws", "sso", "logout"], check=False)
+            subprocess.run([aws_bin, "sso", "logout"], check=False)
         except Exception as e:
             debug_print(f"Logout subprocess error: {e}")
 
@@ -217,10 +223,13 @@ def cmd_exec(account: str, role: str, region: str, command: List[str]) -> int:
             )
             return 1
 
+        # [FIX] Resolve AWS CLI binary for Windows compatibility
+        aws_bin = aws._resolve_aws_cli()
+
         try:
             data = _aws_json(
                 [
-                    "aws",
+                    aws_bin,
                     "sso",
                     "get-role-credentials",
                     "--region",

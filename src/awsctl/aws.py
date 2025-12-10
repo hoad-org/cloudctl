@@ -1,11 +1,5 @@
 # file: src/awsctl/aws.py
 # SPDX-License-Identifier: MIT
-"""
-awsctl.aws
-----------
-AWS CLI wrappers, profile management, and SSO token shims.
-"""
-
 from __future__ import annotations
 
 import configparser
@@ -34,6 +28,16 @@ if os.environ.get("AWS_CONFIG_FILE"):
     AWS_CONFIG = Path(os.environ["AWS_CONFIG_FILE"])
 else:
     AWS_CONFIG = AWS_DIR / "config"
+
+
+def _resolve_aws_cli() -> str:
+    """
+    Resolve the full path to the AWS CLI binary.
+    Required for Windows where subprocess.Popen(shell=False) does not
+    automatically resolve .bat/.cmd extensions.
+    """
+    path = shutil.which("aws")
+    return path if path else "aws"
 
 
 @contextlib.contextmanager
@@ -108,8 +112,6 @@ def _clean_env() -> Dict[str, str]:
 def run_aws(
     args: list[str], timeout: Optional[float] = 60.0
 ) -> subprocess.CompletedProcess[str]:
-    # [FIX] Mypy return-value error: Removed manual cast to avoid tuple conversion issues.
-    # The utils.run function already returns CompletedProcess[str].
     return run(args, check=False, timeout=timeout, env=_clean_env())
 
 
@@ -320,12 +322,15 @@ def sso_list_accounts(
     next_token = None
     page_count = 0
 
+    # [FIX] Resolve binary for Windows compatibility
+    aws_bin = _resolve_aws_cli()
+
     while True:
         if page_count > 100:
             raise RuntimeError("AWS SSO pagination limit exceeded.")
         page_count += 1
 
-        args = ["aws", "sso", "list-accounts", "--output", "json", "--region", region]
+        args = [aws_bin, "sso", "list-accounts", "--output", "json", "--region", region]
         if profile:
             args += ["--profile", profile]
         if access_token:
@@ -362,13 +367,16 @@ def sso_list_account_roles(
     next_token = None
     page_count = 0
 
+    # [FIX] Resolve binary for Windows compatibility
+    aws_bin = _resolve_aws_cli()
+
     while True:
         if page_count > 100:
             raise RuntimeError("AWS SSO pagination limit exceeded.")
         page_count += 1
 
         args = [
-            "aws",
+            aws_bin,
             "sso",
             "list-account-roles",
             "--account-id",

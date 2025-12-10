@@ -14,6 +14,9 @@ import subprocess
 import sys
 from typing import Any, Dict, List
 
+# [FIX] Import resolve helper
+from awsctl.aws import _resolve_aws_cli
+
 from .sso_cache import OrgRef
 from .sso_cache import load_active_sso_token as load_active_sso_token
 
@@ -107,9 +110,12 @@ def emit_exports(
             f"No valid SSO token found for {org.name}. Run `awsctl login`."
         )
 
+    # [FIX] Resolve binary for Windows compatibility
+    aws_bin = _resolve_aws_cli()
+
     data = _aws_json(
         [
-            "aws",
+            aws_bin,
             "sso",
             "get-role-credentials",
             "--region",

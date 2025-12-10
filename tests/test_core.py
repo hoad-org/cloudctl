@@ -44,10 +44,14 @@ def test_core_cache_clear_errors(monkeypatch, mock_rich_console):
     assert "Failed to remove" in "".join(mock_rich_console.captured)
 
 
-def test_cmd_logout_str(mock_home):
+def test_cmd_logout_str(mock_home, monkeypatch):
+    # [FIX] Mock binary resolution to return a predictable string "aws"
+    # This prevents the test from failing when it resolves to /usr/local/bin/aws or similar.
+    monkeypatch.setattr("awsctl.aws._resolve_aws_cli", lambda: "aws")
+
     with patch("subprocess.run") as mock_sub:
         output = core.cmd_logout_str()
-        # [FIX] Use the mock variable to satisfy linter F841
+        # The code uses the resolved binary (now mocked as "aws")
         mock_sub.assert_called_with(["aws", "sso", "logout"], check=False)
     assert "unset AWS_ACCESS_KEY_ID" in output
 
@@ -64,6 +68,10 @@ def test_cmd_login_failure(monkeypatch, mock_rich_console):
     )
     monkeypatch.setattr("awsctl.aws.ensure_sso_base_profile", lambda x: "p")
     monkeypatch.setattr("awsctl.core.load_active_sso_token", lambda *a, **k: None)
+
+    # [FIX] Mock binary resolution for login failure test as well
+    monkeypatch.setattr("awsctl.aws._resolve_aws_cli", lambda: "aws")
+
     monkeypatch.setattr("awsctl.utils.run", MagicMock(side_effect=Exception("Fail")))
     assert core.cmd_login("o") == 1
     assert "Login failed" in "".join(mock_rich_console.captured)
