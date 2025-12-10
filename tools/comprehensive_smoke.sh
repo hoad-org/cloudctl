@@ -52,6 +52,15 @@ echo "Log file initialized at ${SETUP_LOG}" >&3
     else
       printf "FAIL  ❌  %s :: %s\n" "${name}" "${msg}" | tee -a "${SUMMARY}" >&2
       printf "  ❌ \033[0;31m%s\033[0m\n" "${name}" >&3
+
+      # [FIX] Print failure details immediately to screen
+      printf "\n\033[0;31m>>> FAILURE DETECTED: %s <<<\033[0m\n" "${name}" >&3
+      if [ -f "${SHELL_ART_DIR}/${name}.out" ]; then
+          printf "--- OUTPUT START ---\n" >&3
+          cat "${SHELL_ART_DIR}/${name}.out" >&3
+          printf "--- OUTPUT END ---\n" >&3
+      fi
+
       FAILURES=$((FAILURES + 1))
     fi
   }
@@ -66,7 +75,7 @@ echo "Log file initialized at ${SETUP_LOG}" >&3
 
   # [FIX] Shell Wrapper Mock - Updated to use --check-strategy
   awsctl() {
-      # 1. Ask Python for strategy (suppress stderr debug noise)
+      # 1. Ask Python for strategy
       local strategy_out
       strategy_out=$(run_python --check-strategy "$@" 2>/dev/null)
 
@@ -80,7 +89,7 @@ echo "Log file initialized at ${SETUP_LOG}" >&3
           output=$(run_python "$@")
           local rc=$?
           if [[ $rc -eq 0 ]]; then
-              # Critical: Evaluate exports in current shell
+              # Evaluate exports in current shell
               eval "$output"
           else
               echo "$output"
@@ -139,7 +148,6 @@ echo "Log file initialized at ${SETUP_LOG}" >&3
       PYTHON_HOME="${SHELL_HOME}"
   fi
 
-  # [FIX] Respect TEST_SHELL from CI, fallback to bash
   export SHELL="${TEST_SHELL:-/bin/bash}"
 
   mkdir -p "${HOME}/.aws" "${HOME}/.awsctl"
@@ -149,7 +157,6 @@ echo "Log file initialized at ${SETUP_LOG}" >&3
     "${PYTHON_BIN}" -m venv "${VENV_DIR}"
   fi
 
-  # Activate venv
   if [ -f "${VENV_DIR}/Scripts/activate" ]; then
       source "${VENV_DIR}/Scripts/activate"
   else
@@ -168,11 +175,9 @@ echo "Log file initialized at ${SETUP_LOG}" >&3
   # 3. QA Static Analysis
   # -------------------------
   h "3. QA Static Analysis"
-  # [NOTE] We allow black check to fail in smoke if user hasn't run format locally yet
   rc=$(run_and_capture "ruff" -- ruff check src tests)
   expect_rc "ruff" "${rc}" 0
 
-  # [FIX] Syntax error fixed: joined command to one line
   rc=$(run_and_capture "black-check" -- black --check src tests)
   # expect_rc "black-check" "${rc}" 0
 
@@ -196,7 +201,6 @@ echo "Log file initialized at ${SETUP_LOG}" >&3
 
   echo "enabled_orgs: ['btavm']" > "${HOME}/.awsctl/orgs.yaml"
 
-  # [FIX] Robust shell integration check
   if [[ "$SHELL" == *"fish"* ]]; then
       record "shell-integration" 0 "skipped for fish (manual setup)"
   elif grep -q "AWSCTL SHELL INTEGRATION" "${HOME}/.bashrc" || grep -q "AWSCTL SHELL INTEGRATION" "${HOME}/.zshrc" || grep -q "AWSCTL SHELL INTEGRATION" "${HOME}/.profile"; then
@@ -213,7 +217,6 @@ echo "Log file initialized at ${SETUP_LOG}" >&3
   MOCK_CACHE_DIR="${HOME}/.aws/sso/cache"
   mkdir -p "${MOCK_CACHE_DIR}"
 
-  # [FIX] Use the exact URL defined in AWSCTL_BTAVM_URL above
   cat <<EOF > "${MOCK_CACHE_DIR}/bt_avm_token.json"
 {
   "startUrl": "https://d-9067dbbf5a.awsapps.com/start",
@@ -248,7 +251,6 @@ if "--version" in args:
     print("aws-cli/2.15.30 Python/3.11.6 Linux/5.15.0-1053-aws exe/x86_64.ubuntu.22")
     sys.exit(0)
 
-# SSO role credentials
 if "sso get-role-credentials" in cmd:
     if "expired-token" in cmd:
         print("An error occurred (UnauthorizedException): Session token not found", file=sys.stderr)
@@ -268,7 +270,6 @@ if "sso get-role-credentials" in cmd:
     print(json.dumps(creds))
     sys.exit(0)
 
-# List accounts
 if "sso list-accounts" in cmd:
     print(json.dumps({
         "accountList": [
@@ -286,7 +287,6 @@ if "sso list-accounts" in cmd:
     }))
     sys.exit(0)
 
-# List roles
 if "sso list-account-roles" in cmd:
     print(json.dumps({
         "roleList": [
@@ -296,7 +296,6 @@ if "sso list-account-roles" in cmd:
     }))
     sys.exit(0)
 
-# Caller identity
 if "sts get-caller-identity" in cmd:
     print(json.dumps({
         "Account": "338630860507",
@@ -317,7 +316,6 @@ EOF
 
   if [ "$IS_WINDOWS" -eq 1 ]; then
       WIN_MOCK_SCRIPT="$(cygpath -w "${MOCK_BIN}/aws.py")"
-      # [FIX] Create batch file for Windows execution
       cat <<EOF > "${MOCK_BIN}/aws.bat"
 @echo off
 "${PYTHON_BIN}" "${WIN_MOCK_SCRIPT}" %*
@@ -353,20 +351,16 @@ EOF
   rc=$(run_and_capture "doctor" -- awsctl doctor)
   expect_grep "doctor" "${rc}" "Everything looks good"
 
-  # Login into btavm
   rc=$(run_and_capture "login" -- awsctl login --org btavm --force)
   expect_rc "login" "${rc}" 0
   expect_grep "login" "${rc}" "Login Successful"
 
-  # Status must show Active Role
   rc=$(run_and_capture "status" -- awsctl status)
   expect_grep "status" "${rc}" "Active Role"
 
-  # Console URL check (must match btavm)
   rc=$(run_and_capture "console-url" -- run_python console)
   expect_grep "console-url" "${rc}" "https://d-9067dbbf5a.awsapps.com/start"
 
-  # Role list must show SecurityAuditor (alias-correct)
   rc=$(run_and_capture "list-roles" -- run_python list roles)
   expect_grep "list-roles" "${rc}" "SecurityAuditor"
 
@@ -386,9 +380,7 @@ EOF
   # -------------------------
   unset AWS_ACCESS_KEY_ID
 
-  # [FIX] CRITICAL: Pass account as positional arg, NOT via --target.
-  # Using --target (an unknown flag) caused argparse to ignore it and fall back
-  # to interactive mode, hanging the CI process.
+  # [FIX] Pass account as positional arg
   awsctl switch 338630860507 --role SecurityAuditor --region us-east-1 \
       > "${SHELL_ART_DIR}/switch.out" 2>&1
 
@@ -398,7 +390,6 @@ EOF
       record "switch-eval" 1 "Switch did not set AK_NEW"
   fi
 
-  # Toggle to previous context
   awsctl switch - > "${SHELL_ART_DIR}/toggle.out" 2>&1
   if [[ "${AWS_ACCESS_KEY_ID:-}" == "AK_OLD" ]]; then
       record "toggle-eval" 0 "Toggle switched to previous account"
