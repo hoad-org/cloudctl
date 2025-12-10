@@ -1,4 +1,4 @@
-# file: .github/workflows/ci.yml
+# file: .github/workflows/ci.yaml
 name: CI
 
 on:
