@@ -43,13 +43,5 @@ repos:
         language: system
         pass_filenames: false
 
-      # [FIX] Run cleanup last to ensure no artifacts are accidentally staged/leftover
-      - id: cleanup
-        name: Cleanup Artifacts
-        entry: make clean
-        language: system
-        pass_filenames: false
-        always_run: true
-
 default_language_version:
   python: python3
