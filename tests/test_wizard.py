@@ -56,7 +56,8 @@ def test_wizard_happy_path(monkeypatch, tmp_path):
     # Verify Config Written
     conf_path = config.get_orgs_path()
     assert conf_path.exists()
-    data = yaml.safe_load(conf_path.read_text())
+    # [FIX] Windows: Must specify encoding="utf-8" or ⚠️ char fails on CP1252
+    data = yaml.safe_load(conf_path.read_text(encoding="utf-8"))
 
     # Ensure the "enabled_orgs" list was written
     assert "engineering" in data["enabled_orgs"]

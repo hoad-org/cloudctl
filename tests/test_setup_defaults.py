@@ -18,7 +18,8 @@ def test_cmd_setup_merge_defaults(monkeypatch, tmp_path):
         lambda: "enabled_orgs: [default]\nplugins: {enabled: []}",
     )
     assert core.cmd_setup() == 0
-    data = yaml.safe_load(conf.read_text())
+    # [FIX] Windows compatibility: utf-8 required
+    data = yaml.safe_load(conf.read_text(encoding="utf-8"))
     assert data["other_key"] is True
     assert "default" in data["enabled_orgs"]
 

@@ -105,7 +105,8 @@ def run_wizard() -> bool:
 
     # 4. Update Enabled List
     try:
-        data = yaml.safe_load(config_path.read_text()) or {}
+        # [FIX] Enforce UTF-8 reading to prevent UnicodeDecodeError on Windows (CP1252)
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         data["enabled_orgs"] = [org["name"] for org in selected_orgs]
 
         if "plugins" not in data:
