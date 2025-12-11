@@ -50,7 +50,8 @@ def get_registry() -> List[Dict[str, Any]]:
         # [FEATURE] Manual Mode: Allow 'orgs' block in orgs.yaml to override defaults
         user_orgs = raw_cfg.get("orgs")
         if user_orgs and isinstance(user_orgs, list):
-            return user_orgs
+            # [FIX] Cast to explicit type to satisfy Mypy strict mode
+            return cast(List[Dict[str, Any]], user_orgs)
 
         # Remote Registry Support
         reg_conf = raw_cfg.get("registry", {})

@@ -69,7 +69,8 @@ def run_wizard() -> bool:
         console.print("   (Overwrite the existing file)\n")
 
         with ForceStderr():
-            proceed = inquirer.confirm(
+            # [FIX] Suppress mypy error for dynamic attribute access
+            proceed = inquirer.confirm(  # type: ignore
                 message=f"I have updated {config_path}. Continue setup?", default=True
             ).execute()
 

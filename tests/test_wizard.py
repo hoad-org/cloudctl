@@ -61,3 +61,36 @@ def test_wizard_happy_path(monkeypatch, tmp_path):
 
     # Ensure the "enabled_orgs" list was written
     assert "engineering" in data["enabled_orgs"]
+
+
+def test_wizard_config_update_fail(monkeypatch, tmp_path, mock_rich_console):
+    """
+    Test the failure path when writing/reading config raises an exception.
+    This covers the 'except Exception' block in Step 4 of wizard.py.
+    """
+    # 1. Setup minimal happy path mocks until the crash point
+    monkeypatch.setattr(config, "HOME", tmp_path)
+    monkeypatch.setattr(config, "ORGS_USER", tmp_path / "orgs.yaml")
+
+    monkeypatch.setattr(registry, "get_registry", lambda: [{"name": "org"}])
+    monkeypatch.setattr(
+        registry, "get_choices", lambda: [{"name": "Org", "value": {"name": "org"}}]
+    )
+
+    mock_cb = MagicMock()
+    mock_cb.execute.return_value = [{"name": "org"}]
+    monkeypatch.setattr(inquirer, "checkbox", lambda **k: mock_cb)
+
+    # 2. Force config read to fail
+    # We mock 'read_text' on the Path object returned by get_orgs_path
+    mock_path = MagicMock()
+    mock_path.exists.return_value = True
+    mock_path.read_text.side_effect = Exception("Disk IO Error")
+    monkeypatch.setattr(config, "get_orgs_path", lambda ensure=True: mock_path)
+
+    # Run
+    success = wizard.run_wizard()
+
+    # Assert
+    assert success is False
+    assert "Failed to update config" in "".join(mock_rich_console.captured)
