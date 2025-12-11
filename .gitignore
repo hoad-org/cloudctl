@@ -71,3 +71,5 @@ audit.log
 .aws/
 src/awsctl/_version.py
 tools/create_manifest.py
+
+tools/create_manifest.py
