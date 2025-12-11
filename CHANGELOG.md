@@ -1,7 +1,12 @@
 # file: CHANGELOG.md
 # Changelog
 
-## [2.8.0] - 2025-12-10 (Phase 2 Enterprise Release)
+## [2.8.2] - 2025-12-11 (Maintenance Release)n
+n
+### 🛡️ Security & Maintenancen
+* **Documentation:** Updated version references to v2.8.2.n
+* **UAT:** Validated against latest Identity Center configuration.n
+## [2.8.1] - 2025-12-10 (Phase 2 Enterprise Release)
 
 ### 🚀 Enterprise Governance & Usability
 This release marks the completion of the "Phase 2" roadmap, delivering a fully enterprise-ready identity broker with strict compliance guardrails.

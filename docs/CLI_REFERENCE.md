@@ -1,5 +1,5 @@
 # file: docs/CLI_REFERENCE.md
-# awsctl Command Reference (v2.8.0)
+# awsctl Command Reference (v2.8.1)
 
 This document is the **Single Source of Truth** for the `awsctl` CLI.
 

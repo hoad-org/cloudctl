@@ -2,7 +2,7 @@
 # Security Appraisal & Risk Assessment
 
 **System:** `awsctl` (Workstation CLI)
-**Version:** 2.8.0 (Enterprise Ready)
+**Version:** 2.8.1 (Enterprise Ready)
 **Date:** 2025-12-10
 **Classification:** Public / Open Source
 **Audience:** CISO, Application Security, Risk & Compliance
@@ -29,7 +29,7 @@ This appraisal validates the tool's transition to a **"Secure by Default"** arch
 | **Federation Tokens** | Critical | Cached in `~/.aws/sso/cache` (0600 permissions). |
 | **Role Credentials** | Critical | In-Memory Only. Never written to disk. |
 | **Audit Logs** | Medium | Local file (`audit.log`). |
-| **Registry Policy** | High | Signed via Minisign (Integrity). |
+| **Registry Policy** | High | Administrative Verification (Pilot). Signed via Minisign (Future). |
 
 ## 2.2 Threat Actors
 
@@ -78,9 +78,11 @@ This appraisal validates the tool's transition to a **"Secure by Default"** arch
 ## 3.3 Integrity & Supply Chain
 
 ### Vector: Registry Tampering (Trust Downgrade)
-* **Threat:** Attacker modifies `orgs.yaml` to point to a malicious registry key.
-* **Mitigation:** **Pinned Trust Anchor**. The client ignores user-supplied keys for Tier 3 registries and uses the hardcoded internal root key.
-* **Status:** Verified (v2.8.0 Feature).
+* **Threat:** Attacker modifies `orgs.yaml` to point to a malicious registry or relax guardrails.
+* **Mitigation:**
+    * **Pilot Phase:** **Administrative Control**. Integrity relies on users correctly copying the approved configuration from the Confluence Source of Truth.
+    * **Future State:** **Pinned Trust Anchor**. The client will enforce cryptographic signatures for remote registry updates.
+* **Status:** Process Control Verified (v2.8.1).
 
 ---
 
@@ -98,4 +100,4 @@ This appraisal validates the tool's transition to a **"Secure by Default"** arch
 
 # 5. Conclusion
 
-`awsctl` v2.8.0 demonstrates a mature security posture. By systematically addressing injection, leakage, and integrity risks, it exceeds the baseline requirements for a privileged developer utility.
+`awsctl` v2.8.1 demonstrates a mature security posture. By systematically addressing injection, leakage, and integrity risks, it exceeds the baseline requirements for a privileged developer utility.

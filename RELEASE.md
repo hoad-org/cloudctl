@@ -12,7 +12,7 @@ We use `setuptools_scm`. You do **not** need to manually edit any version files.
 The source of truth for the version number is **Git tags**.
 
 - **Major (`2.0.0`)**: Breaking changes.
-- **Minor (`2.8.0`)**: New features (backwards compatible).
+- **Minor (`2.8.1`)**: New features (backwards compatible).
 - **Patch (`2.8.1`)**: Bug fixes, internal improvements.
 
 ---
@@ -32,15 +32,15 @@ The source of truth for the version number is **Git tags**.
 Create an annotated tag for the version.
 The tag must start with `v`.
 
-Example for `v2.8.0`:
+Example for `v2.8.1`:
 
-> git tag -a v2.8.0 -m "Release v2.8.0: Phase 2 Enterprise Release"
+> git tag -a v2.8.1 -m "Release v2.8.1: Phase 2 Enterprise Release"
 
 ### Step 2: Push
 
 Pushing the tag triggers the Release Workflow in GitHub Actions.
 
-> git push origin v2.8.0
+> git push origin v2.8.1
 
 ---
 
@@ -54,4 +54,4 @@ Once the tag is pushed:
 
 The published version is now available for installation:
 
-> pipx install "git+https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git@v2.8.0"
+> pipx install "git+https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git@v2.8.1"

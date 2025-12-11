@@ -1,5 +1,5 @@
 # file: docs/TROUBLESHOOTING.md
-# Troubleshooting — awsctl v2.8.0
+# Troubleshooting — awsctl v2.8.1
 
 ## 1. Common Issues
 

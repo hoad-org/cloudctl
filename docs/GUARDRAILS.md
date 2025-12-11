@@ -1,10 +1,13 @@
 # file: docs/GUARDRAILS.md
-# Guardrails & Governance Model — awsctl v2.8.0
+# Guardrails & Governance Model — awsctl v2.8.1
 
 ## 1. Overview
 
 Guardrails allow corporate governance teams to centrally enforce boundaries.
-Local user configuration (`orgs.yaml`) **cannot** override these settings.
+
+**Pilot Phase Notice:**
+During the pilot, these settings are defined in your local `~/.awsctl/orgs.yaml` (Manual Mode).
+In the future **Tier 3** architecture, these will be loaded from an immutable Remote Registry and **cannot** be overridden locally.
 
 ## 2. Region Guardrails
 
@@ -29,7 +32,7 @@ Roles in `sensitive_roles` require mandatory justification.
 
 ## 4. Minimum Client Version
 
-> min_client_version: "2.8.0"
+> min_client_version: "2.8.1"
 
 - **Behavior:** If the running client is older than this value, Login is blocked with an upgrade instruction.
 

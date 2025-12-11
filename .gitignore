@@ -58,6 +58,7 @@ coverage.xml
 # --- awsctl Specifics ---
 tools/output/
 tools/smoke_artifacts/
+tools/uat_enterprise.sh
 *.log
 audit.log
 
@@ -70,6 +71,4 @@ audit.log
 .awsctl/
 .aws/
 src/awsctl/_version.py
-tools/create_manifest.py
-
 tools/create_manifest.py

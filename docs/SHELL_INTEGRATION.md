@@ -1,5 +1,5 @@
 # file: docs/SHELL_INTEGRATION.md
-# Shell Integration & Context Bridge — v2.8.0
+# Shell Integration & Context Bridge — v2.8.1
 
 ## 1. Overview
 

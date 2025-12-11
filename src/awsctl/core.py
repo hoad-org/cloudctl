@@ -374,12 +374,18 @@ def cmd_setup() -> int:
             console.print("Please fix or remove the file manually.")
             return 1
 
+    # [FIX] Logic to determine if we need defaults: either file doesn't exist OR it has no enabled_orgs
     needs_defaults = not p.exists() or not present.get("enabled_orgs")
 
     if needs_defaults:
         try:
-            defaults = yaml.safe_load(config.sample_orgs_yaml())
-            present["enabled_orgs"] = defaults["enabled_orgs"]
+            # [FIX] Handle empty/commented-out default config securely
+            # The sample config is commented out, so safe_load returns None
+            defaults = yaml.safe_load(config.sample_orgs_yaml()) or {}
+
+            # [FIX] Provide fallback empty lists if defaults are None/empty
+            present["enabled_orgs"] = defaults.get("enabled_orgs", [])
+
             if "plugins" not in present:
                 present["plugins"] = {"enabled": []}
 

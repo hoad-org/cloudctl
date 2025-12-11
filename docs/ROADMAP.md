@@ -1,7 +1,7 @@
 # file: docs/ROADMAP.md
 # Product Roadmap
 
-**Current Version:** v2.8.0
+**Current Version:** v2.8.1
 **Status:** Secure / Enterprise Ready (AWS Only)
 **Strategic Direction:** Evolution to Multi-Cloud Identity Broker
 
@@ -19,7 +19,7 @@
 
 ---
 
-## Phase 2: Enterprise Governance (Completed v2.8.0)
+## Phase 2: Enterprise Governance (Completed v2.8.1)
 
 **Status:** ✅ Live
 

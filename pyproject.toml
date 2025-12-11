@@ -37,7 +37,7 @@ dev = [
     "types-PyYAML",
     "types-requests",
     "bandit>=1.7.9",
-    "pip-audit>=2.8.0",
+    "pip-audit>=2.8.1",
     "build",
     "twine"
 ]

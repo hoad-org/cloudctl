@@ -11,29 +11,22 @@ This means the authoritative definitions of organizations, URLs, regions, and gu
 
 ### 1.1 User Enablement File (`~/.awsctl/orgs.yaml`)
 
-**Scope:** User preference & **Remote Registry URL**
-**Content:** Lists enabled orgs and optional remote config source.
+**Scope:** User preference & **Manual Configuration (Pilot)**
+**Content:** Lists enabled orgs and full definitions (during Pilot).
 
 > enabled_orgs:
 >   - btavm
 >
-> # [NEW] Remote Registry Support (Tier 3)
-> registry:
->   url: "https://config.internal.corp/registry.json"
+> # Pilot Phase: Manual Definition
+> orgs:
+>   - name: btavm
+>     sso_start_url: "https://d-9067dbbf5a.awsapps.com/start"
+>     ...
 
-Users do **not** specify `start_url`, `sso_region`, or `allowed_regions`.
-These are enforced by the Registry.
-
-### 1.2 Corporate Registry
-
+### 1.2 Corporate Registry (Future State)
 **Scope:** Immutable policy (Source of Truth)
-**Content:** Full authoritative configuration and guardrails for each org.
-
-At runtime, `awsctl`:
-
-- Hydrates all details from the Registry (Embedded or Remote).
-- Applies guardrails.
-- Ignores user-defined overrides.
+Currently, `src/awsctl/registry.py` contains a **Placeholder**.
+The authoritative configuration is hosted on [Confluence](https://beyondtrust.atlassian.net/wiki/x/CgD9qw).
 
 ---
 
@@ -60,16 +53,16 @@ You can deploy `awsctl` configuration in three ways:
 
 ## 3. Release Workflow (Tier 1 - Embedded)
 
-If using the Embedded Registry strategy:
+If using the Embedded Registry strategy (or updating core application logic):
 
-1. Modify Registry: `vim src/awsctl/registry.py`
+1. Modify Registry/Code: `vim src/awsctl/registry.py`
 2. **[PATCH] Run full CI suite (Mandatory Security Checks):**
    - `make lint`
    - `make typecheck`
    - `make security` (Bandit/Pip-Audit)
    - `make test`
 3. Commit: `git commit -m "chore(registry): update prod guardrails"`
-4. Tag release: `git tag -a v2.8.0; git push origin v2.8.0`
+4. Tag release: `git tag -a v2.8.1; git push origin v2.8.1`
 5. Developers upgrade: `pipx upgrade awsctl`
 
 ---
@@ -124,7 +117,7 @@ Behavior:
 
 Definition:
 
-> "min_client_version": "2.8.0"
+> "min_client_version": "2.8.1"
 
 Behavior:
 Blocks login if the client binary is older than the policy.

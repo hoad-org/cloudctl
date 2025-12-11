@@ -1,5 +1,5 @@
 # file: docs/SECURITY_OPERATIONS.md
-# awsctl Security Operations Manual (v2.8.0)
+# awsctl Security Operations Manual (v2.8.1)
 
 **Audience:** Cloud Security, SecOps, and Compliance Teams.
 
@@ -15,13 +15,17 @@ It operates on a **Shared Responsibility Model**:
 
 ## 2. Registry Management
 
-### Embedded Registry (Tier 1)
+### Manual Configuration (Pilot Phase)
 
-Managed via source code in `src/awsctl/registry.py`. Requires binary rebuild/release to update.
+During the pilot, `awsctl` guardrails and settings are defined locally in `~/.awsctl/orgs.yaml`.
 
-### Remote Signed Registry (Tier 3)
+- **Source of Truth:** Internal Confluence Documentation.
+- **Integrity:** Relies on users correctly copying the approved configuration.
+- **Updates:** Users must manually update their local file when SecOps publishes new guardrails.
 
-Allows dynamic policy updates without client upgrades.
+### Remote Signed Registry (Tier 3 - Future State)
+
+The target architecture allows dynamic policy updates without client upgrades.
 
 - **Pipeline:** JSON is signed offline using Minisign.
 - **Verification:** Client enforces a **Pinned Trust Anchor** (Public Key hardcoded in binary).

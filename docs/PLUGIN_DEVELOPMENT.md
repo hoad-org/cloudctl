@@ -1,5 +1,5 @@
 # file: docs/PLUGIN_DEVELOPMENT.md
-# Plugin Framework — awsctl v2.8.0
+# Plugin Framework — awsctl v2.8.1
 
 Plugins allow enforcement of corporate posture (e.g., VPN check, device compliance) before login.
 

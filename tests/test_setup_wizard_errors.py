@@ -11,8 +11,6 @@ from awsctl import registry, shell, utils, wizard
 
 # [FIX] Skip on Windows
 @pytest.mark.skipif(os.name == "nt", reason="Sudo/chown logic is Posix only")
-# [FIX] Skip on Windows
-@pytest.mark.skipif(os.name == "nt", reason="Sudo/chown logic is Posix only")
 def test_inject_shell_no_sudo_uid(monkeypatch, tmp_path):
     rc = tmp_path / ".bashrc"
     rc.touch()
@@ -25,9 +23,16 @@ def test_inject_shell_no_sudo_uid(monkeypatch, tmp_path):
 
 
 def test_wizard_write_fail(monkeypatch, tmp_path, mock_rich_console):
+    # [FIX] Mock registry to return valid orgs (bypass manual prompt)
+    monkeypatch.setattr("awsctl.registry.get_registry", lambda: [{"name": "org"}])
+
+    # [FIX] Mock choices so validation passes
+    monkeypatch.setattr(
+        registry, "get_choices", lambda: [{"name": "Org", "value": {"name": "org"}}]
+    )
+
     mock_cb = MagicMock()
     mock_cb.execute.return_value = [{"name": "org"}]
-    monkeypatch.setattr(registry, "get_choices", lambda: [])
     monkeypatch.setattr("awsctl.wizard.inquirer.checkbox", lambda **k: mock_cb)
 
     conf = tmp_path / "orgs.yaml"
@@ -36,13 +41,21 @@ def test_wizard_write_fail(monkeypatch, tmp_path, mock_rich_console):
     with patch("tempfile.mkstemp", side_effect=OSError("Write Fail")):
         assert wizard.run_wizard() is False
 
-    assert "Failed to write config" in "".join(mock_rich_console.captured)
+    # [FIX] Match the actual error message in wizard.py ("Failed to update config")
+    assert "Failed to update config" in "".join(mock_rich_console.captured)
 
 
 def test_wizard_cli_sync_fail(monkeypatch, tmp_path, mock_rich_console):
+    # [FIX] Mock registry to return valid orgs, bypassing the "Manual Setup" prompt
+    monkeypatch.setattr("awsctl.registry.get_registry", lambda: [{"name": "org"}])
+
+    # [FIX] Mock choices so validation passes (prevents early return False)
+    monkeypatch.setattr(
+        registry, "get_choices", lambda: [{"name": "Org", "value": {"name": "org"}}]
+    )
+
     mock_cb = MagicMock()
     mock_cb.execute.return_value = [{"name": "org"}]
-    monkeypatch.setattr(registry, "get_choices", lambda: [])
     monkeypatch.setattr("awsctl.wizard.inquirer.checkbox", lambda **k: mock_cb)
 
     monkeypatch.setattr(

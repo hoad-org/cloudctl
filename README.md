@@ -1,5 +1,4 @@
-# file: README.md
-# awsctl v2.8.0 — Enterprise AWS Identity & Context Manager
+# awsctl v2.8.1 — Enterprise AWS Identity & Context Manager
 
 [![OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/1/badge)](https://bestpractices.coreinfrastructure.org/projects/1)
 [![SLSA Level 2](https://slsa.dev/images/gh-badge-level2.svg)](https://slsa.dev)
@@ -9,6 +8,12 @@
 [![FedRAMP](https://img.shields.io/badge/FedRAMP-Ready-005288?style=flat&logo=files)](docs/SECURITY_APPRAISAL.md)
 [![GovCloud](https://img.shields.io/badge/AWS_GovCloud-Compatible-232F3E?style=flat&logo=amazon-aws)](docs/USER_GUIDE.md)
 [![FIPS 140-3](https://img.shields.io/badge/FIPS_140--3-Compatible-green?style=flat&logo=openssl)](docs/SECURITY.md)
+
+
+> **⚠️ INTERNAL TOOL:** This repository is for internal use by **BeyondTrust** Engineering only.
+> Do not fork to public repositories. Do not distribute binaries outside the corporate network.
+
+---
 
 **Secure. Governed. Zero-Trust. Auditor-Ready.**
 
@@ -20,7 +25,7 @@
 * **Shell Safety:** TTY Guards and fail-closed wrapper logic.
 * **Audit-Ready:** "Break Glass" logging for sensitive role access.
 
-**Validation Status (v2.8.0):**
+**Validation Status (v2.8.1):**
 * ✅ Unit test coverage > 78% (Strictly Enforced)
 * ✅ Comprehensive smoke tests (Cross-Platform)
 * ✅ Enterprise Acceptance Suite (UAT) Passed
@@ -60,7 +65,7 @@
 
 To ensure isolation and easy upgrades, install via `pipx` using a pinned release tag:
 
-> pipx install "git+https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git@v2.8.0"
+> pipx install "git+https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git@v2.8.1"
 
 ---
 

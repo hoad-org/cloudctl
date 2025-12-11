@@ -33,42 +33,33 @@ def get_orgs_path(ensure: bool = True) -> Path:
 
 
 def sample_orgs_yaml() -> str:
-    # Use a safe default if registry access triggers recursion
-    try:
-        from awsctl import registry
-
-        if registry.KNOWN_ORGS:
-            example_org = registry.KNOWN_ORGS[0]["name"]
-        else:
-            example_org = "example-org"
-    except Exception:
-        example_org = "example-org"
-
+    # [VANILLA] Template directs users to internal docs
     return (
         "# awsctl user configuration\n"
-        f"enabled_orgs:\n  - {example_org}\n"
-        "plugins:\n  enabled: []\n\n"
-        "# Remote Registry (Tier 2/3)\n"
-        "# registry:\n"
-        "#   url: https://internal.corp/registry.json\n\n"
-        "# Aliases allow quick switching: awsctl switch @prod\n"
-        "# aliases:\n"
-        "#   prod:\n"
-        "#     org: production\n"
-        "#     account: '123456789012'\n"
-        "#     role: ViewOnlyAccess\n"
-        "#     region: eu-west-1\n"
+        "# ------------------------------------------------------------------\n"
+        "# ⚠️  MANUAL CONFIGURATION REQUIRED (Pilot Phase)\n"
+        "# Please paste the configuration block from the internal Confluence page:\n"
+        "# https://beyondtrust.atlassian.net/wiki/x/CgD9qw\n"
+        "# ------------------------------------------------------------------\n\n"
+        "# enabled_orgs:\n"
+        "#   - my-org\n\n"
+        "# orgs:\n"
+        "#   - name: my-org\n"
+        "#     ...\n"
     )
 
 
 def _hydrate_orgs(enabled_names: Set[str]) -> List[Dict[str, Any]]:
     hydrated_list: List[Dict[str, Any]] = []
 
-    # [FIX] Local import to break cycle
+    # Local import to break cycle
     from awsctl import registry
 
+    # Force reload registry to pick up manual edits in orgs.yaml
+    registry_orgs = registry.get_registry()
+
     unique_registry = {}
-    for o in registry.KNOWN_ORGS:
+    for o in registry_orgs:
         if "name" not in o:
             continue
         if o["name"] not in unique_registry:
@@ -98,34 +89,25 @@ def _load_raw_file() -> Dict[str, Any]:
 
 
 def load_raw_config() -> Dict[str, Any]:
-    """
-    Public API for registry.py to read config WITHOUT triggering recursion.
-    Returns the raw content of orgs.yaml.
-    """
+    """Public API for registry.py to read config."""
     return _load_raw_file()
 
 
 def load_orgs_config() -> Dict[str, Any]:
-    """
-    Full config load with Registry Hydration.
-    """
     raw_data = _load_raw_file()
 
     enabled_set = set(raw_data.get("enabled_orgs", []))
     final_orgs = _hydrate_orgs(enabled_set)
 
-    # Plugins
     raw_plugins = raw_data.get("plugins")
     plugins_conf: Dict[str, Any] = {"enabled": []}
     if isinstance(raw_plugins, dict):
         plugins_conf = raw_plugins
 
-    # Aliases
     aliases = raw_data.get("aliases", {})
     if not isinstance(aliases, dict):
         aliases = {}
 
-    # Registry config
     reg_conf = raw_data.get("registry", {})
     if not isinstance(reg_conf, dict):
         reg_conf = {}

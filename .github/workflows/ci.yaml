@@ -42,48 +42,29 @@ jobs:
       - name: Run Unit Tests
         run: pytest -v --cov=awsctl --cov-report=xml
 
-      # --- Platform Specific Smoke Tests (ALL VERSIONS) ---
+      # --- REINSTATED SMOKE TESTS (SAFE & GENERIC) ---
 
       - name: Smoke Test (Linux/Bash)
         if: runner.os == 'Linux'
         run: ./tools/comprehensive_smoke.sh
+        env:
+          TEST_SHELL: /bin/bash
 
-      - name: Smoke Test (macOS/Zsh)
-        if: runner.os == 'macOS'
+      - name: Smoke Test (Linux/Fish)
+        if: runner.os == 'Linux'
         run: |
-          export TEST_SHELL="/bin/zsh"
+          sudo apt-get update && sudo apt-get install -y fish
           ./tools/comprehensive_smoke.sh
+        env:
+          TEST_SHELL: /usr/bin/fish
 
-      # [FIX] ENABLE WINDOWS SMOKE TESTS (via Git Bash)
-      - name: Smoke Test (Windows/Bash)
+      - name: Smoke Test (Mac/Zsh)
+        if: runner.os == 'macOS'
+        run: ./tools/comprehensive_smoke.sh
+        env:
+          TEST_SHELL: /bin/zsh
+
+      - name: Smoke Test (Windows/GitBash)
         if: runner.os == 'Windows'
         shell: bash
-        run: |
-          export PYTHON_BIN="python"
-          ./tools/comprehensive_smoke.sh
-
-      # --- Upload Artifacts (CRITICAL FIX: Always upload) ---
-      - name: Upload Smoke Test Artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: smoke-test-results-${{ runner.os }}-${{ matrix.python-version }}
-          path: tools/smoke_artifacts
-          retention-days: 7
-
-  test-fish-shell:
-    name: Test Shell Integration (Fish)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Dependencies and Fish
-        run: |
-          sudo apt-get update && sudo apt-get install fish
-          python -m venv venv && source venv/bin/activate
-          pip install -e .[dev]
-
-      - name: Run Smoke Test in Fish
-        run: |
-          export TEST_SHELL="/usr/bin/fish"
-          ./tools/comprehensive_smoke.sh
-        shell: bash
+        run: ./tools/comprehensive_smoke.sh

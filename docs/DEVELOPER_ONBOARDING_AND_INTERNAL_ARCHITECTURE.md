@@ -2,7 +2,7 @@
 # Developer Onboarding & Internal Architecture
 
 **Target Audience:** Maintainers, Contributors, and Platform Engineers inheriting `awsctl`.
-**Version:** v2.8.0
+**Version:** v2.8.1
 
 ---
 
@@ -41,8 +41,8 @@ Standard CLIs cannot modify the parent shell's environment variables.
 
 * **Identity:** `~/.aws/sso/cache/*.json` (Managed by AWS CLI v2).
 * **Context:** `~/.aws/awsctl-context.json` (Stores current selection for "Smart History").
-* **Config:** `~/.awsctl/orgs.yaml` (User enablement preference).
-* **Policy:** **Immutable.** Hardcoded in `registry.py` or loaded from signed Remote Registry.
+* **Config:** `~/.awsctl/orgs.yaml` (User enablement preference & **Manual Definitions** during Pilot).
+* **Policy:** **Immutable.** Hardcoded in `registry.py` (Placeholder) or loaded from signed Remote Registry.
 
 ---
 
@@ -110,10 +110,16 @@ Releases are automated via GitHub Actions (`.github/workflows/release.yaml`).
 ## 5. Security & Maintenance Responsibilities
 
 ### 5.1 Registry Updates
-Guardrails are defined in `src/awsctl/registry.py`. To update allowed regions or roles:
-1.  Edit `_EMBEDDED_ORGS`.
-2.  Update `min_client_version` if the change is mandatory.
-3.  Release a new version.
+Guardrails are defined in the central registry. The update process depends on the operational phase:
+
+**Pilot Phase (Manual Mode):**
+1.  Update the **Internal Confluence Page** with new Org details or Guardrails.
+2.  Notify users to re-copy the configuration block into `~/.awsctl/orgs.yaml`.
+
+**Future State (Tier 3 - Automated):**
+1.  Edit `registry.json` in the `awsctl-registry` repo.
+2.  Merge to `main` (triggers Signing & S3 Upload).
+3.  Clients update automatically on next run.
 
 ### 5.2 Signing Key Rotation (Tier 3)
 If the Remote Registry private key is compromised:

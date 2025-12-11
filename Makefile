@@ -7,8 +7,9 @@
 # ********************
 
 VENV := .venv
-PYTHON := $(VENV)/bin/python3
-PIP := $(VENV)/bin/pip
+# [FIX] Use explicit relative path to ensure we use the venv binary, not system
+PYTHON := ./$(VENV)/bin/python3
+PIP := ./$(VENV)/bin/pip
 
 SRC := src
 TESTS := tests
@@ -23,37 +24,38 @@ help:
 	@echo "awsctl Developer Workflow"
 	@echo "========================="
 	@echo "make setup      : Create local virtualenv (.venv)"
-	@echo "make install    : Install dev dependencies into .venv (Auto-creates venv)"
-	@echo "make refresh    : Fast update of scripts/metadata (no full reinstall)"
+	@echo "make install    : Install dev dependencies into .venv"
+	@echo "make refresh    : Fast update of scripts (no full reinstall)"
 	@echo "make lint       : Check formatter + linter"
 	@echo "make format     : Run Black + Ruff auto-fix"
 	@echo "make typecheck  : Run Mypy strict type checks"
 	@echo "make security   : Run Bandit + pip-audit"
 	@echo "make test       : Run unit tests"
-	@echo "make build      : Build wheel + sdist"
-	@echo "make clean      : Remove build and cache artifacts"
+	@echo "make clean      : Remove venv, build, and cache artifacts"
 
 # ********************
 #  Environment Setup
 # ********************
 
-# Ensure venv exists. This target creates it if missing.
-$(VENV):
-	python3.12 -m venv $(VENV)
+# [FIX] Track the actual activate script, not just the directory.
+$(VENV)/bin/activate:
+	@echo "Creating virtual environment..."
+	python3 -m venv $(VENV)
 	$(PIP) install pre-commit
 	$(VENV)/bin/pre-commit install
+	@echo "Venv created."
 
-setup: $(VENV)
+setup: $(VENV)/bin/activate
+	@echo "Environment setup complete."
 	@echo "Run: source .venv/bin/activate"
 
-# 'install' now depends on $(VENV), so it runs setup automatically if needed.
-install: $(VENV)
+install: $(VENV)/bin/activate
+	@# Self-heal: If pip is missing (broken move), wipe and retry
+	@test -f $(PIP) || (echo "Venv broken. Recreating..." && rm -rf $(VENV) && python3 -m venv $(VENV))
 	$(PIP) install --upgrade pip setuptools wheel
-	# Force install [dev] deps to fix missing stubs
 	$(PIP) install -e ".[dev]"
 	@echo "Developer environment ready."
 
-# Fast refresh for local dev (updates egg-info and scripts without full reinstall)
 refresh:
 	$(PIP) install --no-deps -e .
 	@echo "Local changes applied."
@@ -71,8 +73,6 @@ format:
 	$(VENV)/bin/black $(SRC) $(TESTS)
 	$(VENV)/bin/ruff check $(SRC) $(TESTS) --fix
 
-# [FIX] Run module-based mypy on the package name.
-# Removed --strict because it overrides config file ignores.
 typecheck:
 	$(PYTHON) -m mypy -p awsctl
 
@@ -103,7 +103,10 @@ clean:
 	find . -type d -name ".ruff_cache" -exec rm -rf {} +
 	rm -rf build dist .coverage coverage.xml .tox *.egg-info src/*.egg-info
 	find . -type d -name "smoke_artifacts" -exec rm -rf {} +
-	# [FIX] Ensure generated manifests are cleaned
 	rm -rf tools/output
+	# [FIX] Nuke both the dev venv AND the smoke test venv to fix relocation issues
+	rm -rf $(VENV)
+	rm -rf .venv_smoke
+	@echo "Clean complete."
 
 all: install lint typecheck security test
