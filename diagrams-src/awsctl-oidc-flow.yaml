@@ -1,0 +1,38 @@
+#### file: docs/diagrams/awsctl-oidc-flow.yaml
+Diagram:
+  DefinitionFiles:
+    - Type: URL
+      Url: https://raw.githubusercontent.com/awslabs/diagram-as-code/main/definitions/definition-for-aws-icons-light.yaml
+
+  Resources:
+    Canvas:
+      Type: AWS::Diagram::Canvas
+      Direction: horizontal
+      Children:
+        - External
+        - Hub
+
+    External:
+      Type: AWS::Organizations::OrganizationalUnit
+      Title: GitHub
+      Children:
+        - OIDC
+
+    OIDC:
+      Type: AWS::IAM::OIDCProvider
+      Title: GitHub Actions OIDC
+
+    Hub:
+      Type: AWS::Organizations::Account
+      Title: Identity Hub
+      Children:
+        - IdentityBroker
+
+    IdentityBroker:
+      Type: AWS::IAM::Role
+      Title: awsctl-broker-role
+
+  Links:
+    - Source: OIDC
+      Target: IdentityBroker
+      Label: AssumeRoleWithWebIdentity

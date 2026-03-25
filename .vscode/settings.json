@@ -1,27 +1,5 @@
 {
-  "python.defaultInterpreterPath": ".venv/bin/python",
-  "python.analysis.typeCheckingMode": "strict",
-  "python.testing.pytestArgs": ["tests"],
-  "python.testing.unittestEnabled": false,
-  "python.testing.pytestEnabled": true,
-  "editor.formatOnSave": false,
-  "[python]": {
-    "editor.defaultFormatter": "charliermarsh.ruff",
-    "editor.codeActionsOnSave": {
-      "source.organizeImports": "explicit"
-    }
-  },
-  "ruff.importStrategy": "fromEnvironment",
-  "files.exclude": {
-    "**/.git": true,
-    "**/.svn": true,
-    "**/.hg": true,
-    "**/CVS": true,
-    "**/.DS_Store": true,
-    "**/__pycache__": true,
-    "**/.pytest_cache": true,
-    "**/.mypy_cache": true,
-    "**/.ruff_cache": true,
-    "**/*.egg-info": true
+  "files.associations": {
+    ".coveragerc": "ini"
   }
 }

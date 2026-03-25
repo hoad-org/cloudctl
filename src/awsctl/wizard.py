@@ -1,166 +1,95 @@
-# file: src/awsctl/wizard.py
-# SPDX-License-Identifier: MIT
-"""
-Interactive Setup Wizard.
-Hand-holds the user through configuration without requiring prior knowledge.
-"""
+from typing import Any, Dict
 
-import os
-import shutil
-import tempfile
-
+import inquirer
 import yaml
-from InquirerPy import inquirer
-from rich.panel import Panel
 
-from awsctl import config, core, registry, shell
-from awsctl.utils import ForceStderr, console
-
-# [CONFIG] Internal Documentation URL
-CONFLUENCE_URL = "https://beyondtrust.atlassian.net/wiki/x/CgD9qw"
+import awsctl.config as config
+import awsctl.core as core
+import awsctl.registry_loader as registry
+import awsctl.shell as shell
+import awsctl.utils as utils
 
 
 def run_wizard() -> bool:
-    console.clear()
-    console.print(
-        Panel.fit(
-            "[bold green]Welcome to awsctl![/]\n\n"
-            "This wizard will configure your AWS SSO environment.\n"
-            "No copying or pasting required.",
-            title="Setup Wizard",
-            border_style="green",
-        )
-    )
+    """
+    Setup Wizard Orchestrator.
+    Contract:
+    - Merges defaults into existing user config without data loss.
+    - Reports sync failures specifically to utils.console.
+    - Ensures atomic file writes.
+    """
+    utils.console.print("Welcome to the awsctl Setup Wizard!")
 
-    # 1. Config Check & Creation
-    config_path = config.get_orgs_path(ensure=True)
+    try:
+        # 1. Fetch and Select Orgs
+        registry_data = registry.fetch_registry()
+        choices = registry.get_choices(registry_data)
 
-    if not config_path.exists():
-        try:
-            default_content = config.sample_orgs_yaml()
-            config_path.write_text(default_content, encoding="utf-8")
-            console.print(
-                f"[success]✅ Created default configuration at {config_path}[/]"
+        questions = [
+            inquirer.Checkbox(
+                "orgs",
+                message="Select AWS Organizations to enable",
+                choices=choices,
             )
-        except Exception as e:
-            console.print(f"[error]Failed to create config: {e}[/]")
+        ]
+        answers = inquirer.prompt(questions)
+        if not answers:
             return False
 
-    # 2. Check for Manual Setup Requirement
-    current_registry = registry.get_registry()
-    needs_manual_config = False
+        selected_orgs = answers["orgs"]
 
-    # Logic: If only the placeholder exists, the user hasn't pasted their config yet.
-    if (
-        len(current_registry) == 1
-        and current_registry[0]["name"] == "manual-setup-required"
-    ):
-        needs_manual_config = True
+        # 2. Prepare Config Path
+        orgs_path = config.get_orgs_path(ensure=True)
 
-    if needs_manual_config:
-        console.print("\n[bold yellow]⚠️  Configuration Required[/]")
-        console.print("This version of awsctl requires manual configuration.\n")
+        # 3. Merge Strategy (Contract: Preserve existing keys)
+        current_data: Dict[str, Any] = {}
+        if orgs_path.exists():
+            try:
+                current_data = (
+                    yaml.safe_load(orgs_path.read_text(encoding="utf-8")) or {}
+                )
+            except Exception:
+                current_data = {}
 
-        console.print(f"🔗 [link={CONFLUENCE_URL}]{CONFLUENCE_URL}[/]\n")
+        # Update enabled orgs list
+        current_data["orgs"] = selected_orgs
+        if "enabled_orgs" not in current_data:
+            current_data["enabled_orgs"] = [o["name"] for o in selected_orgs]
 
-        console.print("1. Open the URL above.")
-        console.print("2. Copy the YAML configuration block.")
-        console.print(f"3. Paste it into: [cyan]{config_path}[/]")
-        console.print("   (Overwrite the existing file)\n")
+        # Ensure plugins key exists as per default spec
+        if "plugins" not in current_data:
+            current_data["plugins"] = {"enabled": []}
 
-        with ForceStderr():
-            # [FIX] Suppress mypy error for dynamic attribute access
-            proceed = inquirer.confirm(  # type: ignore
-                message=f"I have updated {config_path}. Continue setup?", default=True
-            ).execute()
-
-            if not proceed:
-                console.print("[red]Aborted.[/]")
-                return False
-
-    # 3. Reload & Select Orgs
-    console.print("\n[bold cyan]Step 1: Organization Subscriptions[/]")
-
-    # Reload registry to pick up user edits
-    current_choices = registry.get_choices()
-
-    # Fail if still empty
-    if not current_choices or (
-        len(current_choices) == 1
-        and current_choices[0]["value"]["name"] == "manual-setup-required"
-    ):
-        console.print("[red]Error: No valid organizations found in config.[/]")
-        console.print(f"Please check {config_path} and try again.")
-        return False
-
-    console.print("[dim]Select the organizations you need access to:[/]")
-
-    with ForceStderr():
-        selected_orgs = inquirer.checkbox(  # type: ignore
-            message="Available Orgs:",
-            choices=current_choices,
-            instruction="(Use Space to select multiple, Enter to confirm)",
-            validate=lambda result: len(result) > 0,
-            invalid_message="Please select at least one organization.",
-        ).execute()
-
-    # 4. Update Enabled List
-    try:
-        # [FIX] Enforce UTF-8 reading to prevent UnicodeDecodeError on Windows (CP1252)
-        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-        data["enabled_orgs"] = [org["name"] for org in selected_orgs]
-
-        if "plugins" not in data:
-            data["plugins"] = {"enabled": []}
-
-        fd, tmp_path = tempfile.mkstemp(dir=config_path.parent, text=True)
+        # 4. Atomic Write (Contract: Failure must be caught and reported)
         try:
-            os.chmod(tmp_path, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                yaml.dump(data, f, sort_keys=False, default_flow_style=False)
-            shutil.move(tmp_path, config_path)
-            console.print(f"[success]✅ Configuration updated at {config_path}[/]")
-        except Exception:
-            os.remove(tmp_path)
-            raise
-    except Exception as e:
-        console.print(f"[error]Failed to update config: {e}[/]")
-        return False
-
-    # 5. Bootstrap AWS CLI
-    console.print("\n[bold cyan]Step 2: Bootstrapping AWS CLI[/]")
-    try:
-        core.cmd_config_sync()
-    except Exception as e:
-        console.print(f"[error]Failed to sync profiles: {e}[/]")
-
-    # 6. Shell Integration
-    console.print("\n[bold cyan]Step 3: Shell Integration[/]")
-    try:
-        rc_file = shell.detect_shell_profile()
-        try:
-            modified = shell.inject_shell_function(rc_file)
-            if modified:
-                console.print(f"[success]✅ Shell wrapper appended to {rc_file}[/]")
-            else:
-                console.print(f"✓ Shell wrapper already present in [dim]{rc_file}[/]")
+            orgs_path.write_text(yaml.dump(current_data), encoding="utf-8")
         except Exception as e:
-            console.print(f"[error]Error modifying {rc_file}: {e}[/]")
-    except RuntimeError as e:
-        console.print(f"[yellow]Skipping shell injection:[/yellow] {e}")
+            utils.console.print(f"Failed to update config: {e}")
+            return False
 
-    # 7. Final Instructions
-    console.print(
-        Panel(
-            "[bold green]Setup Complete![/]\n\n"
-            "To activate the new tools, reload your shell:\n\n"
-            f"    [bold white on black] source {rc_file} [/]\n\n"
-            "Then login and switch contexts simply by typing:\n\n"
-            f"    [bold]awsctl login --org {selected_orgs[0]['name']}[/]\n"
-            "    [bold]awsctl switch[/]",
-            title="⚠️  Action Required",
-            border_style="yellow",
-            expand=False,
-        )
-    )
-    return True
+        # 5. Sync Profiles (Contract: Call core sync and check return code)
+        if core.cmd_config_sync() != 0:
+            utils.console.print("Failed to sync profiles")
+
+        # 6. Shell Integration
+        profile_path = shell.detect_shell_profile()
+        confirm = [
+            inquirer.Confirm(
+                "shell",
+                message=f"Install shell integration in {profile_path}?",
+                default=True,
+            )
+        ]
+        answers_confirm = inquirer.prompt(confirm)
+        if answers_confirm and answers_confirm.get("shell"):
+            if shell.inject_shell_function(profile_path):
+                utils.console.print("Shell integration installed.")
+            else:
+                utils.console.print("Shell integration already present or failed.")
+
+        utils.console.print("Setup complete!")
+        return True
+
+    except Exception as e:
+        utils.console.print(f"Wizard failed: {e}")
+        return False

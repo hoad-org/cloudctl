@@ -1,0 +1,34 @@
+Diagram:
+  DefinitionFiles:
+    - Type: URL
+      Url: https://raw.githubusercontent.com/awslabs/diagram-as-code/main/definitions/definition-for-aws-icons-light.yaml
+
+  Resources:
+    Canvas:
+      Type: AWS::Diagram::Canvas
+      Direction: horizontal
+      Children:
+        - Hub
+        - Spokes
+
+    Hub:
+      Type: AWS::Organizations::Account
+      Title: Identity Hub
+      Children:
+        - Broker
+
+    Broker:
+      Type: AWS::IAM::Role
+
+    Spokes:
+      Type: AWS::Organizations::OrganizationalUnit
+      Title: Tenant Accounts
+      Children:
+        - TenantRole
+
+    TenantRole:
+      Type: AWS::IAM::Role
+
+  Links:
+    - Source: Broker
+      Target: TenantRole

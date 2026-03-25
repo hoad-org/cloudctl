@@ -1,0 +1,36 @@
+# diagrams-src/aws-identity-hub.yaml
+
+Diagram:
+  DefinitionFiles:
+    - Type: URL
+      Url: https://raw.githubusercontent.com/awslabs/diagram-as-code/main/definitions/definition-for-aws-icons-light.yaml
+
+  Resources:
+    Canvas:
+      Type: AWS::Diagram::Canvas
+      Direction: horizontal
+      Children:
+        - External
+        - Hub
+
+    External:
+      Type: AWS::Organizations::OrganizationalUnit
+      Title: GitHub
+      Children:
+        - OIDC
+
+    OIDC:
+      Type: AWS::IAM::OIDCProvider
+
+    Hub:
+      Type: AWS::Organizations::Account
+      Title: Identity Hub
+      Children:
+        - IdentityBroker
+
+    IdentityBroker:
+      Type: AWS::IAM::Role
+
+  Links:
+    - Source: OIDC
+      Target: IdentityBroker

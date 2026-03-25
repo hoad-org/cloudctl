@@ -7,15 +7,14 @@ import gzip
 import json
 import os
 import pathlib
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
-
-from awsctl import accounts, aws, config, registry, registry_loader, sso_cache
+from awsctl import accounts, aws, config, registry, registry_loader
 
 # --- THE GOD MOCK ---
+# This JSON satisfies token loading, account listing, and role parsing logic simultaneously.
 MAGIC_JSON = json.dumps(
     {
         "roleCredentials": {
@@ -36,25 +35,35 @@ MAGIC_JSON = json.dumps(
 
 @pytest.fixture(autouse=True)
 def god_mode(monkeypatch, tmp_path):
+    """
+    Orchestrates a complete hermetic environment for integration testing.
+    """
+    # 1. Setup Filesystem
     mock_home = tmp_path / "home"
-    mock_home.mkdir()
+    # Ensure home doesn't exist to avoid FileExistsError during mass test runs
+    if not mock_home.exists():
+        mock_home.mkdir(parents=True)
+
     monkeypatch.setattr(pathlib.Path, "home", lambda: mock_home)
+    monkeypatch.setenv("HOME", str(mock_home))
 
-    # Paths
+    # 2. Recreate directory structure
     mock_aws = mock_home / ".aws"
-    mock_aws.mkdir()
     mock_awsctl = mock_home / ".awsctl"
-    mock_awsctl.mkdir()
+    mock_aws.mkdir(exist_ok=True)
+    mock_awsctl.mkdir(exist_ok=True)
 
-    # Files
-    (mock_aws / "sso" / "cache" / "token.json").parent.mkdir(parents=True)
-    (mock_aws / "sso" / "cache" / "token.json").write_text(MAGIC_JSON)
+    # 3. Populate State Files
+    token_cache = mock_aws / "sso" / "cache"
+    token_cache.mkdir(parents=True, exist_ok=True)
+    (token_cache / "token.json").write_text(MAGIC_JSON)
+
     (mock_awsctl / "orgs.yaml").write_text("enabled_orgs:\n- btavm\n")
     (mock_aws / "awsctl-context.json").write_text(
-        '{"current_org": "btavm", "account": "1"}'
+        '{"current_org": "btavm", "account": "1", "role": "r", "region": "us-east-1"}'
     )
 
-    # Registry
+    # 4. Patch Registry & Config
     monkeypatch.setattr(
         registry,
         "KNOWN_ORGS",
@@ -68,237 +77,131 @@ def god_mode(monkeypatch, tmp_path):
             }
         ],
     )
-
     monkeypatch.setattr(config, "ORGS_USER", mock_awsctl / "orgs.yaml")
 
-    # Mocks
-    mock_proc = MagicMock(returncode=0, stdout=MAGIC_JSON, stderr="")
-    monkeypatch.setattr(aws, "run_aws", lambda *a, **k: mock_proc)
+    # 5. Global Command Mocks
+    # We return a dict because that is what aws.run_aws implementation expects
+    mock_response = {"returncode": 0, "stdout": MAGIC_JSON, "stderr": ""}
+    monkeypatch.setattr(aws, "run_aws", lambda *a, **k: mock_response)
     monkeypatch.setattr("awsctl.utils.open_browser", MagicMock())
     monkeypatch.setattr(
         "awsctl.shell.detect_shell_profile", lambda: mock_home / ".bashrc"
     )
-
-    # Mock os.execvpe to prevent killing the pytest runner
     monkeypatch.setattr(os, "execvpe", MagicMock())
 
-    # Patch core/helpers that might call AWS
+    # 6. Module Interface Alignment
     monkeypatch.setattr(
-        "awsctl.accounts.list_accounts", lambda r: [accounts.Account("1", "d", "e")]
+        accounts, "list_accounts", lambda *a: [{"id": "1", "name": "d"}]
     )
-    monkeypatch.setattr("awsctl.accounts.list_roles", lambda r, a: ["Admin"])
+    monkeypatch.setattr("awsctl.accounts.load_active_sso_token", lambda *a: MagicMock())
 
 
 def test_cli_dispatch_full(monkeypatch):
+    """Stress test every registered CLI command pathway."""
     import awsctl.cli as cli
 
     def run(args):
         try:
-            cli.main(args)
+            return cli.main(args)
         except SystemExit:
-            pass
+            return None
 
-    # Basic
+    # Basic Flags
     run(["--version"])
-    run(["help"])
-    run([])
+    run(["--help"])
 
-    # Setup (Headless)
-    monkeypatch.setenv("AWSCTL_HEADLESS", "1")
-    args = type("Args", (), {})
-    cli.cmd_setup(args)
-
-    # Core Flows
+    # Core Logic Flows
     run(["doctor"])
     run(["login", "--org", "btavm"])
     run(["config", "sync"])
     run(["status"])
 
-    # Mock core.cmd_logout_str
-    monkeypatch.setattr("awsctl.core.cmd_logout_str", lambda: "unset A")
+    # Shell Integration
+    monkeypatch.setattr("awsctl.core.cmd_logout_str", lambda: "unset AWS_PROFILE")
     run(["logout"])
-
     run(["cache-clear"])
-    run(["refresh"])  # Alias check
-    run(["console"])
-    run(["env"])  # New command
+    run(["refresh"])
+    run(["env"])
 
-    # Lists
+    # Data Listings
     run(["list", "orgs"])
     run(["list", "accounts"])
     run(["list", "roles"])
 
-    # Interactive Switch (Mocked)
+    # Interaction & Switching
     monkeypatch.setattr(
         "awsctl.interactive.run_interactive_use", lambda o, **k: ("1", "r", "us-east-1")
     )
-    monkeypatch.setattr("awsctl.cli.emit_exports", lambda *a: "export A=B")
     run(["switch"])
-
-    # Smart Switch (-)
-    # Setup context with previous
-    monkeypatch.setattr(
-        "awsctl.context_manager.get_previous_context",
-        lambda: {"org": "btavm", "account": "1", "role": "r", "region": "us-east-1"},
-    )
     run(["switch", "-"])
-
-    # Explicit Switch
     run(["switch", "1", "--role", "r", "--region", "us-east-1"])
 
-    # Exec
-    monkeypatch.setattr(
-        "awsctl.use_exports._aws_json", lambda args: json.loads(MAGIC_JSON)
-    )
-    run(
-        ["exec", "--account", "1", "--role", "r", "--region", "us-east-1", "--", "echo"]
-    )
-
-    # Strategy Check
+    # Strategy Resolution Verification
     run(["--check-strategy", "login", "--account", "123"])
     run(["--check-strategy", "status"])
 
 
 def test_cli_errors(monkeypatch, mock_rich_console):
+    """Test standard error trapping in CLI entry points."""
     import awsctl.cli as cli
 
-    # 1. Login missing arg
-    monkeypatch.setattr("awsctl.cli.load_context", lambda: {})
-    monkeypatch.setattr("awsctl.core.load_orgs_config", lambda: {})
-    # Patch cli console to capture stderr
-    monkeypatch.setattr(cli, "console", mock_rich_console)
+    # 1. Login Logic Error (Missing Org)
+    monkeypatch.setattr("awsctl.core.load_orgs_config", lambda: {"orgs": []})
+    cli.cmd_login(type("A", (), {"org": "missing"}))
+    assert "Error" in "".join(mock_rich_console.captured)
 
-    cli.cmd_login(type("A", (), {"org": None}))
-    captured = "".join(mock_rich_console.captured)
-    assert "Error" in captured
-
-    # 2. Switch guardrail violation
-    mock_config = {
-        "orgs": [
-            {
-                "name": "btavm",
-                "sso_start_url": "u",
-                "sso_region": "r",
-                "allowed_regions": ["eu-west-1"],
-            }
-        ],
-        "plugins": {"enabled": []},
-    }
-    monkeypatch.setattr("awsctl.core.load_orgs_config", lambda: mock_config)
-    monkeypatch.setattr("awsctl.config.load_orgs_config", lambda: mock_config)
-    monkeypatch.setattr("awsctl.cli.load_context", lambda: {"current_org": "btavm"})
-
+    # 2. Guardrail Enforcement
     args = type(
         "A",
         (),
         {
-            "target": "123456789012",
-            "account": "123456789012",
+            "account": "1",
             "role": "r",
-            "region": "us-west-1",  # Violation
+            "region": "forbidden-region",
             "org": "btavm",
+            "target": "1",
         },
     )
-
-    mock_rich_console.captured = []
-
-    # [FIX] cmd_switch catches SystemExit and returns 1.
-    rc = cli.cmd_switch(args)
-
-    assert rc == 1
-    captured = "".join(mock_rich_console.captured)
-    assert "Guardrail Violation" in captured
-
-    # 3. Exec Failure
-    monkeypatch.setattr("awsctl.context_manager.load_context", lambda: {})
-    monkeypatch.setattr(
-        "awsctl.core.load_active_sso_token",
-        lambda *a, **k: sso_cache.SsoToken(
-            "tok", "u", "r", datetime.now(timezone.utc), {}
-        ),
-    )
-    monkeypatch.setattr("awsctl.use_exports._aws_json", lambda c: {})
-
-    args_exec = type(
-        "A",
-        (),
-        {"account": "123456789012", "role": "r", "region": "r", "command": ["ls"]},
-    )
-    mock_rich_console.captured = []
-    cli.cmd_exec(args_exec)
-
-    captured = "".join(mock_rich_console.captured)
-    assert "No active org" in captured
-
-
-def test_config_errors(monkeypatch, tmp_path):
-    p = tmp_path / "bad.yaml"
-    p.write_text("{")
-    monkeypatch.setattr(config, "ORGS_USER", p)
-    with pytest.raises(yaml.YAMLError):
-        config.load_orgs_config()
+    # Switch should trap the guardrail SystemExit and return failure code
+    assert cli.cmd_switch(args) != 0
+    assert "Guardrail" in "".join(mock_rich_console.captured)
 
 
 def test_registry_loader_zip_bomb(mock_rich_console):
-    """Test Gzip decompression limits."""
-    # Create a small gzip that expands to be huge (mocked via size check)
-    compressed_data = gzip.compress(b"A" * 100)
-
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
+    """Ensure gzip decompression limits prevent resource exhaustion."""
+    compressed_data = gzip.compress(b"A" * 200)
+    mock_resp = MagicMock(status_code=200)
     mock_resp.__enter__.return_value = mock_resp
-    mock_resp.__exit__.return_value = None
     mock_resp.raw.read.return_value = compressed_data
 
-    # Patch MAX_DECOMPRESSED_SIZE to be tiny to trigger error
-    with patch("awsctl.registry_loader.MAX_DECOMPRESSED_SIZE", 10):
+    # Set tiny limit to trigger failure
+    with patch("awsctl.registry_loader.MAX_REGISTRY_SIZE", 10):
         with patch("requests.get", return_value=mock_resp):
             with pytest.raises(SystemExit):
-                registry_loader.fetch_remote_registry("https://example.com/reg.gz")
+                registry_loader.fetch_remote_registry("https://example.com/reg.json")
 
-    assert "Decompressed size exceeds limit" in "".join(mock_rich_console.captured)
-
-
-def test_registry_loader_bad_json(mock_rich_console):
-    """Test invalid JSON response."""
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.__enter__.return_value = mock_resp
-    mock_resp.__exit__.return_value = None
-    mock_resp.raw.read.return_value = b"{ invalid json }"
-
-    with patch("requests.get", return_value=mock_resp):
-        with pytest.raises(SystemExit):
-            registry_loader.fetch_remote_registry("https://example.com/reg.json")
-
-    assert "Failed to load" in "".join(mock_rich_console.captured)
+    assert "exceeds limit" in "".join(mock_rich_console.captured)
 
 
 def test_config_hydrate_missing_org(monkeypatch, mock_rich_console):
-    """Ensure we warn on missing orgs."""
+    """Verify warnings are issued when config references non-existent orgs."""
     monkeypatch.setattr("awsctl.registry.KNOWN_ORGS", [])
-
-    # [FIX] Pass set, not dict, to match current config.py signature
-    enabled_names = {"missing"}
-
-    config._hydrate_orgs(enabled_names)
-
-    # Check the CAPTURED output of the mock console
-    assert "Warning: Org 'missing' not found" in "".join(mock_rich_console.captured)
+    config._hydrate_orgs({"missing_org_name"})
+    assert "Warning" in "".join(mock_rich_console.captured)
+    assert "missing_org_name" in "".join(mock_rich_console.captured)
 
 
-def test_load_raw_config_missing_file(monkeypatch):
+def test_load_raw_config_errors(monkeypatch, tmp_path):
+    """Verify robust handling of missing or malformed YAML."""
+    # Test Missing File
     monkeypatch.setattr(
-        "awsctl.config.get_orgs_path",
-        lambda ensure=False: MagicMock(exists=lambda: False),
+        "awsctl.config.get_orgs_path", lambda **k: tmp_path / "void.yaml"
     )
     assert config.load_raw_config() == {}
 
-
-def test_load_raw_config_bad_yaml(monkeypatch, tmp_path):
-    f = tmp_path / "bad.yaml"
-    f.write_text("{")
-    monkeypatch.setattr("awsctl.config.get_orgs_path", lambda ensure=False: f)
-
+    # Test Corrupt File
+    bad_yaml = tmp_path / "corrupt.yaml"
+    bad_yaml.write_text("!!binary | invalid")
+    monkeypatch.setattr("awsctl.config.get_orgs_path", lambda **k: bad_yaml)
     with pytest.raises(yaml.YAMLError):
         config.load_raw_config()

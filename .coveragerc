@@ -1,0 +1,18 @@
+[run]
+source = src/awsctl
+branch = True
+omit =
+    tests/*
+    */__init__.py
+    */__main__.py
+    src/awsctl/_version.py
+
+[report]
+show_missing = True
+precision = 2
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    if TYPE_CHECKING:

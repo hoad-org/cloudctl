@@ -1,0 +1,73 @@
+#### file: docs/diagrams/awsctl-boundary.yaml
+Diagram:
+  DefinitionFiles:
+    - Type: URL
+      Url: https://raw.githubusercontent.com/awslabs/diagram-as-code/main/definitions/definition-for-aws-icons-light.yaml
+
+  Resources:
+    Canvas:
+      Type: AWS::Diagram::Canvas
+      Direction: horizontal
+      Children:
+        - Workstation
+        - AWSCloud
+
+    Workstation:
+      Type: AWS::Groups::GenericGroup
+      Title: "Local Workstation (Execution Plane)"
+      Children:
+        - UserShell
+        - awsctl
+        - LocalCache
+
+    UserShell:
+      Type: AWS::Groups::GenericGroup
+      Title: "User Shell"
+
+    awsctl:
+      Type: AWS::DeveloperTools::CommandLineInterface
+      Title: "awsctl (Identity Broker)"
+
+    LocalCache:
+      Type: AWS::Storage::SimpleStorageService
+      Title: "Local Cache (STS Tokens)"
+
+    AWSCloud:
+      Type: AWS::Groups::Region
+      Title: "AWS Infrastructure (Control Plane)"
+      Children:
+        - IdentityCenter
+        - STS
+        - TargetAccounts
+
+    IdentityCenter:
+      Type: AWS::SecurityIdentityCompliance::IAMIdentityCenter
+      Title: "IAM Identity Center"
+
+    STS:
+      Type: AWS::SecurityIdentityCompliance::SecurityTokenService
+      Title: "AWS STS"
+
+    TargetAccounts:
+      Type: AWS::Organizations::Account
+      Title: "Target Accounts"
+
+  Links:
+    - Source: UserShell
+      Target: awsctl
+      Label: "Invokes"
+    - Source: awsctl
+      Target: IdentityCenter
+      Label: "SSO Auth"
+    - Source: IdentityCenter
+      Target: awsctl
+      Label: "SAML/OIDC"
+    - Source: awsctl
+      Target: STS
+      Label: "AssumeRole"
+    - Source: STS
+      Target: awsctl
+      Label: "Credentials"
+    - Source: awsctl
+      Target: TargetAccounts
+      Label: "API Calls"

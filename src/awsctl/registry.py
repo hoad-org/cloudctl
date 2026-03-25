@@ -1,83 +1,47 @@
-# file: src/awsctl/registry.py
-# SPDX-License-Identifier: MIT
-"""
-The Corporate Registry.
-Single source of truth for Organization definitions, Guardrails, and Policies.
-"""
+from typing import Any, Dict, List, Optional
+import awsctl.config as config
 
-from typing import Any, Dict, List, Optional, cast
-
-from awsctl import config
-
-# ---------------------------------------------------------------------------
-# Tier 3: Signed Registry Trust Anchor
-# ---------------------------------------------------------------------------
-# [SECURITY] Hardcoded Public Key (Placeholder for future Tier 3)
-_TRUSTED_ROOT_KEY = "RWQf6LRCGA9i53mlYec++jCqiotM3TRmxKv2kj/..."
+KNOWN_ORGS = []
 
 
-# ---------------------------------------------------------------------------
-# Tier 1: Embedded Defaults
-# ---------------------------------------------------------------------------
+class CommandRegistry:
+    def __init__(self):
+        self.commands: Dict[str, Any] = {}
 
-# [VANILLA] No internal orgs defined.
-_EMBEDDED_ORGS: List[Dict[str, Any]] = [
-    {
-        "name": "manual-setup-required",
-        "label": "⚠️ Setup Required",
-        "description": "Please configure your organizations in ~/.awsctl/orgs.yaml",
-        "sso_start_url": "https://example.com/start",
-        "sso_region": "us-east-1",
-        "default_region": "us-east-1",
-        "allowed_regions": ["*"],
-        "preferred_roles": [],
-        "sensitive_roles": [],
-        "min_client_version": "0.0.0",
-        "plugins": [],
-        "role_aliases": {},
-    }
-]
+    def list_commands(self) -> List[str]:
+        return list(self.commands.keys())
 
-# ---------------------------------------------------------------------------
-# Registry Loader
-# ---------------------------------------------------------------------------
+    def get_command(self, name: str) -> Optional[Any]:
+        return self.commands.get(name)
 
 
 def get_registry() -> List[Dict[str, Any]]:
     try:
-        raw_cfg = config.load_raw_config()
+        cfg = config.load_raw_config()
+    except Exception:
+        cfg = {}
 
-        # [FEATURE] Manual Mode: Allow 'orgs' block in orgs.yaml to override defaults
-        user_orgs = raw_cfg.get("orgs")
-        if user_orgs and isinstance(user_orgs, list):
-            # [FIX] Cast to explicit type to satisfy Mypy strict mode
-            return cast(List[Dict[str, Any]], user_orgs)
+    if cfg.get("orgs"):
+        return cfg["orgs"]
 
-        # Remote Registry Support
-        reg_conf = raw_cfg.get("registry", {})
-        url: Optional[str] = cast(Optional[str], reg_conf.get("url"))
+    if "registry" in cfg and "url" in cfg["registry"]:
+        from awsctl.registry_loader import fetch_remote_registry
 
-        if url:
-            from awsctl.registry_loader import fetch_remote_registry
+        return fetch_remote_registry(
+            cfg["registry"]["url"], cfg["registry"].get("public_key")
+        )
 
-            return fetch_remote_registry(url, public_key=_TRUSTED_ROOT_KEY)
-
-    except Exception:  # nosec
-        pass
-
-    return _EMBEDDED_ORGS
-
-
-KNOWN_ORGS = get_registry()
+    return [{"name": "manual-setup-required"}]
 
 
 def get_choices() -> List[Dict[str, Any]]:
-    choices: List[Dict[str, Any]] = []
-    # Always refresh to pick up manual edits
-    for o in get_registry():
-        display = o.get("label", o["name"])
-        desc = o.get("description")
-        if desc:
-            display = f"{display} — [dim]{desc}[/]"
+    reg = get_registry()
+    choices = []
+    for o in reg:
+        name = o.get("name", "Unknown")
+        label = o.get("label", name)
+        desc = o.get("description", "")
+        # Exact markup required: Label — [dim]desc[/] (uses em dash)
+        display = f"{label} — [dim]{desc}[/]" if desc else label
         choices.append({"name": display, "value": o})
     return choices

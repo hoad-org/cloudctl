@@ -5,11 +5,10 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from awsctl import config, core, sso_cache, utils
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(config, "HOME", tmp_path)

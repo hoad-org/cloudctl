@@ -1,126 +1,71 @@
-# file: tests/conftest.py
-"""
-Shared pytest configuration and mocks for awsctl test suite.
-"""
-
-import io
-import os
-import pathlib
-import subprocess
-from typing import Any
+from io import StringIO
 from unittest.mock import MagicMock
 
 import pytest
 from rich.console import Console
 
-# [FIX] Disable security hardening (TTY checks, Stream swapping) during tests.
-os.environ["AWSCTL_TEST_MODE"] = "1"
-
-
-class MockConsole:
-    """
-    A wrapper around rich.console.Console that captures output to a buffer.
-    """
-
-    def __init__(self):
-        self.file = io.StringIO()
-        self.real_console = Console(file=self.file, force_terminal=False, width=1000)
-        self.captured = []
-
-    def print(self, *args: Any, **kwargs: Any) -> None:
-        self.real_console.print(*args, **kwargs)
-        self._sync()
-
-    def print_json(self, data: Any = None) -> None:
-        self.real_console.print_json(data=data)
-        self._sync()
-
-    def status(self, *args: Any, **kwargs: Any) -> MagicMock:
-        cm = MagicMock()
-        cm.__enter__.return_value = None
-        return cm
-
-    def clear(self) -> None:
-        self.file.truncate(0)
-        self.file.seek(0)
-        self.captured = []
-
-    def _sync(self):
-        self.captured = [self.file.getvalue()]
-
-
-# [PATCH FIX]: Mocks Path.home() to point to the isolated temp directory.
-@pytest.fixture(autouse=True)
-def mock_home_path(monkeypatch, tmp_path):
-    mock_isolated_home = tmp_path / "mocked_home"
-    mock_isolated_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(pathlib.Path, "home", lambda: mock_isolated_home)
-    monkeypatch.setenv("HOME", str(mock_isolated_home))
-    return mock_isolated_home
-
 
 @pytest.fixture(autouse=True)
-def no_real_subprocess(monkeypatch):
-    """
-    Prevent hitting real system commands.
-    """
-    mock_run = MagicMock()
-    mock_run.return_value = subprocess.CompletedProcess(
-        args=["cmd"], returncode=0, stdout="", stderr=""
-    )
-    monkeypatch.setattr(subprocess, "run", mock_run)
+def mock_home(tmp_path, monkeypatch):
+    """Sets up a hermetic home directory for every test."""
+    home = tmp_path / "home"
+    home.mkdir(parents=True, exist_ok=True)
 
-    mock_popen = MagicMock()
+    # Critical: Mock both the env var and Path.home() if used in source
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))  # For Windows parity
 
-    def side_effect(*args, **kwargs):
-        process_mock = MagicMock()
-        process_mock.communicate.return_value = ("", "")
-        process_mock.returncode = 0
-        process_mock.poll.side_effect = [None, 0]
-        cm_mock = MagicMock()
-        cm_mock.__enter__.return_value = process_mock
-        cm_mock.__exit__.return_value = None
-        return cm_mock
+    # Pre-create required directory structures
+    (home / ".awsctl").mkdir(exist_ok=True)
+    (home / ".aws" / "sso" / "cache").mkdir(parents=True, exist_ok=True)
 
-    mock_popen.side_effect = side_effect
-    monkeypatch.setattr(subprocess, "Popen", mock_popen)
+    # Global browser mock to prevent tests from launching real windows
+    import webbrowser
 
-    yield mock_run
+    monkeypatch.setattr(webbrowser, "open", MagicMock(return_value=True))
+
+    return home
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def mock_rich_console(monkeypatch):
     """
-    Inject the MockConsole globally for STDERR logs (errors, warnings, status).
+    Unified console capture fixture.
+    It replaces the real Rich console with one that records to a buffer.
     """
-    dummy_console = MockConsole()
 
-    targets = [
-        "awsctl.utils.console",
-        "awsctl.cli.console",
-        "awsctl.core.console",
-        "awsctl.config.console",
-        "awsctl.interactive.console",
-        "awsctl.cli_accounts.console",
-        "awsctl.guardrails.console",
-        "awsctl.plugins.okta.console",
-        "awsctl.plugins.console",
-        "awsctl.registry_loader.console",
-        "awsctl.wizard.console",
-        # [FIX] Patch doctor.console so output is captured in tests
-        "awsctl.doctor.console",
-        "awsctl.utils.stdout_console",
-        "awsctl.cli.stdout_console",
-        "awsctl.cli_accounts.stdout_console",
-        "awsctl.core.stdout_console",
-    ]
+    class CapturedConsole:
+        def __init__(self):
+            self.buffer = StringIO()
+            # We create a REAL Rich Console but point it at our buffer
+            self.console = Console(
+                file=self.buffer, force_terminal=False, width=100, color_system=None
+            )
 
-    for t in targets:
-        monkeypatch.setattr(t, dummy_console, raising=False)
+        @property
+        def captured(self):
+            """Returns a list of strings, split by actual output to match test expectations."""
+            val = self.buffer.getvalue()
+            return [val] if val else []
 
-    return dummy_console
+        def print(self, *args, **kwargs):
+            """Proxy to the real Rich console print method."""
+            self.console.print(*args, **kwargs)
 
+        def clear(self):
+            """Wipes the buffer for the next assertion."""
+            self.buffer.truncate(0)
+            self.buffer.seek(0)
 
-@pytest.fixture(autouse=True)
-def mock_browser(monkeypatch):
-    monkeypatch.setattr("webbrowser.open", MagicMock())
+    cap = CapturedConsole()
+
+    # We must patch the utils module where the consoles are defined
+    import awsctl.utils
+
+    # Replace the Rich Console instances with our capture object
+    # Note: We patch the attributes that the code actually calls
+    monkeypatch.setattr(awsctl.utils, "console", cap.console)
+    monkeypatch.setattr(awsctl.utils, "stdout_console", cap.console)
+
+    # We return the 'cap' wrapper so tests can call .clear() or check .captured
+    return cap

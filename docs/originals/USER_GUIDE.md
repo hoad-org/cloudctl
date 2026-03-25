@@ -17,7 +17,7 @@ The recommended method is `pipx`, which installs the tool in an isolated environ
 
 ### Install `awsctl` pinned to v2.8.1
 
-> pipx install "git+https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git@v2.8.1"
+> pipx install "git+https://github.com/hoad-org/awsctl.git@v2.8.1"
 
 ### Verify installation
 
@@ -339,7 +339,7 @@ Then re-open your terminal (or source your shell config).
 
 If needed, reinstall:
 
-> pipx install --force "git+https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git@v2.8.1"
+> pipx install --force "git+https://github.com/hoad-org/awsctl.git@v2.8.1"
 
 ---
 

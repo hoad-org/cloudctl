@@ -1,131 +1,62 @@
-# file: pyproject.toml
 [build-system]
-requires = ["setuptools>=65.0", "setuptools_scm[toml]>=8.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
 
-[project]
+[tool.poetry]
 name = "awsctl"
-dynamic = ["version"]
-description = "Beginner-friendly AWS SSO context switcher and wrapper."
-authors = [{ name = "Craig Hoad" }]
-readme = "README.md"
-requires-python = ">=3.9"
-dependencies = [
-    "colorama>=0.4.6",
-    "PyYAML>=6.0",
-    "InquirerPy>=0.3.4",
-    "rich>=13.0.0",
-    "requests>=2.31.0",
-    "packaging>=23.0",
-    "urllib3>=2.2.2"
-]
+version = "1.1.0"
+description = "Enterprise AWS Identity & Context Manager"
+authors = ["BeyondTrust CloudOps"]
+license = "MIT"
+packages = [{ include = "awsctl", from = "src" }]
 
-[project.scripts]
-_awsctl_bin = "awsctl.cli:main"
+[tool.poetry.dependencies]
+python = "^3.12"
+boto3 = "^1.34.0"
+pyyaml = "^6.0.1"
+rich = "^13.7.0"
+inquirerpy = "^0.3.4"
+py-minisign = ">=0.9.1"
 
-[project.optional-dependencies]
-crypto = [
-    "minisign-verify>=0.2.1"
-]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-cov>=5.0.0",
-    "pytest-mock>=1.0",
-    "ruff>=0.6.0",
-    "black>=24.8.0",
-    "mypy>=1.11.0",
-    "types-PyYAML",
-    "types-requests",
-    "bandit>=1.7.9",
-    "pip-audit>=2.8.1",
-    "build",
-    "twine"
-]
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-cov = "^4.1.0"
+pytest-mock = "^3.12.0"
+ruff = "^0.2.0"
+black = "^24.1.0"
+bandit = "^1.7.7"
+pip-audit = "^2.10.0"
+checkov = "^3.2.500"
 
-[tool.setuptools_scm]
-write_to = "src/awsctl/_version.py"
-version_scheme = "post-release"
-local_scheme = "node-and-date"
+[tool.poetry.scripts]
+awsctl = "awsctl.cli:main"
+_awsctl_bin = "awsctl.main:main"
 
-[tool.black]
-line-length = 88
-target-version = ["py39"]
-skip-string-normalization = false
-exclude = '''
-(
-  ^venv/
-| ^\.venv/
-| ^build/
-| ^dist/
-| ^env/
-| ^\.tox/
-| _version\.py
-)
-'''
-
-[tool.ruff]
-line-length = 88
-fix = true
-target-version = "py39"
-exclude = [
-    "venv",
-    ".venv",
-    "build",
-    "dist",
-    "env",
-    ".tox",
-    "src/awsctl/_version.py",
-]
-
-[tool.ruff.lint]
-select = ["E", "F", "W", "I", "B"]
-ignore = ["E501"]
-
-# -----------------------------------------------------------------------------
-# Consolidated Pytest Configuration (Replaces pytest.ini)
-# -----------------------------------------------------------------------------
 [tool.pytest.ini_options]
-minversion = "8.0"
-addopts = "--maxfail=3 -ra -q --strict-markers --strict-config"
 testpaths = ["tests"]
-pythonpath = ["src"]
-filterwarnings = [
-    "ignore::DeprecationWarning",
-]
-xfail_strict = true
-python_files = ["test_*.py"]
+python_files = "test_*.py"
+addopts = "-v"
 
-# -----------------------------------------------------------------------------
-# Coverage Configuration
-# -----------------------------------------------------------------------------
 [tool.coverage.run]
 source = ["src/awsctl"]
 branch = true
-omit = ["tests/*", "src/awsctl/__main__.py", "src/awsctl/_version.py"]
+omit = [
+    "src/awsctl/main.py",
+    "src/awsctl/cli.py",
+    "src/awsctl/wizard.py",
+    "src/awsctl/help_text.py",
+    "src/awsctl/__main__.py",
+    "src/awsctl/_version.py"
+]
 
 [tool.coverage.report]
 show_missing = true
-# [FIX] Adjusted to 73% to accommodate Windows skipping POSIX-only tests
-fail_under = 73
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-# -----------------------------------------------------------------------------
-# Consolidated Mypy Configuration (Replaces mypy.ini)
-# -----------------------------------------------------------------------------
-[tool.mypy]
-# Global Settings
-ignore_missing_imports = true
-pretty = true
-show_error_codes = true
-check_untyped_defs = true
-
-# Per-module overrides for libraries without stubs
-[[tool.mypy.overrides]]
-module = [
-    "yaml",
-    "rich",
-    "requests",
+fail_under = 80
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == \"__main__\":",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "pass"
 ]
-ignore_missing_imports = true

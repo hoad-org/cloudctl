@@ -1,0 +1,3 @@
+
+# AWSCTL SHELL INTEGRATION
+awsctl() { ... }

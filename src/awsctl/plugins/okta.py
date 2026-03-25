@@ -1,71 +1,46 @@
-# file: src/awsctl/plugins/okta.py
-# SPDX-License-Identifier: MIT
-"""
-Okta plugin implementation.
-Performs pre-flight connectivity checks (VPN/Internet).
-"""
-
-import os
 import sys
 from typing import Any, Dict
 
 import requests
 
-from awsctl.utils import console
+import awsctl.utils as utils
 
 
 def pre_login(org: Dict[str, Any]) -> None:
     """
-    Hook execution flow:
-    1. Check config existence.
-    2. Perform HEAD request to SSO URL to verify reachability.
+    Okta pre-login hook.
+    Contract: Must resolve utils.console at runtime to avoid stale references.
     """
-    # [FIX] Bypass in test mode to allow smoke tests to pass without real network
-    if os.environ.get("AWSCTL_TEST_MODE"):
-        console.print("[warning]⚠ Test mode detected. Skipping Okta checks.[/]")
+    utils.debug_print(f"Okta plugin: Preparing login for {org}")
+
+    # 1. Missing URL (Contract: Warning only, no exit)
+    sso_url = org.get("sso_start_url")
+    if not sso_url:
+        utils.console.print("Okta plugin: SSO URL is missing in configuration")
         return
 
-    name = org.get("name")
-    console.print(f"[dim]Running network checks for {name}...[/]")
-
-    # 1. Config Validation
-    url = org.get("sso_start_url")
-    if not url:
-        console.print("[warning]⚠ 'sso_start_url' missing. Skipping checks.[/]")
-        return
-
-    # 🛡️ SECURITY FIX: Prevent SSRF against local/internal non-HTTPS services
-    if not url.lower().startswith("https://"):
-        console.print(f"[error]✗ Security Risk: SSO URL must be HTTPS: {url}[/]")
+    # 2. Insecure URL (Contract: Security exit)
+    if sso_url.startswith("http://"):
+        utils.console.print("Security Error: Insecure HTTP URL detected for SSO")
         sys.exit(1)
 
-    # 2. Connectivity Check
+    # 3. Health check
     try:
-        # Short timeout (3s) to detect VPN issues quickly
-        resp = requests.head(url, timeout=3, allow_redirects=True)
-
-        if resp.status_code >= 400:
-            # [FIX] PYBH-0070: Treat 401/403 as potential VPN/Geo-block issues.
-            # Captive portals often return 200, so we can't detect that easily,
-            # but we shouldn't assume 403 is "Success".
-            console.print(f"[error]✗ SSO URL returned error {resp.status_code}[/]")
-            console.print(f"  URL: {url}")
+        resp = requests.head(sso_url, timeout=5)
+        if resp.status_code != 200:
+            utils.console.print(
+                f"SSO Endpoint error: Returned status {resp.status_code}"
+            )
             sys.exit(1)
-
-        console.print(f"[success]✓ SSO Endpoint reachable ({url})[/]")
-
-    except requests.exceptions.ConnectionError:
-        console.print("[error]✗ Connection Failed![/]")
-        console.print(f"  Could not reach: {url}")
-        console.print("  [yellow]Hint: Are you connected to the corporate VPN?[/]")
-        sys.exit(1)
-
     except requests.exceptions.Timeout:
-        console.print("[error]✗ Connection Timed Out![/]")
-        console.print("  The SSO endpoint is not responding.")
+        utils.console.print("Timed out while checking SSO endpoint")
+        sys.exit(1)
+    except requests.exceptions.ConnectionError:
+        utils.console.print("Failed to connect to SSO endpoint")
+        sys.exit(1)
+    except Exception as e:
+        utils.console.print(f"Unexpected error during SSO check: {e}")
         sys.exit(1)
 
-    except Exception as e:
-        console.print(f"[error]✗ Unexpected error during pre-flight: {e}[/]")
-        # Fail safe
-        sys.exit(1)
+    # 4. Success
+    utils.console.print("SSO Endpoint reachable")
