@@ -1,3 +1,5 @@
+import os
+import tempfile
 from typing import Any, Dict, List
 
 from .. import core, registry, shell, utils
@@ -136,9 +138,17 @@ def run_wizard() -> bool:
         if "plugins" not in current_data:
             current_data["plugins"] = {"enabled": []}
 
-        # 5. Atomic Write (Contract: Failure must be caught and reported)
+        # 5. Atomic Write via mkstemp (Contract: Failure must be caught and reported)
         try:
-            orgs_path.write_text(yaml.dump(current_data), encoding="utf-8")
+            fd, tmp_path = tempfile.mkstemp(dir=orgs_path.parent)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(yaml.dump(current_data))
+                os.replace(tmp_path, orgs_path)
+            except Exception:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                raise
         except Exception as e:
             utils.console.print(f"Failed to update config: {e}")
             return False

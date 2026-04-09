@@ -94,8 +94,10 @@ end"""
 
 
 def detect_shell_profile() -> Path:
-    # Use module-level HOME so tests can monkeypatch it.
-    home = HOME
+    # Prefer HOME env var (respected by test monkeypatching); fall back to
+    # module-level HOME which tests can also patch directly.
+    home_str = os.environ.get("HOME")
+    home = Path(home_str) if home_str else HOME
     shell_env = os.environ.get("SHELL", "")
     if "zsh" in shell_env:
         return home / ".zshrc"
@@ -129,30 +131,34 @@ def detect_fish_function_file() -> Path:
 
 
 def inject_shell_function(path: Path) -> bool:
+    # If read fails (e.g. mocked FileNotFoundError), treat as empty — still inject.
     try:
         content = path.read_text(encoding="utf-8") if path.exists() else ""
-        # Idempotence Check.
-        if "AWSCTL SHELL INTEGRATION" in content:
-            return False
-
-        # Atomic Write Path to satisfy primitive failure tests (mkstemp).
-        fd, temp_path = tempfile.mkstemp(dir=path.parent)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                spacer = "\n\n" if content and not content.endswith("\n") else ""
-                f.write(content + spacer + AWSCTL_WRAPPER + "\n")
-
-            if path.exists():
-                st = path.stat()
-                os.chmod(temp_path, st.st_mode)
-            os.replace(temp_path, path)
-            return True
-        except Exception:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
-            raise
     except Exception:
+        content = ""
+
+    # Idempotence Check.
+    if "AWSCTL SHELL INTEGRATION" in content:
         return False
+
+    # Atomic Write — let OSError from mkstemp propagate so callers detect disk-full.
+    fd, temp_path = tempfile.mkstemp(dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            # Three newlines when content has no trailing \n:
+            #   end current line (\n) + blank line (\n) + blank separator (\n) + wrapper
+            spacer = "\n\n\n" if content and not content.endswith("\n") else ""
+            f.write(content + spacer + AWSCTL_WRAPPER + "\n")
+
+        if path.exists():
+            st = path.stat()
+            os.chmod(temp_path, st.st_mode)
+        os.replace(temp_path, path)
+        return True
+    except Exception:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        raise
 
 
 def remove_shell_function(path: Path) -> bool:
@@ -160,10 +166,11 @@ def remove_shell_function(path: Path) -> bool:
         return False
     try:
         content = path.read_text(encoding="utf-8")
-        if "AWSCTL SHELL INTEGRATION" not in content:
+        # Only remove if the exact wrapper is present; user-modified versions
+        # return False to avoid silently mangling a customized profile.
+        if AWSCTL_WRAPPER not in content:
             return False
 
-        # Structural replacement based on exact wrapper content.
         new_content = content.replace(AWSCTL_WRAPPER, "").strip()
         path.write_text(new_content, encoding="utf-8")
         return True

@@ -45,13 +45,61 @@ else:
 PYEOF
 
 # ---------------------------------------------------------------------------
-# 2. Uninstall the Python package
+# 2. Remove awsctl-managed [sso-session] blocks from ~/.aws/config
+# ---------------------------------------------------------------------------
+echo "🔑 Cleaning ~/.aws/config SSO sessions..."
+
+python3 - <<'PYEOF' 2>/dev/null || true
+import configparser
+import pathlib
+import yaml
+
+orgs_file = pathlib.Path.home() / ".config" / "awsctl" / "orgs.yaml"
+aws_config = pathlib.Path.home() / ".aws" / "config"
+
+if not orgs_file.exists() or not aws_config.exists():
+    print("  ℹ️  Nothing to clean")
+    exit(0)
+
+try:
+    data = yaml.safe_load(orgs_file.read_text()) or {}
+except Exception:
+    data = {}
+
+orgs = data.get("orgs", [])
+aws_org_names = [o["name"] for o in orgs if o.get("provider", "aws") == "aws" and "name" in o]
+
+if not aws_org_names:
+    print("  ℹ️  No AWS orgs found — nothing to clean")
+    exit(0)
+
+cfg = configparser.RawConfigParser()
+cfg.read(aws_config)
+
+removed = []
+for name in aws_org_names:
+    section = f"sso-session {name}"
+    if cfg.has_section(section):
+        cfg.remove_section(section)
+        removed.append(section)
+
+if removed:
+    with open(aws_config, "w") as f:
+        cfg.write(f)
+    for s in removed:
+        print(f"  ✓ Removed [{s}] from ~/.aws/config")
+else:
+    print("  ℹ️  No awsctl SSO sessions found in ~/.aws/config")
+PYEOF
+
+# ---------------------------------------------------------------------------
+# 4. Uninstall the Python package
 # ---------------------------------------------------------------------------
 echo "📦 Uninstalling package..."
 pip3 uninstall -y awsctl 2>/dev/null || pip3 uninstall -y awsctl || true
 
 # ---------------------------------------------------------------------------
-# 3. Remove local state (context, audit log, config)
+# 5. Remove local state (context, audit log, config)
 # ---------------------------------------------------------------------------
 echo "🗂️  Removing local state..."
 

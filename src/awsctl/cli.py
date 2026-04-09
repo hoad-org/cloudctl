@@ -172,6 +172,21 @@ def cmd_init(args: Any) -> int:
     return InitCommand().execute(args)
 
 
+def cmd_org(args: Any) -> int:
+    from .commands.org import OrgAddCommand, OrgListCommand, OrgRemoveCommand
+
+    sub = getattr(args, "org_command", None)
+    if sub == "add":
+        return OrgAddCommand().execute(args)
+    elif sub == "list":
+        return OrgListCommand().execute(args)
+    elif sub == "remove":
+        return OrgRemoveCommand().execute(args)
+    else:
+        console.print("Usage: awsctl org <add|list|remove>")
+        return 1
+
+
 # ---------------------------------------------------------------------------
 # Argument parser
 # ---------------------------------------------------------------------------
@@ -230,7 +245,25 @@ def _build_parser():
     dp.add_argument("--fix-path", action="store_true")
 
     # init
-    sub.add_parser("init", help="Initialize configuration wizard")
+    ip = sub.add_parser("init", help="Initialize configuration wizard")
+    ip.add_argument(
+        "--shell-only",
+        action="store_true",
+        dest="shell_only",
+        help="Install shell integration only (no wizard)",
+    )
+
+    # org
+    op = sub.add_parser("org", help="Manage cloud organizations")
+    org_sub = op.add_subparsers(dest="org_command")
+    add_p = org_sub.add_parser("add", help="Add a new organization")
+    add_p.add_argument(
+        "--provider", choices=["aws", "azure", "gcp"], help="Cloud provider"
+    )
+    add_p.add_argument("--name", help="Org slug name")
+    org_sub.add_parser("list", help="List configured organizations")
+    rm_p = org_sub.add_parser("remove", help="Remove an organization")
+    rm_p.add_argument("name", help="Org name to remove")
 
     return p
 
@@ -249,6 +282,7 @@ _DISPATCH = {
     "accounts": "cmd_accounts",
     "doctor": "cmd_doctor",
     "init": "cmd_init",
+    "org": "cmd_org",
 }
 
 
@@ -270,7 +304,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if "--help" in argv or "-h" in argv:
         stdout_console.print(
             "[bold]awsctl[/bold] — Enterprise Cloud Identity & Context Manager\n\n"
-            "Commands: login, switch, logout, exec, status, accounts, doctor, init\n"
+            "Commands: login, switch, logout, exec, status, accounts, doctor, init, org\n"
             "Options:  --version, --help, --check-strategy <cmd>"
         )
         return 0
