@@ -1,13 +1,13 @@
 # src/awsctl/commands/init.py
 from awsctl.commands.base import BaseCommand
-from awsctl.wizard import run_setup_wizard
+from awsctl.wizard import run_wizard
 
 
 class InitCommand(BaseCommand):
-    """Initializes the awsctl configuration."""
+    """Initializes the awsctl configuration and installs shell integration."""
 
     def configure_parser(self, subparsers):
-        subparsers.add_parser("init", help="Initialize configuration wizard")
+        subparsers.add_parser("init", help="Run the setup wizard")
 
     def execute(self, args) -> int:
-        return run_setup_wizard()
+        return 0 if run_wizard() else 1

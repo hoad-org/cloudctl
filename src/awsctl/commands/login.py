@@ -4,10 +4,12 @@ from awsctl.core import cmd_login
 
 
 class LoginCommand(BaseCommand):
-    """Handles AWS SSO authentication."""
+    """Authenticate with the cloud provider for a configured org (AWS, Azure, or GCP)."""
 
     def configure_parser(self, subparsers):
-        parser = subparsers.add_parser("login", help="Authenticate with AWS SSO")
+        parser = subparsers.add_parser(
+            "login", help="Authenticate with the cloud provider for an org"
+        )
         parser.add_argument("org", help="Organization name to log in to")
         parser.add_argument(
             "--force", action="store_true", help="Force re-authentication"

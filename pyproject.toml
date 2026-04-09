@@ -4,8 +4,8 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "awsctl"
-version = "1.1.0"
-description = "Enterprise AWS Identity & Context Manager"
+version = "3.0.0"
+description = "Enterprise Cloud Identity & Context Manager (AWS, Azure, GCP)"
 authors = ["BeyondTrust CloudOps"]
 license = "MIT"
 packages = [{ include = "awsctl", from = "src" }]
@@ -43,7 +43,6 @@ branch = true
 omit = [
     "src/awsctl/main.py",
     "src/awsctl/cli.py",
-    "src/awsctl/wizard.py",
     "src/awsctl/help_text.py",
     "src/awsctl/__main__.py",
     "src/awsctl/_version.py"
