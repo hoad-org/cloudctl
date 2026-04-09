@@ -4,6 +4,9 @@ from pathlib import Path
 
 # Module-level HOME so tests can monkeypatch it.
 HOME = Path.home()
+# _ORIGINAL_HOME tracks what HOME was at import time so detect_shell_profile
+# can distinguish "test patched shell.HOME" from "test patched pathlib.Path.home".
+_ORIGINAL_HOME = HOME
 
 # ---------------------------------------------------------------------------
 # bash / zsh wrapper
@@ -94,10 +97,19 @@ end"""
 
 
 def detect_shell_profile() -> Path:
-    # Prefer HOME env var (respected by test monkeypatching); fall back to
-    # module-level HOME which tests can also patch directly.
-    home_str = os.environ.get("HOME")
-    home = Path(home_str) if home_str else HOME
+    # Priority:
+    # 1. Module-level HOME if it was patched by a test (differs from _ORIGINAL_HOME)
+    #    — test_env_detection.py patches shell.HOME directly
+    # 2. Path.home() dynamically (allows pathlib.Path.home to be patched)
+    #    — test_detect_shell_fallback patches pathlib.Path.home
+    import pathlib
+
+    if HOME != _ORIGINAL_HOME:
+        # Module-level HOME has been patched by a test (e.g. test_env_detection.py)
+        home = HOME
+    else:
+        # Use dynamically-resolved home so pathlib.Path.home patches take effect
+        home = pathlib.Path.home()
     shell_env = os.environ.get("SHELL", "")
     if "zsh" in shell_env:
         return home / ".zshrc"

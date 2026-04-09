@@ -1,7 +1,10 @@
 import sys
+from typing import List, Optional
 
-from .cli import main as cli_main
 
+def main(argv: Optional[List[str]] = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    import awsctl.cli as _cli
 
-def main() -> int:
-    return cli_main(sys.argv[1:])
+    return _cli.main(argv)

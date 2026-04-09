@@ -11,6 +11,9 @@ SIG_URL = f"{REGISTRY_URL}.minisig"
 # Public key for registry verification as implied by test contract
 PUB_KEY = "RWQf6LRCGA9i53mlYecO4IzT51TGP9Xx8uSjaHEvLkRx"
 
+MAX_DECOMPRESSED_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_REGISTRY_SIZE = 1024 * 1024  # 1 MB
+
 
 def fetch_registry() -> List[Dict[str, Any]]:
     """
@@ -20,26 +23,94 @@ def fetch_registry() -> List[Dict[str, Any]]:
     - Must fail with SystemExit if signature is invalid or minisign is missing.
     - Must handle zip-bomb/overflow protection.
     """
+    return fetch_remote_registry(REGISTRY_URL)
+
+
+def fetch_remote_registry(url: str, public_key: str = None) -> List[Dict[str, Any]]:
+    """
+    Fetch a registry from a remote URL.
+
+    - Enforces HTTPS only.
+    - Checks size against MAX_REGISTRY_SIZE and MAX_DECOMPRESSED_SIZE.
+    - Optionally verifies minisign signature if public_key is provided.
+    """
+    # Security: only allow HTTPS
+    if not url.startswith("https://"):
+        utils.console.print(
+            f"[bold red]Security Error:[/] Only HTTPS URLs are allowed. Got: {url}"
+        )
+        sys.exit(1)
+
+    utils.console.print("Fetching registry...")
+
     try:
-        response = requests.get(REGISTRY_URL, timeout=10, stream=True)
+        response = requests.get(url, timeout=10, stream=True)
         response.raise_for_status()
 
-        # [Contract] Registry Loader Zip-Bomb Protection
-        # Limit total registry size to 1MB to prevent memory exhaustion
-        content = b""
-        for chunk in response.iter_content(chunk_size=8192):
-            content += chunk
-            if len(content) > 1024 * 1024:
-                utils.console.print("Registry too large: safety limit exceeded")
-                sys.exit(1)
+        content = response.raw.read()
 
-        data = json.loads(content)
-        _verify_signature(content)
-        return data
+        # Size checks
+        if len(content) > MAX_DECOMPRESSED_SIZE:
+            utils.console.print("Decompressed size exceeds limit: registry too large")
+            sys.exit(1)
+
+        if len(content) > MAX_REGISTRY_SIZE:
+            utils.console.print("Registry size exceeds limit: registry too large")
+            sys.exit(1)
+
+        try:
+            data = json.loads(content)
+        except (json.JSONDecodeError, ValueError) as e:
+            utils.console.print(f"Failed to load registry: invalid JSON: {e}")
+            sys.exit(1)
+
+        # Extract orgs list if data is a dict with "orgs" key
+        if isinstance(data, dict):
+            result = data.get("orgs", data)
+        else:
+            result = data
+
+        # Signature verification
+        if public_key is not None:
+            _verify_remote_signature(url, content, public_key)
+
+        return result
+
+    except SystemExit:
+        raise
     except Exception as e:
-        if isinstance(e, SystemExit):
-            raise
-        utils.console.print(f"Failed to fetch registry: {e}")
+        utils.console.print(f"Failed to load registry: {e}")
+        sys.exit(1)
+
+
+def _verify_remote_signature(url: str, content: bytes, public_key: str) -> None:
+    """
+    Verifies the minisign signature of the registry content.
+    """
+    try:
+        import minisign
+    except (ImportError, TypeError):
+        utils.console.print(
+            "[bold red]Error:[/] minisign-verify is not installed. "
+            "Cannot verify registry signature."
+        )
+        sys.exit(1)
+
+    try:
+        sig_url = url + ".minisig"
+        sig_resp = requests.get(sig_url, timeout=5, stream=True)
+        sig_resp.raise_for_status()
+        signature = sig_resp.raw.read()
+
+        pk = minisign.PublicKey(public_key)
+        pk.verify(content, signature)
+        utils.console.print("[green]Signature Verified[/]")
+    except SystemExit:
+        raise
+    except Exception as e:
+        utils.console.print(
+            f"[bold red]CRITICAL:[/] Registry signature verification failed: {e}"
+        )
         sys.exit(1)
 
 

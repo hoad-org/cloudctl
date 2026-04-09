@@ -1,7 +1,6 @@
 # src/awsctl/commands/switch.py
 from awsctl.commands.base import BaseCommand
 from awsctl.config import get_org
-from awsctl.interactive import run_interactive_use
 from awsctl.use_exports import emit_exports
 from awsctl.context_manager import save_context
 
@@ -42,7 +41,10 @@ class SwitchCommand(BaseCommand):
         org_data = get_org(org_name)
 
         # Interactive selection — works for AWS, Azure, and GCP
-        account, role, region = run_interactive_use(
+        # Import lazily so tests can patch awsctl.interactive.run_interactive_use
+        import awsctl.interactive as _interactive
+
+        account, role, region = _interactive.run_interactive_use(
             org_data,
             getattr(args, "account", None),
             getattr(args, "role", None),

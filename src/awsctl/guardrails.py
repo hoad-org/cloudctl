@@ -1,3 +1,4 @@
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -62,6 +63,27 @@ def check_min_version(org: Dict[str, Any]) -> None:
         sys.exit(1)
 
 
+def _audit_log(org_name: str, role: str, reason: str) -> None:
+    """
+    Append an audit log entry. Rotates (via shutil.move) if over size limit.
+    OSError during rotation is caught; the entry is still appended.
+    """
+    try:
+        AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
+        if AUDIT_LOG.exists() and AUDIT_LOG.stat().st_size > MAX_LOG_SIZE:
+            try:
+                backup = Path(str(AUDIT_LOG) + ".bak")
+                shutil.move(str(AUDIT_LOG), str(backup))
+            except OSError:
+                pass  # Rotation failure must not block appending
+        timestamp = datetime.now(timezone.utc).isoformat()
+        entry = f"{timestamp} | ORG={org_name} " f"| ROLE={role} | REASON={reason}\n"
+        with AUDIT_LOG.open("a", encoding="utf-8") as f:
+            f.write(entry)
+    except OSError:
+        pass  # Audit log failure must not block access
+
+
 def check_break_glass(org: Dict[str, Any], role: str) -> None:
     """
     Prompt for a justification when accessing a sensitive role.
@@ -85,17 +107,4 @@ def check_break_glass(org: Dict[str, Any], role: str) -> None:
         utils.console.print("[red]Access Aborted.[/]")
         sys.exit(1)
 
-    # Append to audit log (rotate if over size limit)
-    try:
-        AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
-        if AUDIT_LOG.exists() and AUDIT_LOG.stat().st_size > MAX_LOG_SIZE:
-            AUDIT_LOG.unlink()
-        timestamp = datetime.now(timezone.utc).isoformat()
-        entry = (
-            f"{timestamp} | ORG={org.get('name', 'unknown')} "
-            f"| ROLE={role} | REASON={reason}\n"
-        )
-        with AUDIT_LOG.open("a", encoding="utf-8") as f:
-            f.write(entry)
-    except OSError:
-        pass  # Audit log failure must not block access
+    _audit_log(org.get("name", "unknown"), role, reason)

@@ -1,16 +1,19 @@
 import concurrent.futures
 import importlib
 import sys
-from typing import Any, Callable, List
+from typing import Any, Callable, Dict, List, Optional
 
 import awsctl.utils as utils
 
 ILLEGAL_PLUGIN_PREFIXES = ("evil.",)
 
 
-def load_plugins(plugin_names: List[str]) -> List[Any]:
-    """Load plugin modules. Contract: Resolution through utils module."""
-    plugins = []
+def load_plugins(plugin_names: Optional[List[str]]) -> Dict[str, Any]:
+    """Load plugin modules. Returns dict of {name: module}."""
+    if not plugin_names:
+        return {}
+
+    plugins = {}
 
     for name in plugin_names:
         if name.startswith(ILLEGAL_PLUGIN_PREFIXES):
@@ -19,7 +22,7 @@ def load_plugins(plugin_names: List[str]) -> List[Any]:
 
         try:
             mod = importlib.import_module(name)
-            plugins.append(mod)
+            plugins[name] = mod
         except Exception:
             utils.console.print(f"Failed to load plugin {name}")
             sys.exit(1)
@@ -27,10 +30,10 @@ def load_plugins(plugin_names: List[str]) -> List[Any]:
     return plugins
 
 
-def _safe_exec(fn: Callable, *args) -> None:
-    """Execute hook. Contract: Runtime console resolution."""
+def _safe_exec(fn: Callable, *args, **kwargs) -> Any:
+    """Execute hook. Returns result of fn(*args, **kwargs)."""
     try:
-        fn(*args)
+        return fn(*args, **kwargs)
     except TypeError as e:
         utils.console.print(f"Plugin hook failed: {e}")
         sys.exit(1)
@@ -39,8 +42,9 @@ def _safe_exec(fn: Callable, *args) -> None:
         sys.exit(1)
 
 
-def call_hook(mods: List[Any], hook_name: str, *args) -> None:
-    """Orchestrate hooks. Contract: Catch multiple timeout types."""
+def call_hook(mods: List[Any], hook_name: str, *args, **kwargs) -> List[Any]:
+    """Orchestrate hooks. Returns list of results from each hook invocation."""
+    results = []
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = []
 
@@ -48,11 +52,12 @@ def call_hook(mods: List[Any], hook_name: str, *args) -> None:
             if not hasattr(mod, hook_name):
                 continue
             fn = getattr(mod, hook_name)
-            futures.append(executor.submit(_safe_exec, fn, *args))
+            futures.append(executor.submit(_safe_exec, fn, *args, **kwargs))
 
         for fut in futures:
             try:
-                fut.result(timeout=5)
+                result = fut.result(timeout=5)
+                results.append(result)
             except (concurrent.futures.TimeoutError, TimeoutError):
                 # Raw stdout for shell bridge
                 print("timed out")
@@ -62,3 +67,5 @@ def call_hook(mods: List[Any], hook_name: str, *args) -> None:
             except Exception as e:
                 utils.console.print(f"Plugin hook failed: {e}")
                 sys.exit(1)
+
+    return results

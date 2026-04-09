@@ -2,7 +2,7 @@ import json
 from typing import Any, Dict, Optional
 
 from .config import CONFIG_DIR
-from .utils import console
+from . import utils
 
 CONTEXT_FILE = CONFIG_DIR / "current_context.json"
 
@@ -72,7 +72,7 @@ def print_status() -> None:
     """Renders the context dashboard."""
     ctx = load_context()
     if not ctx:
-        console.print("[yellow]No active context found.[/]")
+        utils.console.print("[yellow]No active context found.[/]")
         return
 
     provider_name = ctx.get("provider", "aws")
@@ -95,11 +95,11 @@ def print_status() -> None:
         provider_name, provider_name.upper()
     )
 
-    console.print(f"--- {provider_label} Active Context ({session_status}) ---")
-    console.print(f"Organization: {org_name}")
-    console.print(f"Account:      {ctx.get('account')}")
-    console.print(f"Role:         {ctx.get('role')}")
-    console.print(f"Region:       {ctx.get('region')}")
+    utils.console.print(f"--- {provider_label} Active Context ({session_status}) ---")
+    utils.console.print(f"Organization: {org_name}")
+    utils.console.print(f"Account:      {ctx.get('account')}")
+    utils.console.print(f"Role:         {ctx.get('role')}")
+    utils.console.print(f"Region:       {ctx.get('region')}")
 
 
 def clear_context() -> None:

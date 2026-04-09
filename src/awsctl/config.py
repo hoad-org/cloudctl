@@ -1,3 +1,4 @@
+import os
 import yaml
 from pathlib import Path
 from typing import Dict, Any, List
@@ -9,6 +10,9 @@ ORGS_USER = CONFIG_DIR / "orgs.yaml"
 
 
 def get_orgs_path(ensure=True) -> Path:
+    env_override = os.environ.get("ORGS_USER")
+    if env_override:
+        return Path(env_override)
     if ensure:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     return ORGS_USER
@@ -24,12 +28,11 @@ def load_orgs_config() -> List[Dict[str, Any]]:
 
 
 def load_raw_config() -> Dict[str, Any]:
-    if not CONFIG_FILE.exists():
+    path = get_orgs_path(ensure=False)
+    if not path.exists():
         return {}
-    try:
-        return yaml.safe_load(CONFIG_FILE.read_text()) or {}
-    except Exception:
-        return {}
+    # Let YAMLError propagate — callers that want {} on error must catch it.
+    return yaml.safe_load(path.read_text()) or {}
 
 
 def load_config() -> Dict[str, Any]:
@@ -52,8 +55,16 @@ def get_org(name: str) -> Dict[str, Any]:
     raise ValueError(f"Organization '{name}' not found in configuration.")
 
 
-def _hydrate_orgs(orgs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return orgs
+def _hydrate_orgs(enabled_names: List[Any]) -> None:
+    """Validate enabled org names against registry; warn on missing."""
+    from . import registry, utils
+
+    known = {o.get("name") for o in registry.get_registry()}
+    for name in enabled_names:
+        if name not in known:
+            utils.console.print(
+                f"[yellow]Warning:[/] org '{name}' not found in registry"
+            )
 
 
 def sample_orgs_yaml() -> str:

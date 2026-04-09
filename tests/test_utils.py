@@ -97,11 +97,12 @@ def test_open_browser_error(monkeypatch, mock_rich_console):
     monkeypatch.setattr(utils, "is_wsl", lambda: False)
     monkeypatch.setattr(utils, "is_headless", lambda: False)
 
-    # If webbrowser.open returns False or raises, it should result in an exception
+    # If webbrowser.open raises, the error should be caught and reported to console
+    mock_rich_console.clear()
     with patch("webbrowser.open", side_effect=Exception("Boom")):
-        with pytest.raises(Exception) as e:
-            utils.open_browser("http://fail.com")
-        assert "No Browser" in str(e.value) or "Boom" in str(e.value)
+        utils.open_browser("http://fail.com")  # must not raise
+    captured = "".join(mock_rich_console.captured)
+    assert "Boom" in captured or "failed" in captured
 
 
 def test_print_kv_table(mock_rich_console):

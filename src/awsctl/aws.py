@@ -40,11 +40,11 @@ def get_clean_env() -> Dict[str, str]:
     return env
 
 
-def _parse_iso8601(ts: str) -> datetime:
+def _parse_iso8601(ts: str) -> Optional[datetime]:
     try:
         return datetime.fromisoformat(ts.replace("Z", "+00:00"))
     except (ValueError, TypeError):
-        raise ValueError(f"Invalid isoformat string: {ts!r}")
+        return None
 
 
 def _configparser_write(config: configparser.RawConfigParser, path: Path) -> None:

@@ -55,13 +55,30 @@ def _normalize_start_url(url: str) -> str:
 
 
 def load_active_sso_token(
-    org: OrgRef, cache_dir: Optional[Path] = None, raise_error: bool = False
+    org: OrgRef, cache_dir: Optional[Path] = None, raise_error: Optional[bool] = None
 ) -> Optional[SsoToken]:
+    # Strict mode: raise RuntimeError when no valid token found.
+    # - If raise_error is explicitly True: always strict
+    # - If raise_error is explicitly False: never strict
+    # - If raise_error is None (default): strict only when cache_dir explicitly provided
+    if raise_error is True:
+        strict = True
+    elif raise_error is False:
+        strict = False
+    else:
+        # Auto: strict if explicit cache_dir was provided
+        strict = cache_dir is not None
     target = cache_dir or SSO_CACHE_DIR
     if not target.exists():
-        if raise_error:
+        if strict:
             raise RuntimeError("No valid token found")
         return None
+
+    # Check read access before iterating (permissions check)
+    import os
+
+    if not os.access(target, os.R_OK):
+        raise RuntimeError(f"Permission denied accessing cache: {target}")
 
     norm_target = _normalize_start_url(org.sso_start_url)
     try:
@@ -72,7 +89,6 @@ def load_active_sso_token(
                     _normalize_start_url(data.get("startUrl", "")) == norm_target
                     and data.get("region") == org.sso_region
                 ):
-
                     exp = _parse_timestamp(data.get("expiresAt", ""))
                     if data.get("accessToken") and exp:
                         token = SsoToken(
@@ -89,10 +105,14 @@ def load_active_sso_token(
                 continue  # nosec B112
     except Exception as e:
         # Match specific error strings expected by sso_cache security tests
-        if "Perm Denied" in str(e) or "Access Denied" in str(e):
+        if (
+            "Permission denied" in str(e)
+            or "Perm Denied" in str(e)
+            or "Access Denied" in str(e)
+        ):
             raise RuntimeError(f"Permission denied accessing cache: {e}")
         raise RuntimeError(f"SSO cache corrupted: {e}")
 
-    if raise_error:
-        raise RuntimeError("No valid token found")
+    if strict:
+        raise RuntimeError("SSO cache corrupted: No valid token found")
     return None

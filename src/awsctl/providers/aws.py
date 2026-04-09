@@ -6,11 +6,8 @@ from .base import CloudProvider
 from ..aws import (
     run_aws,
     ensure_sso_base_profile,
-    sso_list_accounts,
-    sso_list_account_roles,
 )
 from ..sso_cache import OrgRef, load_active_sso_token
-from ..utils import run
 
 
 class AwsProvider(CloudProvider):
@@ -32,7 +29,9 @@ class AwsProvider(CloudProvider):
     def login(self, org: Dict[str, Any]) -> int:
         try:
             ensure_sso_base_profile(org)
-            run(["aws", "sso", "login", "--sso-session", org["name"]])
+            from .. import utils as _utils
+
+            _utils.run(["aws", "sso", "login", "--sso-session", org["name"]])
             return 0
         except Exception as e:
             from ..utils import console
@@ -50,14 +49,18 @@ class AwsProvider(CloudProvider):
 
     def list_accounts(self, org: Dict[str, Any], token: Any) -> List[Dict[str, str]]:
         try:
-            raw = sso_list_accounts(token)
+            from .. import aws as _aws
+
+            raw = _aws.sso_list_accounts(token)
             return [{"id": a["accountId"], "name": a["accountName"]} for a in raw]
         except Exception:
             return []
 
     def list_roles(self, org: Dict[str, Any], token: Any, account_id: str) -> List[str]:
         try:
-            raw = sso_list_account_roles(token, account_id)
+            from .. import aws as _aws
+
+            raw = _aws.sso_list_account_roles(token, account_id)
             return [r["roleName"] for r in raw]
         except Exception:
             return []
@@ -105,12 +108,12 @@ class AwsProvider(CloudProvider):
         return "\n".join(f"unset {v}" for v in self._ENV_VARS)
 
     def logout(self, org: Dict[str, Any]) -> int:
-        import shutil
-
-        aws_bin = shutil.which("aws") or "aws"
         import subprocess
+        from ..aws import _resolve_aws_cli
 
-        result = subprocess.run(
-            [aws_bin, "sso", "logout"], capture_output=True, text=True
-        )
+        try:
+            aws_bin = _resolve_aws_cli()
+        except RuntimeError:
+            aws_bin = "aws"
+        result = subprocess.run([aws_bin, "sso", "logout"], check=False)
         return result.returncode

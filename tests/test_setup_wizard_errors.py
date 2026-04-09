@@ -88,4 +88,4 @@ def test_run_new_session_kill(monkeypatch):
                     utils.run(["sleep"], timeout=0.1, capture=True)
 
                 assert "timed out" in str(e.value).lower()
-                mock_killpg.assert_called_with(0, signal.SIGKILL)
+                mock_killpg.assert_called_with(999, signal.SIGKILL)

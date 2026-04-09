@@ -56,7 +56,7 @@ def test_list_accounts_pagination(monkeypatch):
 
     def side_effect(args):
         # Implementation logic uses 'run_aws' which returns a dict with 'stdout'
-        if "--next-token" in str(args) or "n" in str(args):
+        if "--next-token" in str(args):
             return {"returncode": 0, "stdout": json.dumps(p2), "stderr": ""}
         return {"returncode": 0, "stdout": json.dumps(p1), "stderr": ""}
 

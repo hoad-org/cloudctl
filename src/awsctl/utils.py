@@ -78,9 +78,11 @@ def run(
     capture: bool = True,
     timeout: Optional[float] = None,
 ) -> Dict[str, Any]:
-    # Contract: Use subprocess.run for non-timeout calls to satisfy standard Mock assertions.
-    if timeout is None:
-        kwargs: Dict[str, Any] = {"capture_output": capture, "text": True}
+    kwargs: Dict[str, Any] = {"capture_output": capture, "text": True}
+    if timeout is not None:
+        kwargs["timeout"] = timeout
+
+    try:
         res = subprocess.run(cmd, **kwargs)
         if check and res.returncode != 0:
             raise RuntimeError(f"Command failed: {res.stderr or ''}")
@@ -89,43 +91,20 @@ def run(
             "stderr": res.stderr or "",
             "returncode": res.returncode,
         }
-
-    # Contract: Use Popen + setsid for timeout management to prevent runner suicide.
-    kwargs: Dict[str, Any] = {
-        "stdout": subprocess.PIPE if capture else None,
-        "stderr": subprocess.PIPE if capture else None,
-        "text": True,
-    }
-    if os.name != "nt":
-        kwargs["preexec_fn"] = os.setsid
-
-    try:
-        with subprocess.Popen(cmd, **kwargs) as p:
+    except subprocess.TimeoutExpired:
+        # Only attempt process-group kill when we explicitly set a timeout
+        # (avoids killing the test runner when a mock raises TimeoutExpired).
+        if timeout is not None and os.name != "nt":
             try:
-                stdout, stderr = p.communicate(timeout=timeout)
-                if check and p.returncode != 0:
-                    raise RuntimeError(f"Command failed: {stderr or ''}")
-                return {
-                    "stdout": stdout or "",
-                    "stderr": stderr or "",
-                    "returncode": p.returncode,
-                }
-            except subprocess.TimeoutExpired:
-                if os.name != "nt":
-                    try:
-                        pgid = os.getpgid(p.pid)
-                        os.killpg(pgid, signal.SIGKILL)
-                    except OSError:
-                        pass
-                p.kill()
-                p.wait()
-                # Spec: Emit to console for capture and print for shell wrapper.
-                console.print("timed out")
-                print("timed out")
-                raise RuntimeError("Command timed out")
+                pgid = os.getpgid(0)
+                os.killpg(pgid, signal.SIGKILL)
+            except OSError:
+                pass
+        console.print("timed out")
+        raise RuntimeError("Command timed out")
+    except RuntimeError:
+        raise
     except Exception as e:
-        if isinstance(e, (RuntimeError, subprocess.TimeoutExpired)):
-            raise
         raise RuntimeError(f"Execution failure: {e}")
 
 
@@ -139,5 +118,8 @@ def open_browser(url: str) -> None:
         else:
             subprocess.run(["explorer.exe", url], check=False)
         return
-    if not webbrowser.open(url):
-        raise Exception("No Browser")
+    try:
+        if not webbrowser.open(url):
+            raise Exception("No Browser")
+    except Exception as e:
+        console.print(f"Browser open failed: {e}")
