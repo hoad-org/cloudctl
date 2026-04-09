@@ -24,6 +24,7 @@ from typing import Any, List, Optional
 
 
 from . import core, utils
+from .use_exports import emit_exports  # noqa: F401 — re-exported for monkeypatch seam
 
 # Patchable console references (tests monkeypatch these)
 console = utils.console
