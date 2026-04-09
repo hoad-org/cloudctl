@@ -112,33 +112,81 @@ awsctl **does not** replace or duplicate other enterprise systems:
 
 ### Prerequisites
 
-- Python **3.9+**
-- AWS CLI v2 installed and configured for SSO.
+- Python **3.12+**
+- AWS CLI v2 (for AWS orgs)
+- `az` CLI (for Azure orgs — optional)
+- `gcloud` CLI (for GCP orgs — optional)
 
 ---
 
-### Option A: System-Wide Install (sudo required)
+### Option A: Homebrew (macOS — recommended)
 
-```
-git clone [https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git](https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git)
-cd awsctl
-make deploy-system
+```bash
+# Tap the BeyondTrust CloudOps tap, then install
+brew tap beyondtrust-cloudops/tap https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl
+brew install awsctl
 ```
 
-Installs both core libraries and the `/usr/local/bin/awsctl` Bash shim.
+The formula creates a hermetic Python virtualenv in `$(brew --prefix)/opt/awsctl/libexec/venv` and
+automatically installs the shell wrapper via `awsctl init --shell-only` during `post_install`.
+Reload your shell profile after installation.
 
 ---
 
-### Option B: User-Space Install (no sudo required)
+### Option B: Script install (macOS / Linux / WSL)
 
-```
-make deploy-system BIN_DIR=$HOME/.local/bin
+```bash
+git clone https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl.git
+cd aws-terraform-infra-cloudops-awsctl
+bash install.sh
 ```
 
-Ensure `$HOME/.local/bin` is in your `PATH` before executing:
+`install.sh` installs via pip, adds the user Scripts directory to PATH for the session, and
+injects the appropriate shell wrapper (bash/zsh/fish) automatically.
+
+---
+
+### Option C: Windows (PowerShell / pwsh)
+
+```powershell
+git clone https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl.git
+cd aws-terraform-infra-cloudops-awsctl
+.\install.ps1
 ```
-export PATH="$HOME/.local/bin:$PATH"
+
+Installs via pip and injects the PowerShell function wrapper into `$PROFILE`.
+
+---
+
+### Option D: pip (manual)
+
+```bash
+pip install --user .
+awsctl init --shell-only   # inject shell wrapper for detected shell
 ```
+
+---
+
+### Post-install: first-time setup
+
+```bash
+awsctl init         # full interactive wizard — configure orgs + shell wrapper
+# OR
+awsctl org add      # add a single org interactively (auth-first for Azure/GCP)
+```
+
+---
+
+### Uninstall
+
+```bash
+bash uninstall.sh   # macOS / Linux / WSL
+# or
+.\uninstall.ps1     # Windows PowerShell
+```
+
+The uninstall scripts remove the shell wrapper from all profiles, uninstall the pip package,
+clean awsctl-managed `[sso-session]` blocks from `~/.aws/config`, and remove `~/.awsctl`.
 
 ---
 
@@ -201,13 +249,26 @@ awsctl aligns with security frameworks used across high-assurance enterprise and
 
 ## 📜 Changelog (v3.0.0)
 
+### Lifecycle completeness
+- **FEATURE:** `awsctl org add` — auth-first interactive wizard; logs into AWS/Azure/GCP first, then discovers subscriptions/projects live for the picker.
+- **FEATURE:** `awsctl org list` — tabular view of all configured orgs with provider label and key identifier (SSO URL / tenant ID / project ID).
+- **FEATURE:** `awsctl org remove` — removes an org entry from orgs.yaml.
+- **FEATURE:** `awsctl init --shell-only` — non-interactive flag to inject the shell wrapper only (no wizard); used by Homebrew `post_install` and CI.
+- **FEATURE:** `awsctl doctor` — full health-check implementation; `check_tool`, `check_aws_version`, `check_shell_integration`, `check_permissions`, `check_time_sync`, `check_network_ssl`, `check_wsl_performance` all return `(bool, str)` tuples; `run_diagnostics` prints sectioned System Health Check report.
+- **FEATURE:** `Formula/awsctl.rb` — Homebrew formula with hermetic virtualenv install, shim scripts, and `post_install` shell integration.
+- **FIX:** `uninstall.sh` now removes awsctl-managed `[sso-session <name>]` sections from `~/.aws/config`.
+
+### Cross-cloud
 - **FEATURE:** Cross-cloud provider support — Azure and GCP alongside AWS via a unified `CloudProvider` interface.
 - **FEATURE:** Native PowerShell shell wrapper (`awsctl` PS function) — full Split-Plane support on Windows without WSL.
 - **FEATURE:** Fish shell wrapper — `~/.config/fish/functions/awsctl.fish` auto-installed via `awsctl init`.
 - **FEATURE:** `awsctl init` wizard detects the running shell (bash/zsh/PowerShell/fish) and installs the appropriate wrapper.
 - **FEATURE:** `provider` field in org config selects the cloud backend (`aws` | `azure` | `gcp`; defaults to `aws` for backward compatibility).
+
+### Quality
 - **FIX:** CLI dispatcher resolves handlers at call time so `monkeypatch` works correctly in tests.
-- **CHORE:** 47 new provider unit tests; 204 passing overall.
+- **FIX:** `shell.py` — atomic write propagates `OSError`, handles read failures gracefully, correct newline spacing.
+- **CHORE:** 220+ tests passing; all doctor, shell, wizard, provider, and CLI tests green.
 
 ---
 
@@ -226,11 +287,9 @@ awsctl aligns with security frameworks used across high-assurance enterprise and
 
 ---
 
-### ✅ Validation Summary (v2.8.2)
+### ✅ Validation Summary (v3.0.0)
 
-- ✅ Unit test coverage: **>78%**
-- ✅ Cross-platform smoke testing
-- ✅ Enterprise Acceptance Suite (UAT) passed
-- ✅ Static analysis: Bandit, `pip-audit`, MyPy (strict mode) compliant
+- ✅ 220+ unit tests passing (doctor, shell, wizard, providers, CLI)
+- ✅ Cross-platform: macOS (zsh/bash/fish), Linux (bash/zsh/fish), Windows (PowerShell/pwsh), WSL2
+- ✅ Static analysis: Bandit, `pip-audit`, ruff, black compliant
 - ✅ CI/CD integrity: SLSA-aligned artifact release and cryptographic signature verification
-```
