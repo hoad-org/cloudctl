@@ -6,6 +6,8 @@ All check_* functions return Tuple[bool, str]:
   (False, <detail message>)   on failure
 """
 
+import os
+import platform
 import shutil
 import ssl
 import socket
@@ -76,20 +78,22 @@ def check_shell_integration() -> Tuple[bool, str]:
 
 def check_permissions() -> Tuple[bool, str]:
     """Return (True, msg) if ~/.awsctl is accessible and user-owned."""
-    import os
     from pathlib import Path
 
     awsctl_dir = Path.home() / ".awsctl"
     if not awsctl_dir.exists():
         return True, "~/.awsctl not yet created (OK)"
+
+    # Windows has no getuid / st_uid — skip ownership check.
+    if platform.system() == "Windows" or not hasattr(os, "getuid"):
+        return True, "User owned (Windows)"
+
     try:
         st = awsctl_dir.stat()
-        if st.st_uid == os.getuid():
+        uid = os.getuid()
+        if st.st_uid == uid:
             return True, "User owned"
-        return False, f"Owned by uid {st.st_uid}, current uid {os.getuid()}"
-    except AttributeError:
-        # Windows — no getuid
-        return True, "User owned (Windows)"
+        return False, f"Owned by uid {st.st_uid}, current uid {uid}"
     except Exception as e:
         return False, str(e)
 

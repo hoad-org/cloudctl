@@ -153,22 +153,42 @@ class OrgAddCommand(BaseCommand):
         p.add_argument("--name", help="Org slug name")
 
     def execute(self, args) -> int:
+        import sys
         from awsctl.wizard import inquirer
 
-        provider = (
-            getattr(args, "provider", None)
-            or inquirer.select(
-                message="Cloud provider:",
-                choices=["aws", "azure", "gcp"],
-            ).execute()
-        )
+        provider = getattr(args, "provider", None)
+        name = getattr(args, "name", None)
 
-        name = (
-            getattr(args, "name", None)
-            or inquirer.text(
-                message=f"Org name/slug (e.g. {provider}-prod):",
-            ).execute()
-        )
+        # If either required field is missing we need an interactive TTY.
+        # Detect non-interactive early and give a clear error rather than crashing
+        # inside InquirerPy when stdin is not a terminal (CI, Docker, post_install).
+        needs_tty = not provider or not name
+        if needs_tty and not sys.stdin.isatty():
+            utils.console.print(
+                "[red]awsctl org add requires an interactive terminal "
+                "when --provider or --name are not supplied.[/red]\n"
+                "  Usage: awsctl org add --provider <aws|azure|gcp> --name <slug>"
+            )
+            return 1
+
+        if not provider:
+            try:
+                provider = inquirer.select(
+                    message="Cloud provider:",
+                    choices=["aws", "azure", "gcp"],
+                ).execute()
+            except Exception:
+                utils.console.print("[red]Could not read provider — no TTY.[/red]")
+                return 1
+
+        if not name:
+            try:
+                name = inquirer.text(
+                    message=f"Org name/slug (e.g. {provider}-prod):",
+                ).execute()
+            except Exception:
+                utils.console.print("[red]Could not read org name — no TTY.[/red]")
+                return 1
 
         if not name:
             utils.console.print("[red]Org name is required.[/red]")

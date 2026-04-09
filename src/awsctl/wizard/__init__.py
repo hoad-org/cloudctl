@@ -156,6 +156,7 @@ def run_wizard() -> bool:
         # 6. Sync AWS Profiles (only meaningful for AWS orgs)
         if core.cmd_config_sync() != 0:
             utils.console.print("Failed to sync profiles")
+            return False
 
         # 7. Shell Integration — pick the right wrapper for the running shell
         detected = detect_shell()
