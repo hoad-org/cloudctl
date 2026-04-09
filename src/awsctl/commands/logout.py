@@ -1,39 +1,49 @@
 # src/awsctl/commands/logout.py
-import subprocess
 from awsctl.commands.base import BaseCommand
-from awsctl.aws import _resolve_aws_cli
-from awsctl.context_manager import clear_context
+from awsctl.context_manager import clear_context, load_context
 
 
 class LogoutCommand(BaseCommand):
     """
-    Handles termination of AWS SSO sessions and clears
-    the local awsctl context to prevent accidental usage.
+    Terminates the active cloud session and clears the local awsctl context.
+
+    Works for all providers — delegates to the provider determined from
+    the current context so AWS, Azure, and GCP sessions are all handled
+    correctly.
     """
 
     def configure_parser(self, subparsers):
-        subparsers.add_parser("logout", help="Log out of AWS SSO and clear context")
+        subparsers.add_parser("logout", help="Log out and clear context")
 
     def execute(self, args) -> int:
-        self.console.print("[bold blue]Logging out of AWS SSO sessions...[/]")
+        ctx = load_context()
+        provider_name = ctx.get("provider", "aws") if ctx else "aws"
+        org_name = ctx.get("current_org", "") if ctx else ""
 
-        # 1. Trigger AWS CLI logout
-        aws_bin = _resolve_aws_cli()
-        result = subprocess.run(
-            [aws_bin, "sso", "logout"], capture_output=True, text=True
+        label = {"aws": "AWS SSO", "azure": "Azure", "gcp": "GCP"}.get(
+            provider_name, provider_name.upper()
         )
+        self.console.print(f"[bold blue]Logging out of {label} sessions...[/]")
 
-        # 2. Clear internal context
+        try:
+            from awsctl.config import get_org
+            from awsctl.providers import get_provider
+
+            org_data = get_org(org_name) if org_name else {"provider": provider_name}
+            provider = get_provider(org_data)
+            rc = provider.logout(org_data)
+        except Exception:
+            rc = 0  # Logout best-effort; always clear local context
+
         clear_context()
 
-        if result.returncode == 0:
+        if rc == 0:
             self.console.print(
                 "[bold green]✔ Successfully logged out and context cleared.[/]"
             )
         else:
-            # SSO logout might fail if no session exists; we still clear context
             self.console.print(
-                "[yellow]! No active AWS SSO session found, but local context was cleared.[/]"
+                "[yellow]! No active session found, but local context was cleared.[/]"
             )
 
         return 0

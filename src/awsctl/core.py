@@ -15,43 +15,74 @@ SSO_CACHE_DIR = aws.SSO_CACHE_DIR
 
 def cmd_login(org_name: str, force: bool = False) -> int:
     org = config.get_org(org_name)
-    if not force and load_active_sso_token(org):
-        utils.console.print("Already authenticated.")
-        return 0
-    try:
-        aws.ensure_sso_base_profile(org)
-        utils.run(["aws", "sso", "login", "--sso-session", org_name])
-        return 0
-    except Exception as e:
-        utils.console.print(f"Login failed: {e}")
-        return 1
+
+    # For AWS, skip if a valid token already exists (unless --force).
+    # For Azure/GCP, always call the provider — they handle re-auth gracefully.
+    from .providers import get_provider
+
+    provider = get_provider(org)
+
+    if not force and org.get("provider", "aws") == "aws":
+        if load_active_sso_token(org):
+            utils.console.print("Already authenticated.")
+            return 0
+
+    return provider.login(org)
 
 
 def cmd_logout_str() -> str:
-    utils.run(["aws", "sso", "logout"], check=False)
+    """
+    Return shell lines to unset credentials for the current session's provider.
+
+    Falls back to AWS unset lines when no context is active so existing
+    behaviour is preserved.
+    """
+    ctx = context_manager.load_context()
+    provider_name = ctx.get("provider", "aws") if ctx else "aws"
+
+    try:
+        org_name = ctx.get("current_org") or ctx.get("org", "") if ctx else ""
+        org = config.get_org(org_name) if org_name else {"provider": provider_name}
+    except Exception:
+        org = {"provider": provider_name}
+
+    from .providers import get_provider
+
+    provider = get_provider(org)
+
+    try:
+        provider.logout(org)
+    except Exception:
+        pass
+
     context_manager.clear_context()
-    vars_list = [
-        "AWS_ACCESS_KEY_ID",
-        "AWS_SECRET_ACCESS_KEY",
-        "AWS_SESSION_TOKEN",
-        "AWS_PROFILE",
-    ]
-    return "\n".join([f"unset {v};" for v in vars_list])
+    return provider.get_unsets()
 
 
 def cmd_config_sync() -> int:
     cfg = config.load_orgs_config()
     for org in cfg.get("orgs", []):
-        if org.get("sso_start_url") and org.get("sso_region"):
-            aws.ensure_sso_base_profile(org)
+        if org.get("provider", "aws") == "aws":
+            if org.get("sso_start_url") and org.get("sso_region"):
+                aws.ensure_sso_base_profile(org)
     return 0
 
 
 def cmd_exec(account: str, role: str, region: str, command: List[str]) -> int:
-    from .use_exports import get_credentials
+    ctx = context_manager.load_context()
+    org_name = ctx.get("current_org", "") if ctx else ""
 
     try:
-        creds = get_credentials(account, role, region)
+        org = config.get_org(org_name) if org_name else {"provider": "aws"}
+    except Exception:
+        org = {"provider": "aws"}
+
+    from .providers import get_provider
+
+    provider = get_provider(org)
+
+    try:
+        creds = provider.get_credentials(org, account, role, region)
         env = os.environ.copy()
         env.update(creds)
         import subprocess

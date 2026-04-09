@@ -1,4 +1,4 @@
-# awsctl v2.8.2 — Enterprise AWS Identity & Context Manager
+# awsctl v3.0.0 — Enterprise Cloud Identity & Context Manager
 
 [![OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/1/badge)](https://bestpractices.coreinfrastructure.org/projects/1)
 [![SLSA Aligned](https://slsa.dev/images/gh-badge-level2.svg)](https://slsa.dev)
@@ -16,7 +16,7 @@ Do **not** fork to public repositories or distribute binaries outside the corpor
 
 **Secure. Governed. Zero-Trust. Auditor-Ready.**
 
-`awsctl` is an enterprise security tool that provides controlled, auditable access to AWS accounts through **AWS IAM Identity Center (SSO)**.
+`awsctl` is an enterprise security tool that provides controlled, auditable access to cloud accounts across **AWS, Microsoft Azure, and Google Cloud Platform** through each provider's native authentication mechanism.
 
 It delivers:
 
@@ -37,6 +37,8 @@ It depends exclusively on **official AWS and open-source components**, ensuring 
 - **Identity Resolution:** Identity is derived via the official `aws sts get-caller-identity` command.
 - **Credential Acquisition:** Short-lived STS credentials are fetched via AWS CLI v2 (OIDC) and/or Python `boto3`.
 - **Authentication:** The actual IdP handshake (Okta, Azure AD, etc.) is managed by AWS SSO’s OIDC flow.
+- **Azure Credentials:** Short-lived access tokens are fetched via `az account get-access-token`, emitted as `ARM_*` / `AZURE_*` env vars.
+- **GCP Credentials:** Access tokens are fetched via `gcloud auth print-access-token`, emitted as `GOOGLE_*` / `CLOUDSDK_*` env vars.
 
 This ensures awsctl remains lightweight, secure, and natively compatible with AWS infrastructure.
 
@@ -176,9 +178,11 @@ awsctl reuses AWS CLI’s official SSO cache.
 | Operating System | Shell | Status |
 |------------------|--------|--------|
 | macOS | Zsh, Bash | ✅ Fully Supported |
+| macOS | Fish | ✅ Fully Supported |
 | Linux | Bash, Zsh | ✅ Fully Supported |
+| Linux | Fish | ✅ Fully Supported |
+| Windows (Native) | PowerShell (pwsh / Windows PS) | ✅ Fully Supported |
 | Windows (WSL2) | Bash, Zsh | ✅ Fully Supported |
-| Windows (Native) | PowerShell | 🚧 Coming Soon – Adapting Split-Plane model |
 
 ---
 
@@ -192,6 +196,18 @@ awsctl aligns with security frameworks used across high-assurance enterprise and
 | **NIST 800-53** | **IA-5** | No static credentials on disk—ephemeral session tokens only. |
 | **NIST 800-53** | **AU-2** | “Break Glass” logging with time-stamped justification records. |
 | **SLSA** | **Aligned Practices** | Tag-driven CI/CD, immutable artifacts, signed builds, and provenance tracking. |
+
+---
+
+## 📜 Changelog (v3.0.0)
+
+- **FEATURE:** Cross-cloud provider support — Azure and GCP alongside AWS via a unified `CloudProvider` interface.
+- **FEATURE:** Native PowerShell shell wrapper (`awsctl` PS function) — full Split-Plane support on Windows without WSL.
+- **FEATURE:** Fish shell wrapper — `~/.config/fish/functions/awsctl.fish` auto-installed via `awsctl init`.
+- **FEATURE:** `awsctl init` wizard detects the running shell (bash/zsh/PowerShell/fish) and installs the appropriate wrapper.
+- **FEATURE:** `provider` field in org config selects the cloud backend (`aws` | `azure` | `gcp`; defaults to `aws` for backward compatibility).
+- **FIX:** CLI dispatcher resolves handlers at call time so `monkeypatch` works correctly in tests.
+- **CHORE:** 47 new provider unit tests; 204 passing overall.
 
 ---
 

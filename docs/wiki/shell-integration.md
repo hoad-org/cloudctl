@@ -107,16 +107,39 @@ sequenceDiagram
 
 `awsctl` is designed to be shell-agnostic at its core, with specific behavior isolated to lightweight wrapper scripts for:
 
-* **bash**
-* **zsh**
-* **fish** (via specific wrapper logic)
-* **POSIX-compatible shells**
+* **bash** — wrapper injected into `.bashrc` / `.bash_profile` / `.profile`
+* **zsh** — wrapper injected into `.zshrc`
+* **PowerShell (pwsh / Windows PS)** — function injected into `$PROFILE` (cross-platform)
+* **fish** — function written to `~/.config/fish/functions/awsctl.fish`
 
 ### Manual Installation (Optional)
 Shell integration is strictly opt-in. To enable the wrapper:
 
 ```bash
 source <(awsctl shell init)
+```
+
+## 🪟 PowerShell Integration
+
+For Windows-native use (or cross-platform `pwsh`), `awsctl init` injects a function into your PowerShell `$PROFILE`. The function:
+
+1. Detects mutating commands (`switch`, `use`, `logout`, or `login` with account/role flags).
+2. Runs `_awsctl_bin --eval <args>` and captures output to a temp file.
+3. Parses `export K=V` lines and applies them via `Set-Item env:` / `[System.Environment]::SetEnvironmentVariable`.
+4. Passes all other commands through directly to the binary.
+
+**Manual install:**
+```powershell
+awsctl init   # detects PowerShell automatically
+```
+
+## 🐟 Fish Integration
+
+`awsctl init` writes `~/.config/fish/functions/awsctl.fish`. Fish's autoload mechanism picks it up with no further configuration.
+
+**Manual install:**
+```fish
+awsctl init
 ```
 
 ---

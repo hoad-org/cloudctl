@@ -59,3 +59,38 @@ def _hydrate_orgs(orgs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def sample_orgs_yaml() -> str:
     """Returns sample configuration for tests."""
     return "enabled_orgs: [default]\nplugins: {enabled: []}"
+
+
+MULTI_CLOUD_EXAMPLE = """\
+# awsctl orgs.yaml — multi-cloud example
+# ----------------------------------------
+# AWS (default — provider field optional)
+orgs:
+  - name: engineering
+    provider: aws          # optional; defaults to "aws"
+    sso_start_url: https://d-xxxxxxxxxx.awsapps.com/start
+    sso_region: us-east-1
+    default_region: us-east-1
+    allowed_regions: [us-east-1, us-west-2]
+
+  # Azure — uses 'az' CLI for auth
+  - name: azure-prod
+    provider: azure
+    tenant_id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    default_subscription: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    roles:                 # optional static role list shown in picker
+      - Contributor
+      - Reader
+
+  # GCP — uses 'gcloud' CLI for auth
+  - name: gcp-prod
+    provider: gcp
+    default_project: my-project-id
+    roles:                 # optional; defaults to viewer/editor/owner
+      - roles/viewer
+      - roles/editor
+
+enabled_orgs: [engineering, azure-prod, gcp-prod]
+plugins:
+  enabled: []
+"""

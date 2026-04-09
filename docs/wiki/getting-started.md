@@ -6,7 +6,7 @@ This page provides a **minimal, safe introduction** to `awsctl`. It is intention
 
 ## 🏗️ What awsctl Is
 
-`awsctl` is a **client-side identity broker** for AWS. It helps humans select approved accounts and assume short-lived credentials safely while enforcing organizational guardrails.
+`awsctl` is a **client-side identity broker** for AWS, Microsoft Azure, and Google Cloud Platform. It helps humans select approved accounts and assume short-lived credentials safely while enforcing organizational guardrails.
 
 
 
@@ -25,6 +25,9 @@ Before using `awsctl`, you must already possess the underlying authority:
 * At least one **AWS role** you are permitted to assume.
 * **MFA** properly configured at the identity source.
 * Network access to **AWS STS** endpoints.
+
+**For Azure orgs:** Azure CLI (`az`) installed and authenticated via `az login`.
+**For GCP orgs:** gcloud SDK installed and authenticated via `gcloud auth login`.
 
 `awsctl` will not create or fix these foundational requirements.
 
@@ -92,7 +95,7 @@ sequenceDiagram
 
     User->>CLI: awsctl use production
     CLI->>Cache: Check for valid SSO Access Token
-    
+
     alt Token Missing or Expired
         CLI->>Browser: Launch Device Authorization URL
         Browser->>AWS: User logs in via IdP (Okta/Entra)
@@ -107,7 +110,7 @@ sequenceDiagram
 
     CLI->>STS: get-caller-identity / assume-role
     STS-->>CLI: Return Temp Credentials (AccessKey/Secret)
-    
+
     opt Shell Mode (EVAL)
         CLI->>User: Export AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
     end

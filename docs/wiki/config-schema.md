@@ -63,6 +63,46 @@ Additional safety constraints.
 Configures optional extensions.
 * **Constraints:** Plugins are untrusted and cannot override policy. Plugin initialization failure triggers a hard abort.
 
+### 8. `provider` (Optional — Org-level)
+
+Selects the cloud backend for an individual org entry. Defaults to `"aws"` for backward compatibility with existing configurations.
+
+| Value | Backend | Required CLI |
+|-------|---------|--------------|
+| `aws` | AWS IAM Identity Center (SSO) | AWS CLI v2 |
+| `azure` | Microsoft Azure RBAC | Azure CLI (`az`) |
+| `gcp` | Google Cloud IAM | gcloud SDK |
+
+**Example multi-cloud `orgs.yaml`:**
+```yaml
+orgs:
+  - name: engineering
+    provider: aws          # optional; default
+    sso_start_url: https://d-xxxxxxxxxx.awsapps.com/start
+    sso_region: us-east-1
+    default_region: us-east-1
+    allowed_regions: [us-east-1, us-west-2]
+
+  - name: azure-prod
+    provider: azure
+    tenant_id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    default_subscription: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    roles: [Contributor, Reader]
+
+  - name: gcp-prod
+    provider: gcp
+    default_project: my-project-id
+    roles: [roles/viewer, roles/editor]
+```
+
+**Emitted environment variables by provider:**
+
+| Provider | Variables |
+|----------|-----------|
+| `aws` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` |
+| `azure` | `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`, `ARM_SUBSCRIPTION_ID`, `ARM_TENANT_ID`, `ARM_ACCESS_TOKEN` |
+| `gcp` | `GOOGLE_CLOUD_PROJECT`, `CLOUDSDK_CORE_PROJECT`, `GCLOUD_PROJECT`, `GOOGLE_OAUTH_ACCESS_TOKEN` |
+
 ---
 
 ## ⚙️ Evaluation Order

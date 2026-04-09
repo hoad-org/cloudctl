@@ -15,6 +15,14 @@ AWS_CONFIG = AWS_DIR / "config"
 SSO_CACHE_DIR = AWS_DIR / "sso" / "cache"
 
 
+def _resolve_aws_cli() -> str:
+    """Return the path to the aws CLI binary, raising if not found."""
+    path = shutil.which("aws")
+    if not path:
+        raise RuntimeError("AWS CLI not found in PATH")
+    return path
+
+
 def run_aws(args: List[str]) -> Dict[str, Any]:
     return run(["aws"] + args, check=False)
 

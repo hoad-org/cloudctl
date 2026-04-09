@@ -7,19 +7,19 @@ from awsctl.context_manager import save_context
 
 
 class SwitchCommand(BaseCommand):
-    """Interactive command to switch AWS accounts, roles, and regions."""
+    """Interactive command to switch cloud accounts, roles, and regions."""
 
     def configure_parser(self, subparsers):
         parser = subparsers.add_parser(
-            "switch", help="Switch AWS context interactively"
+            "switch", help="Switch cloud context interactively"
         )
         parser.add_argument("org", nargs="?", help="Organization name")
         parser.add_argument("--account", help="Specific account ID")
         parser.add_argument("--role", help="Specific role name")
-        parser.add_argument("--region", help="Specific AWS region")
+        parser.add_argument("--region", help="Specific region")
 
     def execute(self, args) -> int:
-        org_name = args.org
+        org_name = getattr(args, "org", None)
         if not org_name:
             from awsctl.config import load_config
 
@@ -41,27 +41,30 @@ class SwitchCommand(BaseCommand):
 
         org_data = get_org(org_name)
 
-        # Interactive selection
+        # Interactive selection — works for AWS, Azure, and GCP
         account, role, region = run_interactive_use(
-            org_data, args.account, args.role, args.region
+            org_data,
+            getattr(args, "account", None),
+            getattr(args, "role", None),
+            getattr(args, "region", None),
         )
 
         if not all([account, role, region]):
             return 1
 
-        # Generate exports for the shell hook
+        # Emit 'export K=V' lines to stdout so the shell wrapper can source them
         export_str = emit_exports(org_data, account, role, region)
 
-        # Write to hook output file if provided by main.py
         if hasattr(args, "hook_output") and args.hook_output:
             with open(args.hook_output, "w") as f:
                 f.write(export_str)
         else:
-            # Fallback: Print to stdout so user can eval manually
             print(export_str)
 
+        # Persist context (stores provider field too)
         save_context(org_name, account, role, region)
+
         self.console.print(
-            f"[bold green]✔ Context switched to {account}/{role} in {region}[/]"
+            f"[bold green]✔ Switched to {account} / {role} / {region}[/]"
         )
         return 0
