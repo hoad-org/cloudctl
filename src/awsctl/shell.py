@@ -74,9 +74,18 @@ function awsctl {
 
 AWSCTL_FISH_WRAPPER = r"""# AWSCTL SHELL INTEGRATION
 function awsctl
-    set -l mutating switch use logout
     set -l first (count $argv > /dev/null; and echo $argv[1]; or echo '')
-    if contains -- $first $mutating
+    set -l needs_eval 0
+    if contains -- $first switch use logout
+        set needs_eval 1
+    else if test "$first" = login
+        if contains -- --account $argv; or contains -- -a $argv
+            or contains -- --role $argv; or contains -- -r $argv
+            or contains -- --region $argv; or contains -- -R $argv
+            set needs_eval 1
+        end
+    end
+    if test $needs_eval -eq 1
         set -l tmp (mktemp)
         AWSCTL_WRAPPER_ACTIVE=1 command awsctl --eval $argv > $tmp
         set -l ec $status

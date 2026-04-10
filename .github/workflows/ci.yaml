@@ -11,28 +11,33 @@ jobs:
   scan:
     uses: BT-IT-Infrastructure-CloudOps/aws-workflows/.github/workflows/reusable-secret-scan.yaml@main
 
-  # 🐍 Python Tests
+  # 🐍 Python Tests (matrix: all supported Python versions)
   test:
     needs: [scan]
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c # v5.0.0
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
-          pip install .[test] # Uses pyproject.toml extras
+          pip install poetry
+          poetry install --with dev
 
       - name: Run Tests
-        run: pytest
+        run: poetry run pytest
 
       - name: Lint
+        if: matrix.python-version == '3.12'
         run: |
-          pip install ruff black
-          ruff check .
-          black --check .
+          poetry run ruff check .
+          poetry run black --check .

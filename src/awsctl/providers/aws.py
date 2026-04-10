@@ -27,6 +27,20 @@ class AwsProvider(CloudProvider):
     ]
 
     def login(self, org: Dict[str, Any]) -> int:
+        # AWS China (aws-cn) does not support IAM Identity Center.
+        # Users must configure long-term IAM access keys directly.
+        partition = org.get("partition", "aws")
+        if partition == "aws-cn":
+            from ..utils import console
+
+            console.print(
+                "[red]AWS China (aws-cn) does not support IAM Identity Center.[/]\n"
+                "Configure long-term IAM access keys in your environment:\n"
+                "  export AWS_ACCESS_KEY_ID=<key>\n"
+                "  export AWS_SECRET_ACCESS_KEY=<secret>\n"
+                "  export AWS_DEFAULT_REGION=cn-north-1"
+            )
+            return 1
         try:
             ensure_sso_base_profile(org)
             from .. import utils as _utils

@@ -16,7 +16,7 @@ class Awsctl < Formula
 
   depends_on "python@3.12"
 
-  # Core runtime dependencies (mirrors pyproject.toml)
+  # Direct runtime dependencies (mirrors pyproject.toml)
   resource "boto3" do
     url "https://files.pythonhosted.org/packages/d9/68/90feb74f486305c703d323308a4759006631b890d9357b6dd11ebf251908/boto3-1.34.0.tar.gz"
     sha256 "c9b400529932ed4652304756528ab235c6730aa5d00cb4d9e4848ce460c82c16"
@@ -35,6 +35,43 @@ class Awsctl < Formula
   resource "inquirerpy" do
     url "https://files.pythonhosted.org/packages/64/73/7570847b9da026e07053da3bbe2ac7ea6cde6bb2cbd3c7a5a950fa0ae40b/InquirerPy-0.3.4.tar.gz"
     sha256 "89d2ada0111f337483cb41ae31073108b2ec1e618a49d7110b0d7ade89fc197e"
+  end
+
+  resource "requests" do
+    url "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz"
+    sha256 "55365417734eb18255590a9ff9eb97e9e1da868d4ccd6402399eaf68af20a760"
+  end
+
+  resource "py-minisign" do
+    url "https://files.pythonhosted.org/packages/00/68/98a555cde13b1532519b06b0e1691621396e472acbf288b3b7ace1aa4cab/py_minisign-0.13.2.tar.gz"
+    sha256 "52b7e486649385496d5d103c5c7584ac74f6e002557ef3ad2e0152119d4a2cce"
+  end
+
+  # boto3 transitive dependencies (pinned for hermeticity)
+  resource "botocore" do
+    url "https://files.pythonhosted.org/packages/8c/a6/470755d26325a020ea1a4efa8e0eaef37e13480f938523008ccc03aff3dc/botocore-1.34.0.tar.gz"
+    sha256 "711b406de910585395466ca649bceeea87a04300ddf74d9a2e20727c7f27f2f1"
+  end
+
+  resource "s3transfer" do
+    url "https://files.pythonhosted.org/packages/a0/b5/4c570b08cb85fdcc65037b5229e00412583bb38d974efecb7ec3495f40ba/s3transfer-0.10.0.tar.gz"
+    sha256 "d0c8bbf672d5eebbe4e57945e23b972d963f07d82f661cabf678a5c88831595b"
+  end
+
+  resource "jmespath" do
+    url "https://files.pythonhosted.org/packages/00/2a/e867e8531cf3e36b41201936b7fa7ba7b5702dbef42922193f05c8976cd6/jmespath-1.0.1.tar.gz"
+    sha256 "90261b206d6defd58fdd5e85f478bf633a2901798906be2ad389150c5c60edbe"
+  end
+
+  # InquirerPy transitive dependencies (pinned for hermeticity)
+  resource "pfzy" do
+    url "https://files.pythonhosted.org/packages/d9/5a/32b50c077c86bfccc7bed4881c5a2b823518f5450a30e639db5d3711952e/pfzy-0.3.4.tar.gz"
+    sha256 "717ea765dd10b63618e7298b2d98efd819e0b30cd5905c9707223dceeb94b3f1"
+  end
+
+  resource "prompt-toolkit" do
+    url "https://files.pythonhosted.org/packages/2d/4f/feb5e137aff82f7c7f3248267b97451da3644f6cdc218edfe549fb354127/prompt_toolkit-3.0.48.tar.gz"
+    sha256 "d6623ab0477a80df74e646bdbc93621143f5caf104206aa29294d53de1a03d90"
   end
 
   def install

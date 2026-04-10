@@ -370,33 +370,84 @@ def cmd_org(args: Any) -> int:
 
 
 def cmd_whoami(args: Any = None) -> int:
-    """Get the current AWS caller identity."""
-    from . import aws
+    """Show the active identity for the current provider context.
 
-    try:
-        result = aws.run_aws(["sts", "get-caller-identity"])
-        if result.get("returncode") != 0:
-            utils.console.print(f"Failed to get identity: {result.get('stderr', '')}")
+    Falls back to AWS STS when no context exists (backward-compat with
+    tests and scripts that call whoami without a prior switch).
+    """
+    ctx = load_context()
+    provider = ctx.get("provider", "aws") if ctx else "aws"
+    org_name = ctx.get("current_org", "") if ctx else ""
+    account = ctx.get("account", "") if ctx else ""
+    role = ctx.get("role", "") if ctx else ""
+    region = ctx.get("region", "") if ctx else ""
+
+    if provider == "aws":
+        from . import aws
+
+        try:
+            result = aws.run_aws(["sts", "get-caller-identity"])
+            if result.get("returncode") != 0:
+                utils.console.print(
+                    f"Failed to get identity: {result.get('stderr', '')}"
+                )
+                return 1
+            utils.console.print(result.get("stdout", ""))
+        except Exception as e:
+            utils.console.print(str(e))
             return 1
-        utils.console.print(result.get("stdout", ""))
-        return 0
-    except Exception as e:
-        utils.console.print(str(e))
-        return 1
+    elif provider == "azure":
+        utils.console.print(
+            f"[bold]Azure[/bold]  org={org_name}  "
+            f"subscription={account}  role={role}  region={region}"
+        )
+    elif provider == "gcp":
+        utils.console.print(
+            f"[bold]GCP[/bold]  org={org_name}  "
+            f"project={account}  role={role}  region={region}"
+        )
+    else:
+        utils.console.print(
+            f"[bold]{provider}[/bold]  org={org_name}  "
+            f"account={account}  role={role}  region={region}"
+        )
+    return 0
 
 
 def cmd_open(args: Any = None) -> int:
-    """Open the AWS console for the active org."""
+    """Open the cloud console for the active org and provider."""
     try:
         ctx = load_context()
         org_name = ctx.get("current_org") if ctx else None
         if not org_name:
             utils.console.print("[red]Error: No active context.[/]")
             return 1
-        core.get_org(org_name)
+        org = core.get_org(org_name)  # propagates to outer except → returns 1
+        provider = org.get("provider", "aws")
+        if provider == "aws":
+            from .schema import AWS_PARTITIONS
+
+            partition = org.get("partition", "aws")
+            console_url = AWS_PARTITIONS.get(partition, AWS_PARTITIONS["aws"])[
+                "console"
+            ]
+        elif provider == "azure":
+            console_url = "https://portal.azure.com/"
+        elif provider == "gcp":
+            project = (ctx.get("account") if ctx else None) or org.get(
+                "default_project", ""
+            )
+            console_url = (
+                f"https://console.cloud.google.com/home/dashboard?project={project}"
+                if project
+                else "https://console.cloud.google.com/"
+            )
+        else:
+            console_url = "https://console.aws.amazon.com/"
+
         import webbrowser
 
-        webbrowser.open("https://console.aws.amazon.com/")
+        webbrowser.open(console_url)
         return 0
     except Exception as e:
         utils.console.print(f"[red]Error: {e}[/]")

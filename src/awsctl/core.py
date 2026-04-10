@@ -119,9 +119,11 @@ def cmd_exec(account: str, role: str, region: str, command: List[str]) -> int:
 
     from . import use_exports as _ue
 
-    # When explicit account/role/region are given, use get_credentials directly
-    # so tests can patch _aws_json without going through emit_exports' token check.
-    if account is not None and role is not None:
+    # For AWS with explicit account+role, use get_credentials directly so that
+    # tests patching _ue._aws_json still work.  For all other providers (Azure,
+    # GCP) — and for AWS when no explicit args are given — go through
+    # emit_exports, which delegates to the correct provider.
+    if account is not None and role is not None and org.get("provider", "aws") == "aws":
         try:
             creds = _ue.get_credentials(_account, _role, _region)
             env = os.environ.copy()
@@ -144,7 +146,7 @@ def cmd_exec(account: str, role: str, region: str, command: List[str]) -> int:
             utils.console.print(f"Execution failure: {e}")
             return 1
     else:
-        # No explicit args — use emit_exports which checks the SSO token.
+        # Multi-cloud path: works for AWS (context only), Azure, and GCP.
         try:
             export_str = _ue.emit_exports(org, _account, _role, _region)
             env = os.environ.copy()
