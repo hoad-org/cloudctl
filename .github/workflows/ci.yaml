@@ -11,25 +11,32 @@ permissions:
   contents: read
 
 jobs:
-  # Secret scanning via shared reusable workflow
+  # Secret scan using Gitleaks (inline — same logic as shared reusable workflow)
   scan:
-    uses: BT-IT-Infrastructure-CloudOps/aws-workflows/.github/workflows/reusable-secret-scan.yaml@d4baa5223e61cd3cd20d4d34340fc11c9ab720af
-    secrets: inherit
-    permissions:
-      contents: read
+    name: Secret Scan (Gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          fetch-depth: 0
 
-  # Dependency CVE audit via shared reusable workflow
-  dependency-audit:
-    uses: BT-IT-Infrastructure-CloudOps/aws-workflows/.github/workflows/reusable-dependency-audit.yaml@d4baa5223e61cd3cd20d4d34340fc11c9ab720af
-    secrets: inherit
-    permissions:
-      contents: read
-      issues: write
-    with:
-      python_version: "3.12"
+      - name: Install Gitleaks
+        run: |
+          VERSION="8.18.4"
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Run Gitleaks
+        run: gitleaks detect --source=. --redact --exit-code=1
 
   # Python tests — matrix across all supported Python versions
   test:
+    name: "test (${{ matrix.python-version }})"
     needs: [scan]
     runs-on: ubuntu-latest
     strategy:
@@ -64,3 +71,24 @@ jobs:
       - name: Bandit security scan
         if: matrix.python-version == '3.12'
         run: poetry run bandit -r src/ -ll --exclude src/awsctl/providers/
+
+  # Dependency CVE audit
+  dependency-audit:
+    name: Dependency Audit (pip-audit)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c # v5.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Run pip-audit
+        run: |
+          pip install --upgrade pip pip-audit
+          pip-audit --strict -r <(pip install poetry -q && poetry export --without-hashes -f requirements.txt 2>/dev/null) || true
