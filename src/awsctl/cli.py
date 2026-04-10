@@ -695,15 +695,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
 
-    # Fast paths that don't need full argparse
-    if "--version" in argv:
-        stdout_console.print(_resolved_version())
-        return 0
-
+    # Fast paths that don't need full argparse.
+    # --check-strategy MUST be checked before --version: the shell wrapper calls
+    # `_awsctl_bin --check-strategy --version` to probe the flag, and if --version
+    # were checked first it would print the version string instead of EXEC/EVAL.
     if "--check-strategy" in argv:
         idx = argv.index("--check-strategy")
         cmd_arg = argv[idx + 1] if idx + 1 < len(argv) else ""
         sys.stdout.write(determine_strategy([cmd_arg]) + "\n")
+        return 0
+
+    if "--version" in argv:
+        stdout_console.print(_resolved_version())
         return 0
 
     if "--help" in argv or "-h" in argv:
