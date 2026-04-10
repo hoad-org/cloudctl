@@ -158,7 +158,7 @@ awsctl init --shell-only
 
 ### Option B: Script install (macOS / Linux / WSL)
 
-Clones the repo and calls `install.sh`, which handles GitHub Packages auth automatically
+Clones the repo and calls `install.sh`, which downloads the wheel from GitHub Releases
 when `GITHUB_TOKEN` is set, then injects the shell wrapper.
 
 ```bash
@@ -169,8 +169,8 @@ cd aws-terraform-infra-cloudops-awsctl
 bash install.sh
 ```
 
-`install.sh` installs via GitHub Packages (or local source if no token), adds the user
-Scripts directory to PATH for the session, and injects the shell wrapper (bash/zsh/fish).
+`install.sh` downloads the latest release wheel from GitHub Releases, installs it,
+adds the user Scripts directory to PATH for the session, and injects the shell wrapper (bash/zsh/fish).
 
 ---
 
@@ -184,7 +184,7 @@ cd aws-terraform-infra-cloudops-awsctl
 .\install.ps1
 ```
 
-Installs via GitHub Packages (or local source if no token) and injects the PowerShell function wrapper into `$PROFILE`.
+Downloads the latest release wheel from GitHub Releases and injects the PowerShell function wrapper into `$PROFILE`.
 
 ---
 
@@ -215,7 +215,7 @@ awsctl upgrade
 
 `GITHUB_TOKEN` must have `read:contents` (or `repo`) scope on the repository.
 
-`awsctl upgrade` pulls the latest release from GitHub Packages and restarts gracefully.
+`awsctl upgrade` queries the GitHub Releases API, downloads the latest wheel, and installs it via pip.
 
 ---
 
