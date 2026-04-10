@@ -57,9 +57,9 @@ jobs:
 
       - name: Publish to GitHub Packages (PyPI index)
         env:
-          # GitHub Packages PyPI registry: upload endpoint is the root (no org suffix).
-          # The org is inferred from GITHUB_TOKEN ownership.
-          TWINE_REPOSITORY_URL: https://upload.pkg.github.com/
+          # GitHub Packages PyPI registry: org-scoped upload endpoint.
+          # The root URL (without org) returns 405; the org suffix is required.
+          TWINE_REPOSITORY_URL: https://upload.pkg.github.com/BT-IT-Infrastructure-CloudOps/
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         # Note: GitHub Packages does not support --skip-existing.
