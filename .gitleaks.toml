@@ -1,0 +1,24 @@
+# .gitleaks.toml — gitleaks configuration for awsctl repo
+# Suppress known-safe patterns that would otherwise trigger false positives.
+
+[extend]
+# Start from the default gitleaks ruleset
+useDefault = true
+
+[[rules]]
+id = "gha-secret-reference"
+description = "GitHub Actions secret references — not real secrets"
+regex = '''\$\{\{\s*secrets\.[A-Z_]+\s*\}\}'''
+allowlist.regexTarget = "match"
+allowlist.regexes = ['.*']
+
+[[allowlists]]
+description = "Suppress GitHub Actions expression patterns (not real credentials)"
+regexes = [
+    # GitHub Actions secret references (${{ secrets.FOO }}) are expression syntax, never real values
+    '''\$\{\{\s*secrets\.[A-Za-z_]+\s*\}\}''',
+    # PyPI/twine placeholder username — not a token
+    '''__token__''',
+    # GitHub Actions context expressions
+    '''\$\{\{\s*github\.[A-Za-z_.]+\s*\}\}''',
+]

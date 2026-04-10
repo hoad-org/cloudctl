@@ -32,7 +32,7 @@ jobs:
           gitleaks version
 
       - name: Run Gitleaks
-        run: gitleaks detect --source=. --redact --exit-code=1
+        run: gitleaks detect --source=. --config=.gitleaks.toml --redact --exit-code=1
 
   # Python tests — matrix across all supported Python versions
   test:
