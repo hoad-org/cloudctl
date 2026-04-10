@@ -16,8 +16,11 @@ def test_login_force_flag(mock_rich_console, monkeypatch):
         "awsctl.config.get_org",
         lambda x: {"name": "test", "sso_start_url": "u", "sso_region": "r"},
     )
-    # Patch aws module directly as cmd_login calls it
+    # Patch both the aws module AND the provider's imported reference.
+    # providers/aws.py does 'from ..aws import ensure_sso_base_profile', so
+    # patching only awsctl.aws won't intercept the call inside the provider.
     monkeypatch.setattr("awsctl.aws.ensure_sso_base_profile", lambda x: "p")
+    monkeypatch.setattr("awsctl.providers.aws.ensure_sso_base_profile", lambda x: "p")
     monkeypatch.setattr("awsctl.aws._resolve_aws_cli", lambda: "aws")
 
     # 2. Mock successful execution

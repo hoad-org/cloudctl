@@ -44,11 +44,16 @@ def test_load_token_permission_error(monkeypatch):
     assert "Permission denied" in str(e.value)
 
 
-def test_load_active_sso_token_corrupt_flag():
-    """Verify the explicit raise_error flag."""
+def test_load_active_sso_token_corrupt_flag(tmp_path):
+    """Verify the explicit raise_error flag with a deterministic empty cache dir.
+
+    Previously used the production SSO cache dir which may or may not exist on
+    CI runners. Using tmp_path ensures the cache dir *exists* but has no matching
+    tokens, exercising the strict=True → 'SSO cache corrupted' code path.
+    """
     org = OrgRef("test", "https://target", "eu-west-1")
 
     with pytest.raises(RuntimeError) as e:
-        load_active_sso_token(org, raise_error=True)
+        load_active_sso_token(org, cache_dir=tmp_path, raise_error=True)
 
     assert "SSO cache corrupted" in str(e.value)
