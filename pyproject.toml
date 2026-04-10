@@ -20,6 +20,7 @@ py-minisign = ">=0.9.1"
 requests = ">=2.33.0"
 # Minimum versions for transitive-dep CVE fixes
 cryptography = ">=46.0.7"
+pygments = ">=2.20.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.0"
