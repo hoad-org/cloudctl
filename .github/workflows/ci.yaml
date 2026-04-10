@@ -2,16 +2,33 @@ name: "Python Tooling CI"
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 jobs:
-  # 🛡️ Security
+  # Secret scanning via shared reusable workflow
   scan:
-    uses: BT-IT-Infrastructure-CloudOps/aws-workflows/.github/workflows/reusable-secret-scan.yaml@main
+    uses: BT-IT-Infrastructure-CloudOps/aws-workflows/.github/workflows/reusable-secret-scan.yaml@d4baa5223e61cd3cd20d4d34340fc11c9ab720af
+    secrets: inherit
+    permissions:
+      contents: read
 
-  # 🐍 Python Tests (matrix: all supported Python versions)
+  # Dependency CVE audit via shared reusable workflow
+  dependency-audit:
+    uses: BT-IT-Infrastructure-CloudOps/aws-workflows/.github/workflows/reusable-dependency-audit.yaml@d4baa5223e61cd3cd20d4d34340fc11c9ab720af
+    secrets: inherit
+    permissions:
+      contents: read
+      issues: write
+    with:
+      python_version: "3.12"
+
+  # Python tests — matrix across all supported Python versions
   test:
     needs: [scan]
     runs-on: ubuntu-latest
@@ -19,25 +36,31 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13"]
+
     steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c # v5.0.0
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install poetry
           poetry install --with dev
 
-      - name: Run Tests
+      - name: Run tests
         run: poetry run pytest
 
-      - name: Lint
+      - name: Lint (ruff + black)
         if: matrix.python-version == '3.12'
         run: |
           poetry run ruff check .
           poetry run black --check .
+
+      - name: Bandit security scan
+        if: matrix.python-version == '3.12'
+        run: poetry run bandit -r src/ -ll --exclude src/awsctl/providers/
