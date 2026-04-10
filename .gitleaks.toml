@@ -22,3 +22,9 @@ regexes = [
     # GitHub Actions context expressions
     '''\$\{\{\s*github\.[A-Za-z_.]+\s*\}\}''',
 ]
+
+[[allowlists]]
+description = "minisign PUBLIC key in registry_loader — not a secret"
+# The PUB_KEY in registry_loader.py is a minisign PUBLIC key (not a private key).
+# Public keys are not secrets — they verify signatures. The commit below introduced this.
+commits = ["8f6af335af3db817763565c208aca03b0c464004"]

@@ -8,8 +8,8 @@ import awsctl.utils as utils
 
 REGISTRY_URL = "https://registry.awsctl.dev/orgs.json"
 SIG_URL = f"{REGISTRY_URL}.minisig"
-# Public key for registry verification as implied by test contract
-PUB_KEY = "RWQf6LRCGA9i53mlYecO4IzT51TGP9Xx8uSjaHEvLkRx"
+# minisign PUBLIC key for registry signature verification — not a secret  # gitleaks:allow
+PUB_KEY = "RWQf6LRCGA9i53mlYecO4IzT51TGP9Xx8uSjaHEvLkRx"  # gitleaks:allow
 
 MAX_DECOMPRESSED_SIZE = 10 * 1024 * 1024  # 10 MB
 MAX_REGISTRY_SIZE = 1024 * 1024  # 1 MB
