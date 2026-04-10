@@ -127,9 +127,12 @@ awsctl is distributed as a private Python package on GitHub Packages. You need a
 ```bash
 export GITHUB_TOKEN=ghp_your_token_here
 
-# macOS / Linux / WSL — one-liner
+# macOS / Linux / WSL2 — one-liner
+# --index-url: awsctl is fetched from GitHub Packages
+# --extra-index-url: transitive deps (boto3, rich, etc.) fall back to PyPI
 pip3 install --user awsctl \
-  --index-url "https://__token__:${GITHUB_TOKEN}@pip.pkg.github.com/BT-IT-Infrastructure-CloudOps/"
+  --index-url "https://__token__:${GITHUB_TOKEN}@pip.pkg.github.com/BT-IT-Infrastructure-CloudOps/" \
+  --extra-index-url "https://pypi.org/simple/"
 
 # Then install the shell wrapper
 awsctl init --shell-only
@@ -139,7 +142,8 @@ awsctl init --shell-only
 # Windows PowerShell
 $env:GITHUB_TOKEN = "ghp_your_token_here"
 pip install --user awsctl `
-  --index-url "https://__token__:$($env:GITHUB_TOKEN)@pip.pkg.github.com/BT-IT-Infrastructure-CloudOps/"
+  --index-url "https://__token__:$($env:GITHUB_TOKEN)@pip.pkg.github.com/BT-IT-Infrastructure-CloudOps/" `
+  --extra-index-url "https://pypi.org/simple/"
 
 awsctl init --shell-only
 ```

@@ -57,7 +57,9 @@ jobs:
 
       - name: Publish to GitHub Packages (PyPI index)
         env:
-          TWINE_REPOSITORY_URL: https://upload.pkg.github.com/BT-IT-Infrastructure-CloudOps/
+          # GitHub Packages PyPI registry: upload endpoint is the root (no org suffix).
+          # The org is inferred from GITHUB_TOKEN ownership.
+          TWINE_REPOSITORY_URL: https://upload.pkg.github.com/
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: twine upload --skip-existing dist/*

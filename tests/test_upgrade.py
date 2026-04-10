@@ -79,6 +79,20 @@ class TestCmdUpgradeAuthenticated:
         assert rc == 1
         assert any("failed" in str(m).lower() for m in messages)
 
+    def test_extra_index_url_always_included(self):
+        """--extra-index-url pypi.org/simple must always be passed so deps resolve."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            with patch.dict(os.environ, {"GITHUB_TOKEN": "ghp_testtoken"}, clear=False):
+                with patch.object(cli, "console", MagicMock()):
+                    cli.cmd_upgrade(None)
+
+        argv = mock_run.call_args[0][0]
+        assert "--extra-index-url" in argv
+        assert any("pypi.org/simple" in str(a) for a in argv)
+
     def test_authenticated_upgrade_uses_sys_executable(self):
         """cmd_upgrade must use the same Python interpreter (sys.executable), not 'python'."""
         mock_result = MagicMock()

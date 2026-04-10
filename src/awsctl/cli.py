@@ -483,6 +483,11 @@ def cmd_upgrade(args: Any = None) -> int:
             "awsctl",
             "--index-url",
             index_url,
+            # Transitive deps (boto3, pyyaml, rich, etc.) are on PyPI, not GitHub Packages.
+            # --extra-index-url lets pip fall back to PyPI for anything not found in the
+            # primary index.
+            "--extra-index-url",
+            "https://pypi.org/simple/",
         ],
     )
     if result.returncode == 0:

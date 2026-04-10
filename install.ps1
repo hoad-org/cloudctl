@@ -18,8 +18,10 @@ Write-Host "📦 Installing package via pip..." -ForegroundColor Cyan
 
 if ($env:GITHUB_TOKEN) {
     Write-Host "  Installing from GitHub Packages (authenticated)..." -ForegroundColor DarkGray
+    # --index-url points at GitHub Packages for awsctl itself.
+    # --extra-index-url lets pip fall back to PyPI for transitive deps (boto3, pyyaml, rich, etc.)
     $IndexUrl = "https://__token__:$($env:GITHUB_TOKEN)@pip.pkg.github.com/$GithubOrg/"
-    pip install --user awsctl --index-url $IndexUrl
+    pip install --user awsctl --index-url $IndexUrl --extra-index-url "https://pypi.org/simple/"
 } else {
     Write-Host "  ⚠️  GITHUB_TOKEN not set — installing from local source." -ForegroundColor Yellow
     Write-Host "  For GitHub Packages install: `$env:GITHUB_TOKEN = '<your-PAT>' and re-run." -ForegroundColor Yellow

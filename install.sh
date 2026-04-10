@@ -18,8 +18,12 @@ echo "📦 Installing package via pip..."
 
 if [[ -n "${GITHUB_TOKEN:-}" ]]; then
     echo "   Installing from GitHub Packages (authenticated)..."
+    # --index-url points at GitHub Packages for awsctl itself.
+    # --extra-index-url lets pip fall back to PyPI for all transitive deps
+    # (boto3, pyyaml, rich, etc.) which are not hosted on GitHub Packages.
     pip3 install --user awsctl \
-        --index-url "https://__token__:${GITHUB_TOKEN}@pip.pkg.github.com/${GITHUB_ORG}/"
+        --index-url "https://__token__:${GITHUB_TOKEN}@pip.pkg.github.com/${GITHUB_ORG}/" \
+        --extra-index-url "https://pypi.org/simple/"
 else
     echo "   ⚠️  GITHUB_TOKEN not set — installing from local source."
     echo "   For GitHub Packages install: export GITHUB_TOKEN=<your-PAT> and re-run."
