@@ -6,6 +6,43 @@
 # from the private repository. Falls back to a local source install if unset.
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# 0. Python version guard — require 3.12+
+# ---------------------------------------------------------------------------
+_check_python() {
+    local py
+    for py in python3 python; do
+        if command -v "$py" &>/dev/null; then
+            local ver
+            ver=$("$py" -c "import sys; print(sys.version_info[:2])" 2>/dev/null) || continue
+            # ver looks like "(3, 12)" — extract major/minor
+            local major minor
+            major=$(echo "$ver" | tr -d '() ' | cut -d, -f1)
+            minor=$(echo "$ver" | tr -d '() ' | cut -d, -f2)
+            if [[ "$major" -gt 3 ]] || { [[ "$major" -eq 3 ]] && [[ "$minor" -ge 12 ]]; }; then
+                echo "$py"
+                return 0
+            fi
+        fi
+    done
+    return 1
+}
+
+PYTHON_BIN=$(_check_python) || {
+    echo "❌ awsctl requires Python 3.12 or newer."
+    echo "   Detected Python version is too old (need ≥3.12, got: $(python3 --version 2>&1 || echo 'not found'))."
+    echo ""
+    echo "   Install Python 3.12+ via pyenv, Homebrew, or your system package manager:"
+    echo "     brew install python@3.12          # macOS (Homebrew)"
+    echo "     pyenv install 3.12 && pyenv global 3.12  # pyenv"
+    echo "     sudo apt install python3.12       # Debian/Ubuntu"
+    echo ""
+    exit 1
+}
+
+PIP_BIN="${PYTHON_BIN} -m pip"
+echo "   Using: $("$PYTHON_BIN" --version)"
+
 GITHUB_ORG="BT-IT-Infrastructure-CloudOps"
 GITHUB_REPO="aws-terraform-infra-cloudops-awsctl"
 API_BASE="https://api.github.com/repos/${GITHUB_ORG}/${GITHUB_REPO}"
@@ -48,12 +85,12 @@ print(whl['url'])
         -o "${TMP_WHL}"
 
     echo "   Installing from wheel (dependencies from PyPI)..."
-    pip3 install --user "${TMP_WHL}" --extra-index-url "https://pypi.org/simple/"
+    $PIP_BIN install --user "${TMP_WHL}" --extra-index-url "https://pypi.org/simple/"
     rm -f "${TMP_WHL}"
 else
     echo "   ⚠️  GITHUB_TOKEN not set — installing from local source."
     echo "   For the latest release: export GITHUB_TOKEN=<your-PAT> and re-run."
-    pip3 install --user . --extra-index-url "https://pypi.org/simple/"
+    $PIP_BIN install --user . --extra-index-url "https://pypi.org/simple/"
 fi
 
 # Ensure the user-bin directory is on PATH for this session so we can call

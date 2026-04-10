@@ -12,29 +12,76 @@ echo "🗑️  Starting awsctl uninstallation..."
 echo "🧹 Removing shell integration..."
 
 python3 - <<'PYEOF' 2>/dev/null || true
+import re
 from pathlib import Path
-from awsctl import shell
+
+try:
+    from awsctl import shell as _shell
+    _remove_shell  = _shell.remove_shell_function
+    _remove_fish   = _shell.remove_fish_function
+    _remove_ps     = _shell.remove_powershell_function
+    _detect_fish   = _shell.detect_fish_function_file
+    _detect_ps     = _shell.detect_powershell_profile
+except Exception:
+    _remove_shell = _remove_fish = _remove_ps = lambda *a: False
+    _detect_fish  = lambda: Path.home() / ".config/fish/functions/awsctl.fish"
+    _detect_ps    = lambda: Path.home() / "Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
+
+# -----------------------------------------------------------------------
+# Legacy wrapper patterns — any version prior to the current v3 format.
+# These are identified by a comment+function block starting with one of
+# the known header strings and ending at the closing "}" on its own line.
+# -----------------------------------------------------------------------
+_LEGACY_PATTERNS = [
+    # v2.x "SECURE" variants
+    r"# AWSCTL SHELL INTEGRATION \(v[\d.]+-[A-Z]+\)\nawsctl\(\) \{.*?\n\}",
+    # Any remaining "# AWSCTL SHELL INTEGRATION" block (catches future drift)
+    r"# AWSCTL SHELL INTEGRATION[^\n]*\nawsctl\(\) \{.*?\n\}",
+    # Old venv PATH lines that awsctl installers used to inject
+    r"export PATH=\"\$HOME/repos/AWS/awsctl/\.venv_awsctl/bin[^\n]*\n?",
+]
+
+def _remove_legacy(path: Path) -> bool:
+    if not path.exists():
+        return False
+    try:
+        content = path.read_text(encoding="utf-8")
+    except Exception:
+        return False
+
+    new_content = content
+    for pattern in _LEGACY_PATTERNS:
+        new_content = re.sub(pattern, "", new_content, flags=re.DOTALL)
+
+    # Collapse excessive blank lines left behind
+    new_content = re.sub(r"\n{3,}", "\n\n", new_content).rstrip() + "\n"
+
+    if new_content == content:
+        return False
+    try:
+        path.write_text(new_content, encoding="utf-8")
+        return True
+    except Exception:
+        return False
 
 removed = []
 
-# bash / zsh — check all common profiles, not just the detected one
 for candidate in [
     Path.home() / ".zshrc",
     Path.home() / ".bashrc",
     Path.home() / ".bash_profile",
     Path.home() / ".profile",
 ]:
-    if shell.remove_shell_function(candidate):
+    # Try v3 remover first, fall back to legacy pattern scrub
+    if _remove_shell(candidate) or _remove_legacy(candidate):
         removed.append(str(candidate))
 
-# fish function file
-fish_file = shell.detect_fish_function_file()
-if shell.remove_fish_function(fish_file):
+fish_file = _detect_fish()
+if _remove_fish(fish_file):
     removed.append(str(fish_file))
 
-# PowerShell profile (cross-platform pwsh)
-ps_profile = shell.detect_powershell_profile()
-if shell.remove_powershell_function(ps_profile):
+ps_profile = _detect_ps()
+if _remove_ps(ps_profile):
     removed.append(str(ps_profile))
 
 if removed:
