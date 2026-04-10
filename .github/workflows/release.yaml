@@ -62,4 +62,6 @@ jobs:
           TWINE_REPOSITORY_URL: https://upload.pkg.github.com/
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: twine upload --skip-existing dist/*
+        # Note: GitHub Packages does not support --skip-existing.
+        # Each tag produces a unique version so duplicate uploads won't occur in practice.
+        run: twine upload dist/*
