@@ -56,12 +56,8 @@ jobs:
             dist/*
 
       - name: Publish to GitHub Packages (PyPI index)
-        env:
-          # GitHub Packages PyPI registry: org-scoped upload endpoint.
-          # The root URL (without org) returns 405; the org suffix is required.
-          TWINE_REPOSITORY_URL: https://upload.pkg.github.com/BT-IT-Infrastructure-CloudOps/
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        # Note: GitHub Packages does not support --skip-existing.
-        # Each tag produces a unique version so duplicate uploads won't occur in practice.
-        run: twine upload dist/*
+        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v1.12.4
+        with:
+          repository-url: https://upload.pkg.github.com/BT-IT-Infrastructure-CloudOps/
+          password: ${{ secrets.GITHUB_TOKEN }}
+          verbose: true
