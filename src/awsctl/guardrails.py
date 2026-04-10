@@ -31,6 +31,22 @@ def validate_region(org: Dict[str, Any], region: str) -> None:
         )
         sys.exit(1)
 
+    # Additionally enforce partition boundaries even when no allowed_regions is set
+    if org.get("provider", "aws") == "aws":
+        partition = org.get("partition", "aws")
+        if partition:
+            from .schema import AWS_PARTITIONS
+
+            if partition in AWS_PARTITIONS:
+                valid_regions = set(AWS_PARTITIONS[partition]["regions"])
+                if valid_regions and region not in valid_regions:
+                    utils.console.print(
+                        f"[bold red]Region '{region}' is not available in "
+                        f"partition '{partition}'.[/]\n"
+                        f"Valid regions: {', '.join(sorted(valid_regions))}"
+                    )
+                    sys.exit(1)
+
 
 def sort_roles(org: Dict[str, Any], roles: List[str]) -> List[str]:
     """Order roles: preferred first (in config order), then remaining alphabetically."""

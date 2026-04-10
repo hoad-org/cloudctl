@@ -3,10 +3,14 @@ class Awsctl < Formula
 
   desc "Enterprise Cloud Identity & Context Manager (AWS, Azure, GCP)"
   homepage "https://github.com/beyondtrust-cloudops/aws-terraform-infra-cloudops-awsctl"
-  # Update url and sha256 before releasing a tagged version.
-  # To compute sha256: curl -L <url> | shasum -a 256
+  # -------------------------------------------------------------------------
+  # RELEASE CHECKLIST:
+  #   1. Push a git tag: git tag v3.0.0 && git push --tags
+  #   2. Compute sha256: curl -sL <tarball_url> | shasum -a 256
+  #   3. Update url + sha256 below and run: brew audit --strict Formula/awsctl.rb
+  # -------------------------------------------------------------------------
   url "https://github.com/beyondtrust-cloudops/aws-terraform-infra-cloudops-awsctl/archive/refs/tags/v3.0.0.tar.gz"
-  sha256 "REPLACE_WITH_ACTUAL_SHA256"
+  sha256 "REPLACE_WITH_ACTUAL_SHA256_AFTER_TAGGING"
   license "MIT"
   head "https://github.com/beyondtrust-cloudops/aws-terraform-infra-cloudops-awsctl.git", branch: "main"
 
@@ -14,8 +18,8 @@ class Awsctl < Formula
 
   # Core runtime dependencies (mirrors pyproject.toml)
   resource "boto3" do
-    url "https://files.pythonhosted.org/packages/source/b/boto3/boto3-1.34.0.tar.gz"
-    sha256 "REPLACE_boto3"
+    url "https://files.pythonhosted.org/packages/d9/68/90feb74f486305c703d323308a4759006631b890d9357b6dd11ebf251908/boto3-1.34.0.tar.gz"
+    sha256 "c9b400529932ed4652304756528ab235c6730aa5d00cb4d9e4848ce460c82c16"
   end
 
   resource "pyyaml" do
@@ -24,13 +28,13 @@ class Awsctl < Formula
   end
 
   resource "rich" do
-    url "https://files.pythonhosted.org/packages/source/r/rich/rich-13.7.0.tar.gz"
-    sha256 "REPLACE_rich"
+    url "https://files.pythonhosted.org/packages/a7/ec/4a7d80728bd429f7c0d4d51245287158a1516315cadbb146012439403a9d/rich-13.7.0.tar.gz"
+    sha256 "5cb5123b5cf9ee70584244246816e9114227e0b98ad9176eede6ad54bf5403fa"
   end
 
   resource "inquirerpy" do
-    url "https://files.pythonhosted.org/packages/source/I/InquirerPy/InquirerPy-0.3.4.tar.gz"
-    sha256 "REPLACE_inquirerpy"
+    url "https://files.pythonhosted.org/packages/64/73/7570847b9da026e07053da3bbe2ac7ea6cde6bb2cbd3c7a5a950fa0ae40b/InquirerPy-0.3.4.tar.gz"
+    sha256 "89d2ada0111f337483cb41ae31073108b2ec1e618a49d7110b0d7ade89fc197e"
   end
 
   def install

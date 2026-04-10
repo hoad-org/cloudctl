@@ -60,14 +60,34 @@ def _run(cmd: List[str], timeout: int = 30) -> Optional[str]:
 
 
 def _discover_aws(org: Dict[str, Any]) -> Dict[str, Any]:
-    """Prompt for AWS SSO fields (no live discovery needed — SSO handles it)."""
+    """Prompt for AWS SSO fields and infer/confirm partition."""
     from awsctl.wizard import inquirer
+    from awsctl import schema as _schema
 
     utils.console.print("[bold]AWS org configuration[/bold]")
     org["sso_start_url"] = inquirer.text(
         message="SSO Start URL (e.g. https://d-xxxx.awsapps.com/start):",
         default=org.get("sso_start_url", ""),
     ).execute()
+
+    # Infer partition from URL; confirm if ambiguous
+    inferred = _schema.partition_from_sso_url(org["sso_start_url"])
+    if inferred != "aws":
+        utils.console.print(f"[dim]Detected partition: {inferred}[/dim]")
+        org["partition"] = inferred
+    else:
+        partition_choices = [
+            "aws           — Commercial",
+            "aws-us-gov    — GovCloud (US)",
+            "aws-cn        — China (IAM keys only, no SSO)",
+        ]
+        chosen = inquirer.select(
+            message="AWS Partition:",
+            choices=partition_choices,
+            default=partition_choices[0],
+        ).execute()
+        org["partition"] = chosen.split()[0]
+
     org["sso_region"] = inquirer.text(
         message="SSO Region (e.g. us-east-1):",
         default=org.get("sso_region", "us-east-1"),

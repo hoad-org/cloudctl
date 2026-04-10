@@ -204,6 +204,25 @@ def run_diagnostics(fix_path: Optional[bool] = None) -> int:
         _print_check(console, "Config file", False, str(e))
         issues.append(str(e))
 
+    # --- Schema validation ---
+    try:
+        from .schema import validate_orgs_config
+
+        raw = config.load_raw_config()
+        schema_errors = validate_orgs_config(raw) if raw else []
+        if schema_errors:
+            _print_check(
+                console, "Config schema", False, f"{len(schema_errors)} error(s)"
+            )
+            for err in schema_errors:
+                console.print(f"    [red]•[/red] {err}")
+            issues.extend(schema_errors)
+        else:
+            _print_check(console, "Config schema", True, "Valid")
+    except Exception as e:
+        _print_check(console, "Config schema", False, str(e))
+        issues.append(str(e))
+
     # --- WSL Performance (only when running in WSL) ---
     if is_wsl():
         console.print("\n[bold]WSL Performance[/bold]")

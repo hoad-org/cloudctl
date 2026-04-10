@@ -18,6 +18,7 @@ need EVAL?" before it decides whether to capture or stream stdout.
 """
 
 import importlib.metadata
+import os
 import sys
 from pathlib import Path
 from typing import Any, List, Optional
@@ -549,8 +550,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
         return 0
 
-    # Strip internal --eval flag before parsing (shell wrapper adds it)
+    # TTY guard — warn when --eval is used without the shell wrapper context.
+    # The shell wrapper sets AWSCTL_WRAPPER_ACTIVE=1 before calling us.
+    # Direct invocation with --eval risks exposing credentials in shell history
+    # or redirecting them to a file.
+    eval_mode = "--eval" in argv
     argv = [a for a in argv if a != "--eval"]
+    if eval_mode and not os.environ.get("AWSCTL_WRAPPER_ACTIVE"):
+        sys.stderr.write(
+            "awsctl: WARNING — --eval used outside shell wrapper context.\n"
+            "  Credentials will be printed to stdout and may leak into shell\n"
+            "  history or redirected files. Run 'awsctl init' to install the\n"
+            "  shell wrapper, or set AWSCTL_WRAPPER_ACTIVE=1 to suppress.\n"
+        )
 
     parser = _build_parser()
 

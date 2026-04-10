@@ -168,11 +168,26 @@ def _run(
 
     token = load_active_sso_token(org_data)
     if not token:
+        org_name = org_data.get("name", "")
         _utils.console.print(
-            f"[red]No active session for org '{org_data.get('name')}'.[/] "
-            "Run [bold]awsctl login <org>[/bold] first."
+            f"[yellow]No active session for org '{org_name}'.[/] " "Attempting login..."
         )
-        return None, None, None
+        # Auto-login: import core lazily to avoid circular imports
+        import awsctl.core as _core
+
+        rc = _core.cmd_login(org_name, force=False)
+        if rc != 0:
+            _utils.console.print(
+                f"[red]Login failed for org '{org_name}'.[/] "
+                "Run [bold]awsctl login <org>[/bold] manually."
+            )
+            return None, None, None
+        token = load_active_sso_token(org_data)
+        if not token:
+            _utils.console.print(
+                f"[red]Still no session after login for '{org_name}'.[/]"
+            )
+            return None, None, None
 
     # --- Account selection ---
     if not account:
@@ -211,8 +226,16 @@ def _run(
             # No allowlist but a default is configured — use it directly
             region = default
         else:
-            # No allowlist, no default — open prompt (no validate_region check later)
-            region = select_region(_COMMON_REGIONS, None)
+            # No allowlist, no default — fall back to partition-specific region list
+            from .schema import AWS_PARTITIONS
+
+            partition = org_data.get("partition", "aws")
+            provider = org_data.get("provider", "aws")
+            if provider == "aws" and partition in AWS_PARTITIONS:
+                fallback = AWS_PARTITIONS[partition]["regions"]
+            else:
+                fallback = _COMMON_REGIONS
+            region = select_region(fallback, None)
     if not region:
         return None, None, None
 

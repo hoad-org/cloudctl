@@ -32,7 +32,21 @@ def load_raw_config() -> Dict[str, Any]:
     if not path.exists():
         return {}
     # Let YAMLError propagate — callers that want {} on error must catch it.
-    return yaml.safe_load(path.read_text()) or {}
+    data = yaml.safe_load(path.read_text()) or {}
+    # Validate and warn — do not abort so existing configs continue to work.
+    if data:
+        from . import schema as _schema
+
+        errors = _schema.validate_orgs_config(data)
+        if errors:
+            try:
+                from . import utils as _utils
+
+                for err in errors:
+                    _utils.console.print(f"[yellow]Config warning:[/] {err}")
+            except Exception:
+                pass
+    return data
 
 
 def load_config() -> Dict[str, Any]:
@@ -73,16 +87,26 @@ def sample_orgs_yaml() -> str:
 
 
 MULTI_CLOUD_EXAMPLE = """\
-# awsctl orgs.yaml — multi-cloud example
-# ----------------------------------------
-# AWS (default — provider field optional)
+# awsctl orgs.yaml — multi-cloud / multi-partition example
+# ---------------------------------------------------------
+# AWS Commercial (partition: aws — default, field is optional)
 orgs:
   - name: engineering
-    provider: aws          # optional; defaults to "aws"
+    provider: aws
+    partition: aws                        # aws | aws-us-gov | aws-cn
     sso_start_url: https://d-xxxxxxxxxx.awsapps.com/start
     sso_region: us-east-1
     default_region: us-east-1
     allowed_regions: [us-east-1, us-west-2]
+
+  # AWS GovCloud — separate partition, separate SSO endpoint
+  - name: engineering-gov
+    provider: aws
+    partition: aws-us-gov
+    sso_start_url: https://d-yyyyyyyyyy.awsapps-us-gov.com/start
+    sso_region: us-gov-west-1
+    default_region: us-gov-west-1
+    allowed_regions: [us-gov-east-1, us-gov-west-1]
 
   # Azure — uses 'az' CLI for auth
   - name: azure-prod
@@ -104,4 +128,12 @@ orgs:
 enabled_orgs: [engineering, azure-prod, gcp-prod]
 plugins:
   enabled: []
+
+# Aliases — use 'awsctl switch @prod' to jump to a saved context
+# aliases:
+#   prod:
+#     org: engineering
+#     account: "123456789012"
+#     role: AdministratorAccess
+#     region: us-east-1
 """

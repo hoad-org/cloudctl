@@ -19,6 +19,7 @@ def mock_doctor_deps(monkeypatch):
     monkeypatch.setattr(
         "awsctl.config.load_orgs_config", lambda: {"orgs": [{"name": "demo"}]}
     )
+    monkeypatch.setattr("awsctl.config.load_raw_config", lambda: {})
 
     # Patch directly on the module object to ensure internal calls are intercepted
     monkeypatch.setattr(doctor, "is_wsl", lambda: False)

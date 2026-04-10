@@ -16,7 +16,7 @@ _ORIGINAL_HOME = HOME
 AWSCTL_WRAPPER = """# AWSCTL SHELL INTEGRATION
 awsctl() {
     local tmp=$(mktemp)
-    command awsctl --eval "$@" > "$tmp"
+    AWSCTL_WRAPPER_ACTIVE=1 command awsctl --eval "$@" > "$tmp"
     local exit_code=$?
     source "$tmp"
     rm -f "$tmp"
@@ -40,7 +40,9 @@ function awsctl {
         $tmp = [System.IO.Path]::GetTempFileName()
         try {
             $awsctlBin = (Get-Command awsctl -CommandType Application -ErrorAction Stop).Source
+            $env:AWSCTL_WRAPPER_ACTIVE = '1'
             & $awsctlBin --eval @args | Out-File -FilePath $tmp -Encoding utf8
+            Remove-Item env:AWSCTL_WRAPPER_ACTIVE -ErrorAction SilentlyContinue
             $ec = $LASTEXITCODE
             if ($ec -eq 0) {
                 Get-Content $tmp | ForEach-Object {
@@ -76,7 +78,7 @@ function awsctl
     set -l first (count $argv > /dev/null; and echo $argv[1]; or echo '')
     if contains -- $first $mutating
         set -l tmp (mktemp)
-        command awsctl --eval $argv > $tmp
+        AWSCTL_WRAPPER_ACTIVE=1 command awsctl --eval $argv > $tmp
         set -l ec $status
         if test $ec -eq 0
             while read -l line

@@ -30,15 +30,26 @@ console = utils.console
 def cmd_login(org_name: str, force: bool = False) -> int:
     org = config.get_org(org_name)
 
-    # For AWS, skip if a valid token already exists (unless --force).
-    # For Azure/GCP, always call the provider — they handle re-auth gracefully.
     from .providers import get_provider
 
     provider = get_provider(org)
 
     if not force and org.get("provider", "aws") == "aws":
-        if load_active_sso_token(org):
-            utils.console.print("Already authenticated.")
+        token = load_active_sso_token(org)
+        if token:
+            # Show token expiry info for transparency
+            try:
+                expiry = getattr(token, "expiresAt", None) or (
+                    token.get("expiresAt") if isinstance(token, dict) else None
+                )
+                if expiry:
+                    utils.console.print(
+                        f"[green]Already authenticated.[/] Session expires: {expiry}"
+                    )
+                else:
+                    utils.console.print("[green]Already authenticated.[/]")
+            except Exception:
+                utils.console.print("[green]Already authenticated.[/]")
             return 0
 
     rc = provider.login(org)
