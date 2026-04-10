@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 # install.sh — awsctl installer for macOS, Linux, and WSL (bash / zsh / fish)
 # For Windows PowerShell, run install.ps1 instead.
+#
+# By default this installs from GitHub Packages using GITHUB_TOKEN.
+# If GITHUB_TOKEN is not set, it falls back to a local source install.
 set -euo pipefail
+
+GITHUB_ORG="BT-IT-Infrastructure-CloudOps"
+PACKAGE_INDEX="https://pip.pkg.github.com/${GITHUB_ORG}/"
 
 echo "🚀 Starting awsctl installation..."
 
@@ -9,7 +15,16 @@ echo "🚀 Starting awsctl installation..."
 # 1. Install the Python package
 # ---------------------------------------------------------------------------
 echo "📦 Installing package via pip..."
-pip3 install --user .
+
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    echo "   Installing from GitHub Packages (authenticated)..."
+    pip3 install --user awsctl \
+        --index-url "https://__token__:${GITHUB_TOKEN}@pip.pkg.github.com/${GITHUB_ORG}/"
+else
+    echo "   ⚠️  GITHUB_TOKEN not set — installing from local source."
+    echo "   For GitHub Packages install: export GITHUB_TOKEN=<your-PAT> and re-run."
+    pip3 install --user .
+fi
 
 # Ensure the user-bin directory is on PATH for this session so we can call
 # awsctl immediately without reopening the terminal.
@@ -83,4 +98,5 @@ echo "   Then verify:"
 echo "     awsctl --version"
 echo "     awsctl doctor"
 echo ""
+echo "   To upgrade later:  awsctl upgrade"
 echo "💡 Windows (PowerShell) users: run  .\\install.ps1  instead."

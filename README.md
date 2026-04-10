@@ -119,51 +119,62 @@ awsctl **does not** replace or duplicate other enterprise systems:
 
 ---
 
-### Option A: Homebrew (macOS — recommended)
+### Option A: GitHub Packages — pip (recommended)
+
+awsctl is distributed as a private Python package on GitHub Packages. You need a GitHub
+[Personal Access Token (PAT)](https://github.com/settings/tokens) with `read:packages` scope.
 
 ```bash
-# Tap the BeyondTrust CloudOps tap, then install
-brew tap beyondtrust-cloudops/tap https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl
-brew install awsctl
+export GITHUB_TOKEN=ghp_your_token_here
+
+# macOS / Linux / WSL — one-liner
+pip3 install --user awsctl \
+  --index-url "https://__token__:${GITHUB_TOKEN}@pip.pkg.github.com/BT-IT-Infrastructure-CloudOps/"
+
+# Then install the shell wrapper
+awsctl init --shell-only
 ```
 
-The formula creates a hermetic Python virtualenv in `$(brew --prefix)/opt/awsctl/libexec/venv` and
-automatically installs the shell wrapper via `awsctl init --shell-only` during `post_install`.
-Reload your shell profile after installation.
+```powershell
+# Windows PowerShell
+$env:GITHUB_TOKEN = "ghp_your_token_here"
+pip install --user awsctl `
+  --index-url "https://__token__:$($env:GITHUB_TOKEN)@pip.pkg.github.com/BT-IT-Infrastructure-CloudOps/"
+
+awsctl init --shell-only
+```
 
 ---
 
 ### Option B: Script install (macOS / Linux / WSL)
 
+Clones the repo and calls `install.sh`, which handles GitHub Packages auth automatically
+when `GITHUB_TOKEN` is set, then injects the shell wrapper.
+
 ```bash
+export GITHUB_TOKEN=ghp_your_token_here
+
 git clone https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl.git
 cd aws-terraform-infra-cloudops-awsctl
 bash install.sh
 ```
 
-`install.sh` installs via pip, adds the user Scripts directory to PATH for the session, and
-injects the appropriate shell wrapper (bash/zsh/fish) automatically.
+`install.sh` installs via GitHub Packages (or local source if no token), adds the user
+Scripts directory to PATH for the session, and injects the shell wrapper (bash/zsh/fish).
 
 ---
 
 ### Option C: Windows (PowerShell / pwsh)
 
 ```powershell
+$env:GITHUB_TOKEN = "ghp_your_token_here"
+
 git clone https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl.git
 cd aws-terraform-infra-cloudops-awsctl
 .\install.ps1
 ```
 
-Installs via pip and injects the PowerShell function wrapper into `$PROFILE`.
-
----
-
-### Option D: pip (manual)
-
-```bash
-pip install --user .
-awsctl init --shell-only   # inject shell wrapper for detected shell
-```
+Installs via GitHub Packages (or local source if no token) and injects the PowerShell function wrapper into `$PROFILE`.
 
 ---
 
@@ -174,6 +185,24 @@ awsctl init         # full interactive wizard — configure orgs + shell wrapper
 # OR
 awsctl org add      # add a single org interactively (auth-first for Azure/GCP)
 ```
+
+---
+
+### Upgrading
+
+Once installed, upgrade in place without cloning the repo:
+
+```bash
+# macOS / Linux / WSL
+export GITHUB_TOKEN=ghp_your_token_here
+awsctl upgrade
+
+# Windows PowerShell
+$env:GITHUB_TOKEN = "ghp_your_token_here"
+awsctl upgrade
+```
+
+`awsctl upgrade` pulls the latest release from GitHub Packages and restarts gracefully.
 
 ---
 

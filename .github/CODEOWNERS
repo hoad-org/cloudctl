@@ -1,1 +1,14 @@
-# * @BT-IT-Infrastructure-CloudOps/platform-engineers
+# CODEOWNERS — auto-assign reviewers on PRs.
+# Syntax: <file pattern>  <@user or @org/team>
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repo
+*                                   @BT-IT-Infrastructure-CloudOps/cloudops
+
+# Workflow files — require CloudOps team review
+.github/workflows/                  @BT-IT-Infrastructure-CloudOps/cloudops
+
+# Security-sensitive paths
+.github/SECURITY.md                 @BT-IT-Infrastructure-CloudOps/cloudops
+src/awsctl/providers/               @BT-IT-Infrastructure-CloudOps/cloudops
+src/awsctl/schema.py                @BT-IT-Infrastructure-CloudOps/cloudops

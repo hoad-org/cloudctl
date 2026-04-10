@@ -1,8 +1,13 @@
 # install.ps1 — awsctl installer for Windows PowerShell / pwsh
 # Run from the repo root:  .\install.ps1
+#
+# By default this installs from GitHub Packages using GITHUB_TOKEN.
+# If GITHUB_TOKEN is not set, it falls back to a local source install.
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$GithubOrg = "BT-IT-Infrastructure-CloudOps"
 
 Write-Host "🚀 Starting awsctl installation..." -ForegroundColor Cyan
 
@@ -10,7 +15,16 @@ Write-Host "🚀 Starting awsctl installation..." -ForegroundColor Cyan
 # 1. Install the Python package
 # ---------------------------------------------------------------------------
 Write-Host "📦 Installing package via pip..." -ForegroundColor Cyan
-pip install --user .
+
+if ($env:GITHUB_TOKEN) {
+    Write-Host "  Installing from GitHub Packages (authenticated)..." -ForegroundColor DarkGray
+    $IndexUrl = "https://__token__:$($env:GITHUB_TOKEN)@pip.pkg.github.com/$GithubOrg/"
+    pip install --user awsctl --index-url $IndexUrl
+} else {
+    Write-Host "  ⚠️  GITHUB_TOKEN not set — installing from local source." -ForegroundColor Yellow
+    Write-Host "  For GitHub Packages install: `$env:GITHUB_TOKEN = '<your-PAT>' and re-run." -ForegroundColor Yellow
+    pip install --user .
+}
 
 # Ensure the user Scripts directory is on PATH for this session
 $ScriptsDir = python -c "import site, os, sys; print(os.path.join(site.getuserbase(), 'Scripts'))"
@@ -50,3 +64,5 @@ Write-Host ""
 Write-Host "   Then verify:"
 Write-Host "     awsctl --version"
 Write-Host "     awsctl doctor"
+Write-Host ""
+Write-Host "   To upgrade later:  awsctl upgrade" -ForegroundColor White

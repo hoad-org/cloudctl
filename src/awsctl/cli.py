@@ -454,6 +454,45 @@ def cmd_open(args: Any = None) -> int:
         return 1
 
 
+def cmd_upgrade(args: Any = None) -> int:
+    """Upgrade awsctl from GitHub Packages."""
+    import subprocess
+
+    github_org = "BT-IT-Infrastructure-CloudOps"
+    token = os.environ.get("GITHUB_TOKEN", "")
+
+    if token:
+        index_url = f"https://__token__:{token}@pip.pkg.github.com/{github_org}/"
+        console.print(
+            "[bold]Upgrading awsctl from GitHub Packages (authenticated)...[/]"
+        )
+    else:
+        index_url = f"https://pip.pkg.github.com/{github_org}/"
+        console.print(
+            "[yellow]GITHUB_TOKEN not set — attempting unauthenticated upgrade.[/]\n"
+            "If this fails, set GITHUB_TOKEN=<your-PAT> and retry."
+        )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--upgrade",
+            "awsctl",
+            "--index-url",
+            index_url,
+        ],
+    )
+    if result.returncode == 0:
+        console.print("[green]✅ awsctl upgraded successfully.[/]")
+        console.print("Restart your shell to pick up the new version.")
+    else:
+        console.print("[red]Upgrade failed.[/] Check pip output above.")
+    return result.returncode
+
+
 def cmd_setup(args: Any = None) -> int:
     """Run the setup wizard / merge defaults."""
     return core.cmd_setup()
@@ -540,6 +579,9 @@ def _build_parser():
         help="Install shell integration only (no wizard)",
     )
 
+    # upgrade
+    sub.add_parser("upgrade", help="Upgrade awsctl from GitHub Packages")
+
     # org
     op = sub.add_parser("org", help="Manage cloud organizations")
     org_sub = op.add_subparsers(dest="org_command")
@@ -575,6 +617,7 @@ _DISPATCH = {
     "setup": "cmd_setup",
     "whoami": "cmd_whoami",
     "open": "cmd_open",
+    "upgrade": "cmd_upgrade",
 }
 
 
