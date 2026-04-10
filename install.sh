@@ -1,33 +1,59 @@
 #!/usr/bin/env bash
-# install.sh — awsctl installer for macOS, Linux, and WSL (bash / zsh / fish)
+# install.sh — awsctl installer for macOS, Linux, and WSL2 (bash / zsh / fish)
 # For Windows PowerShell, run install.ps1 instead.
 #
-# By default this installs from GitHub Packages using GITHUB_TOKEN.
-# If GITHUB_TOKEN is not set, it falls back to a local source install.
+# Requires GITHUB_TOKEN (PAT with read:contents or repo scope) to download
+# from the private repository. Falls back to a local source install if unset.
 set -euo pipefail
 
 GITHUB_ORG="BT-IT-Infrastructure-CloudOps"
-PACKAGE_INDEX="https://pip.pkg.github.com/${GITHUB_ORG}/"
+GITHUB_REPO="aws-terraform-infra-cloudops-awsctl"
+API_BASE="https://api.github.com/repos/${GITHUB_ORG}/${GITHUB_REPO}"
 
 echo "🚀 Starting awsctl installation..."
 
 # ---------------------------------------------------------------------------
 # 1. Install the Python package
 # ---------------------------------------------------------------------------
-echo "📦 Installing package via pip..."
+echo "📦 Installing package..."
 
 if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-    echo "   Installing from GitHub Packages (authenticated)..."
-    # --index-url points at GitHub Packages for awsctl itself.
-    # --extra-index-url lets pip fall back to PyPI for all transitive deps
-    # (boto3, pyyaml, rich, etc.) which are not hosted on GitHub Packages.
-    pip3 install --user awsctl \
-        --index-url "https://__token__:${GITHUB_TOKEN}@pip.pkg.github.com/${GITHUB_ORG}/" \
-        --extra-index-url "https://pypi.org/simple/"
+    echo "   Fetching latest release from GitHub..."
+
+    # Query the GitHub Releases API for the latest wheel asset
+    RELEASE_JSON=$(curl -sf \
+        -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+        -H "Accept: application/vnd.github.v3+json" \
+        "${API_BASE}/releases/latest")
+
+    TAG=$(echo "${RELEASE_JSON}" | python3 -c "import sys, json; print(json.load(sys.stdin)['tag_name'])")
+    echo "   Latest release: ${TAG}"
+
+    WHEEL_URL=$(echo "${RELEASE_JSON}" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+whl = next((a for a in data.get('assets', []) if a['name'].endswith('.whl')), None)
+if not whl:
+    raise SystemExit('No .whl asset found in release')
+print(whl['url'])
+")
+
+    # Download the wheel to a temp file and install
+    TMP_WHL=$(mktemp --suffix=.whl 2>/dev/null || mktemp -t awsctl.XXXXXX.whl)
+    echo "   Downloading wheel..."
+    curl -sf \
+        -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+        -H "Accept: application/octet-stream" \
+        -L "${WHEEL_URL}" \
+        -o "${TMP_WHL}"
+
+    echo "   Installing from wheel (dependencies from PyPI)..."
+    pip3 install --user "${TMP_WHL}" --extra-index-url "https://pypi.org/simple/"
+    rm -f "${TMP_WHL}"
 else
     echo "   ⚠️  GITHUB_TOKEN not set — installing from local source."
-    echo "   For GitHub Packages install: export GITHUB_TOKEN=<your-PAT> and re-run."
-    pip3 install --user .
+    echo "   For the latest release: export GITHUB_TOKEN=<your-PAT> and re-run."
+    pip3 install --user . --extra-index-url "https://pypi.org/simple/"
 fi
 
 # Ensure the user-bin directory is on PATH for this session so we can call
@@ -46,7 +72,6 @@ esac
 
 # ---------------------------------------------------------------------------
 # 2. Inject the shell wrapper using the same Python logic awsctl init uses
-#    (this avoids duplicating shell-detection logic in bash)
 # ---------------------------------------------------------------------------
 echo "🐚 Installing shell integration..."
 
@@ -62,7 +87,6 @@ if detected == "fish":
     ok = shell.inject_fish_function(target)
     kind = f"fish function file ({target})"
 elif detected == "powershell":
-    # Shouldn't reach here via bash, but handle gracefully.
     target = shell.detect_powershell_profile()
     ok = shell.inject_powershell_function(target)
     kind = f"PowerShell profile ({target})"
@@ -78,14 +102,13 @@ else:
 PYEOF
 
 # ---------------------------------------------------------------------------
-# 3. Print a helpful restart message
+# 3. Helpful restart message
 # ---------------------------------------------------------------------------
 RELOAD_CMD=$(python3 - <<'PYEOF'
 from awsctl.env_detection import detect_shell
 from awsctl import shell
 detected = detect_shell()
 if detected == "fish":
-    # fish reloads functions automatically; no source needed
     print("fish: functions are reloaded automatically")
 else:
     profile = shell.detect_shell_profile()
@@ -102,5 +125,5 @@ echo "   Then verify:"
 echo "     awsctl --version"
 echo "     awsctl doctor"
 echo ""
-echo "   To upgrade later:  awsctl upgrade"
+echo "   To upgrade later:  awsctl upgrade   (requires GITHUB_TOKEN)"
 echo "💡 Windows (PowerShell) users: run  .\\install.ps1  instead."

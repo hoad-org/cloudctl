@@ -119,32 +119,38 @@ awsctl **does not** replace or duplicate other enterprise systems:
 
 ---
 
-### Option A: GitHub Packages — pip (recommended)
+### Option A: GitHub Release — direct wheel download (recommended)
 
-awsctl is distributed as a private Python package on GitHub Packages. You need a GitHub
-[Personal Access Token (PAT)](https://github.com/settings/tokens) with `read:packages` scope.
+awsctl is distributed as a wheel attached to each [GitHub Release](https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl/releases).
+You need a GitHub [Personal Access Token (PAT)](https://github.com/settings/tokens) with
+`read:contents` (or `repo`) scope to access the private repository.
+
+The `install.sh` / `install.ps1` scripts handle the download automatically:
 
 ```bash
+# macOS / Linux / WSL2
 export GITHUB_TOKEN=ghp_your_token_here
-
-# macOS / Linux / WSL2 — one-liner
-# --index-url: awsctl is fetched from GitHub Packages
-# --extra-index-url: transitive deps (boto3, rich, etc.) fall back to PyPI
-pip3 install --user awsctl \
-  --index-url "https://__token__:${GITHUB_TOKEN}@pip.pkg.github.com/BT-IT-Infrastructure-CloudOps/" \
-  --extra-index-url "https://pypi.org/simple/"
-
-# Then install the shell wrapper
-awsctl init --shell-only
+bash install.sh
 ```
 
 ```powershell
 # Windows PowerShell
 $env:GITHUB_TOKEN = "ghp_your_token_here"
-pip install --user awsctl `
-  --index-url "https://__token__:$($env:GITHUB_TOKEN)@pip.pkg.github.com/BT-IT-Infrastructure-CloudOps/" `
-  --extra-index-url "https://pypi.org/simple/"
+.\install.ps1
+```
 
+Or install manually in one command:
+
+```bash
+# macOS / Linux / WSL2 — one-liner (queries the Releases API, downloads the wheel)
+export GITHUB_TOKEN=ghp_your_token_here
+RELEASE=$(curl -sf -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  https://api.github.com/repos/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl/releases/latest)
+WHEEL_URL=$(echo "${RELEASE}" | python3 -c \
+  "import sys,json; d=json.load(sys.stdin); print(next(a['url'] for a in d['assets'] if a['name'].endswith('.whl')))")
+curl -sf -L -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  -H "Accept: application/octet-stream" "${WHEEL_URL}" -o /tmp/awsctl.whl
+pip3 install --user /tmp/awsctl.whl --extra-index-url "https://pypi.org/simple/"
 awsctl init --shell-only
 ```
 
@@ -194,10 +200,11 @@ awsctl org add      # add a single org interactively (auth-first for Azure/GCP)
 
 ### Upgrading
 
-Once installed, upgrade in place without cloning the repo:
+Once installed, upgrade in place without cloning the repo.
+`awsctl upgrade` queries the GitHub Releases API, downloads the latest wheel, and runs `pip install --upgrade`:
 
 ```bash
-# macOS / Linux / WSL
+# macOS / Linux / WSL2
 export GITHUB_TOKEN=ghp_your_token_here
 awsctl upgrade
 
@@ -205,6 +212,8 @@ awsctl upgrade
 $env:GITHUB_TOKEN = "ghp_your_token_here"
 awsctl upgrade
 ```
+
+`GITHUB_TOKEN` must have `read:contents` (or `repo`) scope on the repository.
 
 `awsctl upgrade` pulls the latest release from GitHub Packages and restarts gracefully.
 

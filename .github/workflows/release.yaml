@@ -55,9 +55,7 @@ jobs:
             --title "Release ${{ github.ref_name }}" \
             dist/*
 
-      - name: Publish to GitHub Packages (PyPI index)
-        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v1.12.4
-        with:
-          repository-url: https://upload.pkg.github.com/BT-IT-Infrastructure-CloudOps/
-          password: ${{ secrets.GITHUB_TOKEN }}
-          verbose: true
+      # Note: GitHub Packages PyPI registry is only available on GitHub Enterprise Cloud,
+      # not on standard GitHub.com orgs. Wheels are distributed via GitHub Release assets
+      # (attached above) and installed using the GitHub Releases API + direct download.
+      # See install.sh, install.ps1, and `awsctl upgrade` for the install/upgrade mechanism.

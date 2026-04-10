@@ -455,43 +455,108 @@ def cmd_open(args: Any = None) -> int:
 
 
 def cmd_upgrade(args: Any = None) -> int:
-    """Upgrade awsctl from GitHub Packages."""
+    """Upgrade awsctl by downloading the latest release wheel from GitHub."""
+    import json
     import subprocess
+    import tempfile
+    import urllib.error
+    import urllib.request
 
     github_org = "BT-IT-Infrastructure-CloudOps"
+    github_repo = "aws-terraform-infra-cloudops-awsctl"
+    api_url = f"https://api.github.com/repos/{github_org}/{github_repo}/releases/latest"
+
     token = os.environ.get("GITHUB_TOKEN", "")
-
-    if token:
-        index_url = f"https://__token__:{token}@pip.pkg.github.com/{github_org}/"
+    if not token:
         console.print(
-            "[bold]Upgrading awsctl from GitHub Packages (authenticated)...[/]"
+            "[red]GITHUB_TOKEN not set.[/] A GitHub PAT with [bold]read:contents[/bold] "
+            "scope is required to download from the private repository.\n"
+            "  export GITHUB_TOKEN=<your-PAT>   # then re-run: awsctl upgrade"
         )
-    else:
-        index_url = f"https://pip.pkg.github.com/{github_org}/"
-        console.print(
-            "[yellow]GITHUB_TOKEN not set — attempting unauthenticated upgrade.[/]\n"
-            "If this fails, set GITHUB_TOKEN=<your-PAT> and retry."
-        )
+        return 1
 
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--upgrade",
-            "awsctl",
-            "--index-url",
-            index_url,
-            # Transitive deps (boto3, pyyaml, rich, etc.) are on PyPI, not GitHub Packages.
-            # --extra-index-url lets pip fall back to PyPI for anything not found in the
-            # primary index.
-            "--extra-index-url",
-            "https://pypi.org/simple/",
-        ],
+    console.print("[bold]Checking for latest release...[/]")
+    try:
+        req = urllib.request.Request(
+            api_url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github.v3+json",
+            },
+        )
+        with urllib.request.urlopen(req) as resp:
+            release = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        console.print(
+            f"[red]GitHub API error {exc.code}:[/] {exc.reason}\n"
+            "Check that GITHUB_TOKEN has [bold]read:contents[/bold] scope."
+        )
+        return 1
+    except Exception as exc:
+        console.print(f"[red]Failed to query GitHub API:[/] {exc}")
+        return 1
+
+    tag = release.get("tag_name", "unknown")
+    console.print(f"  Latest release: [bold]{tag}[/]")
+
+    # Find the wheel asset in the release
+    wheel_asset = next(
+        (a for a in release.get("assets", []) if a["name"].endswith(".whl")),
+        None,
     )
+    if not wheel_asset:
+        console.print(
+            f"[red]No .whl asset found in release {tag}.[/]\n"
+            "The release may not have been built yet — check GitHub Actions."
+        )
+        return 1
+
+    # Download wheel to a temp file, then install
+    wheel_name = wheel_asset["name"]
+    asset_api_url = wheel_asset["url"]  # API URL, requires Accept: octet-stream
+
+    console.print(f"  Downloading [bold]{wheel_name}[/]...")
+    tmp_path: Optional[str] = None
+    try:
+        req = urllib.request.Request(
+            asset_api_url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/octet-stream",
+            },
+        )
+        with urllib.request.urlopen(req) as resp:
+            wheel_data = resp.read()
+
+        with tempfile.NamedTemporaryFile(suffix=".whl", delete=False) as f:
+            f.write(wheel_data)
+            tmp_path = f.name
+
+        console.print("  Installing...")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--upgrade",
+                tmp_path,
+                "--extra-index-url",
+                "https://pypi.org/simple/",
+            ],
+        )
+    except Exception as exc:
+        console.print(f"[red]Download failed:[/] {exc}")
+        return 1
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
     if result.returncode == 0:
-        console.print("[green]✅ awsctl upgraded successfully.[/]")
+        console.print(f"[green]✅ awsctl upgraded to {tag} successfully.[/]")
         console.print("Restart your shell to pick up the new version.")
     else:
         console.print("[red]Upgrade failed.[/] Check pip output above.")
