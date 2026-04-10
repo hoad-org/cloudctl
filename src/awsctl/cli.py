@@ -484,7 +484,9 @@ def cmd_upgrade(args: Any = None) -> int:
                 "Accept": "application/vnd.github.v3+json",
             },
         )
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(
+            req
+        ) as resp:  # nosec B310 — hardcoded HTTPS GitHub API URL
             release = json.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
         console.print(
@@ -525,7 +527,9 @@ def cmd_upgrade(args: Any = None) -> int:
                 "Accept": "application/octet-stream",
             },
         )
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(
+            req
+        ) as resp:  # nosec B310 — hardcoded HTTPS GitHub download URL
             wheel_data = resp.read()
 
         with tempfile.NamedTemporaryFile(suffix=".whl", delete=False) as f:
