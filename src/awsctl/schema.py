@@ -4,6 +4,7 @@ awsctl.schema — org configuration validation.
 Validates orgs.yaml content at load time, giving actionable error messages
 rather than cryptic KeyError/AttributeError traces at runtime.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List

@@ -5,9 +5,9 @@ These tests mock the provider/CLI layer but exercise the real code path:
   cmd_switch → run_interactive_use → provider.list_accounts → provider.get_credentials
               → emit_exports → print (captured by wrapper)
 """
+
 from types import SimpleNamespace
 from unittest.mock import MagicMock
-
 
 # ---------------------------------------------------------------------------
 # Helpers

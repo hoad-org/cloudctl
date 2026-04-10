@@ -98,9 +98,11 @@ def select_role(org_data: Dict[str, Any], roles: List[Any]) -> Optional[str]:
     from .guardrails import sort_roles
 
     role_names = [
-        r.get("roleName")
-        if isinstance(r, dict)
-        else (r.roleName if hasattr(r, "roleName") else r)
+        (
+            r.get("roleName")
+            if isinstance(r, dict)
+            else (r.roleName if hasattr(r, "roleName") else r)
+        )
         for r in roles
     ]
     sorted_roles = sort_roles(org_data, role_names)

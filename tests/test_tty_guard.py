@@ -1,4 +1,5 @@
 """Tests for the --eval TTY guard in awsctl.cli.main()."""
+
 import os
 from unittest.mock import patch
 

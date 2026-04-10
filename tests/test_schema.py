@@ -1,4 +1,5 @@
 """Tests for awsctl.schema — org config validation and partition support."""
+
 from awsctl import schema
 
 

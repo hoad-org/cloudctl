@@ -1,4 +1,5 @@
 """Root conftest: pre-load awsctl.__main__ so test_coverage_final can reload it."""
+
 import sys
 from unittest.mock import patch
 

@@ -9,6 +9,7 @@ cmd_upgrade flow:
   5. pip install --upgrade <tmp.whl> --extra-index-url https://pypi.org/simple/
   6. Cleans up temp file
 """
+
 import json
 import os
 import sys
@@ -16,7 +17,6 @@ from unittest.mock import MagicMock, patch
 
 
 import awsctl.cli as cli
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures / helpers

@@ -3,6 +3,7 @@ awsctl.cli_accounts — account/role listing helpers.
 
 These functions are called by the CLI dispatcher and also by tests directly.
 """
+
 import json
 import sys
 from typing import Any, Dict, List

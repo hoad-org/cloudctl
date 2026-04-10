@@ -1,5 +1,6 @@
 # src/awsctl/__init__.py
 """awsctl: Enterprise AWS Identity & Context Manager."""
+
 import importlib
 
 try:

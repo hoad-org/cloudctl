@@ -6,6 +6,7 @@ awsctl org — manage cloud organization entries.
   awsctl org list   — list configured orgs with provider and key identifier
   awsctl org remove — remove an org entry from config
 """
+
 from __future__ import annotations
 
 import json
@@ -16,7 +17,6 @@ import yaml
 
 from awsctl.commands.base import BaseCommand
 from awsctl import core, utils
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
