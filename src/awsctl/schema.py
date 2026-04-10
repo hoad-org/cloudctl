@@ -64,7 +64,15 @@ def partition_from_sso_url(sso_url: str) -> str:
     if not sso_url:
         return "aws"
     url = sso_url.lower()
-    if "amazonaws-us-gov.com" in url or "awsapps-us-gov.com" in url:
+    # GovCloud SSO URLs use either:
+    #   https://start.us-gov-home.awsapps.com/...   (Identity Center v2 format)
+    #   https://something.awsapps-us-gov.com/...    (legacy format)
+    #   https://something.amazonaws-us-gov.com/...
+    if (
+        "amazonaws-us-gov.com" in url
+        or "awsapps-us-gov.com" in url
+        or "us-gov-home.awsapps.com" in url
+    ):
         return "aws-us-gov"
     if ".cn" in url or "amazonaws.cn" in url:
         return "aws-cn"

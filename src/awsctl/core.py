@@ -35,7 +35,14 @@ def cmd_login(org_name: str, force: bool = False) -> int:
     provider = get_provider(org)
 
     if not force and org.get("provider", "aws") == "aws":
-        token = load_active_sso_token(org)
+        from .sso_cache import OrgRef
+
+        org_ref = OrgRef(
+            org.get("name", ""),
+            org.get("sso_start_url", ""),
+            org.get("sso_region", ""),
+        )
+        token = load_active_sso_token(org_ref)
         if token:
             # Show token expiry info for transparency
             try:

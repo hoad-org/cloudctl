@@ -62,8 +62,9 @@ def load_config() -> Dict[str, Any]:
 
 
 def get_org(name: str) -> Dict[str, Any]:
-    config = load_config()
-    for org in config.get("orgs", []):
+    # Orgs live in orgs.yaml (load_raw_config), not config.yaml (load_config).
+    data = load_raw_config()
+    for org in data.get("orgs", []):
         if org.get("name") == name:
             return org
     raise ValueError(f"Organization '{name}' not found in configuration.")
