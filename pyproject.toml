@@ -9,6 +9,26 @@ description = "Enterprise Cloud Identity & Context Manager (AWS, Azure, GCP)"
 authors = ["BeyondTrust CloudOps"]
 license = "MIT"
 packages = [{ include = "awsctl", from = "src" }]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Security",
+]
+
+[tool.poetry.urls]
+"Repository" = "https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl"
+"Bug Tracker" = "https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl/issues"
+"Changelog" = "https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl/releases"
 
 [tool.poetry.dependencies]
 # Baseline: 3.12 (security-only as of Apr 2025) + 3.13 (LTS) + 3.14 (latest, released 2025).

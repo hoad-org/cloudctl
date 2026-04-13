@@ -8,7 +8,12 @@
 # Workflow files — require CloudOps team review
 .github/workflows/                  @BT-IT-Infrastructure-CloudOps/cloudops
 
-# Security-sensitive paths
+# Security-sensitive paths — credential handling, shell export, guardrails
 .github/SECURITY.md                 @BT-IT-Infrastructure-CloudOps/cloudops
 src/awsctl/providers/               @BT-IT-Infrastructure-CloudOps/cloudops
+src/awsctl/guardrails.py            @BT-IT-Infrastructure-CloudOps/cloudops
+src/awsctl/use_exports.py           @BT-IT-Infrastructure-CloudOps/cloudops
+src/awsctl/cli.py                   @BT-IT-Infrastructure-CloudOps/cloudops
+src/awsctl/shell.py                 @BT-IT-Infrastructure-CloudOps/cloudops
+src/awsctl/registry_loader.py       @BT-IT-Infrastructure-CloudOps/cloudops
 src/awsctl/schema.py                @BT-IT-Infrastructure-CloudOps/cloudops

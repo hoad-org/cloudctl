@@ -1,3 +1,4 @@
+import shlex
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
@@ -68,4 +69,4 @@ class CloudProvider(ABC):
         Providers that need side-effects (e.g. writing a config file) can override.
         """
         creds = self.get_credentials(org, account, role, region)
-        return "\n".join(f"export {k}={v}" for k, v in creds.items())
+        return "\n".join(f"export {k}={shlex.quote(v)}" for k, v in creds.items())

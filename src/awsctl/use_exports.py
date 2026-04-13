@@ -1,4 +1,5 @@
 import json
+import shlex
 import sys
 from typing import Any, Dict, List
 
@@ -109,8 +110,10 @@ def emit_exports(org: Any, account: str, role: str, region: str) -> str:
         sys.exit(1)
     try:
         c = get_credentials(account, role, region)
-        lines = [f"export {k}={v}" for k, v in c.items()]
-        lines.append(f"export AWS_PROFILE={org_name}-{account}-{role}")
+        lines = [f"export {k}={shlex.quote(v)}" for k, v in c.items()]
+        lines.append(
+            f"export AWS_PROFILE={shlex.quote(f'{org_name}-{account}-{role}')}"
+        )
         return "\n".join(lines)
     except Exception:
         sys.stdout.write("No role credentials\n")

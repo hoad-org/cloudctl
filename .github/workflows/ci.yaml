@@ -1,4 +1,12 @@
-name: "Python Tooling CI"
+# =============================================================================
+# Python Tooling CI
+# Purpose : Multi-version test matrix (3.12–3.14); Gitleaks secret scan gates
+#           all subsequent jobs. Bandit and ruff run on primary version only.
+# SP800-53: CA-2, CM-6, RA-5, SA-11, SI-3
+# FedRAMP : Moderate / High baseline
+# =============================================================================
+
+name: Python Tooling CI
 
 on:
   push:
@@ -7,15 +15,22 @@ on:
     branches: ["main"]
   workflow_dispatch: {}
 
+# Cancel in-progress runs on the same branch/PR to avoid wasted runner time.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
-  # Secret scan using Gitleaks (inline — same logic as shared reusable workflow)
+  # ── Fast-fail: never run tests alongside a potential secret leak ───────────
   scan:
     name: Secret Scan (Gitleaks)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -23,13 +38,17 @@ jobs:
           fetch-depth: 0
 
       - name: Install Gitleaks
+        env:
+          VERSION: "8.18.4"
+          # SHA256 of gitleaks_8.18.4_linux_x64.tar.gz from official checksums.txt
+          GITLEAKS_SHA256: "ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d"
         run: |
-          VERSION="8.18.4"
           curl -sSfL \
             "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
-            | tar -xz gitleaks
+            -o gitleaks.tar.gz
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check
+          tar -xz gitleaks < gitleaks.tar.gz
           sudo mv gitleaks /usr/local/bin/gitleaks
-          gitleaks version
 
       - name: Run Gitleaks
         # --no-git scans committed files only (not git history). Historical commits
@@ -37,11 +56,12 @@ jobs:
         # The current source file has a '# gitleaks:allow' comment suppressing it.
         run: gitleaks detect --source=. --config=.gitleaks.toml --no-git --redact --exit-code=1
 
-  # Python tests — matrix across all supported Python versions
+  # ── Multi-version test matrix ──────────────────────────────────────────────
   test:
     name: "test (${{ matrix.python-version }})"
     needs: [scan]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -55,6 +75,7 @@ jobs:
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: ${{ matrix.python-version }}
+          cache: "pip"
 
       - name: Install dependencies
         run: |
@@ -75,13 +96,14 @@ jobs:
         if: matrix.python-version == '3.12'
         run: poetry run bandit -r src/ -ll --exclude src/awsctl/providers/
 
-  # Dependency CVE audit
+  # ── Dependency CVE audit ───────────────────────────────────────────────────
   dependency-audit:
     name: Dependency Audit (pip-audit)
+    needs: [scan]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
-      issues: write
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -90,8 +112,9 @@ jobs:
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
+          cache: "pip"
 
       - name: Run pip-audit
         run: |
-          pip install --upgrade pip pip-audit
-          pip-audit --strict -r <(pip install poetry -q && poetry export --without-hashes -f requirements.txt 2>/dev/null) || true
+          pip install --upgrade pip pip-audit poetry
+          pip-audit --strict -r <(poetry export --without-hashes -f requirements.txt 2>/dev/null)

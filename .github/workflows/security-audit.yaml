@@ -1,9 +1,19 @@
-# file: .github/workflows/security-audit.yaml
+# =============================================================================
+# Scheduled Security Audit
+# Purpose : Weekly full dependency CVE scan; opens a GitHub issue automatically
+#           if vulnerabilities are found. Complements the per-commit pip-audit
+#           job in ci.yaml by running against a clean install (not the lockfile)
+#           and catching advisories published between pushes.
+# SP800-53: CA-7, RA-5, SI-2
+# FedRAMP : Moderate / High baseline
+# =============================================================================
+
 name: Scheduled Security Audit
 
 on:
   schedule:
-    - cron: '0 8 * * 1' # Mondays at 08:00 UTC
+    - cron: "0 8 * * 1"  # Mondays at 08:00 UTC
+    - cron: "0 8 * * 4"  # Thursdays at 08:00 UTC (mid-week catch)
   workflow_dispatch:
 
 permissions:
@@ -14,6 +24,7 @@ jobs:
   audit-dependencies:
     name: Audit Python Dependencies
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -21,50 +32,67 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          python-version: '3.12'
-          cache: 'pip'
+          python-version: "3.12"
+          cache: "pip"
 
       - name: Install dependencies
         run: |
-          pip install poetry
+          pip install --upgrade pip poetry pip-audit
           poetry install --with dev
 
       - name: Run audit
         run: |
-          # Ensure pip-audit is installed and run it
-          pip install pip-audit
-          pip-audit --format json > audit-report.json || true
+          pip-audit --format json --output audit-report.json || true
           echo "REPORT_PATH=audit-report.json" >> $GITHUB_ENV
 
-      - name: Create Issue on Failure
+      - name: Create issue on failure
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const fs = require('fs');
-            // Defensive parsing to prevent TypeErrors if JSON is malformed/empty
             let report = {};
             try {
               report = JSON.parse(fs.readFileSync(process.env.REPORT_PATH, 'utf8'));
             } catch (e) {
               console.log("Failed to parse audit report or no report generated.");
-              // Exit gracefully if pip-audit failed completely
               return;
             }
 
-            // [PATCH] Check if the property exists and is a non-empty array
-            // This prevents TypeError: Cannot read properties of undefined (reading 'length')
             const vulns = report.vulnerabilities;
-
-            if (Array.isArray(vulns) && vulns.length > 0) {
-              const title = "🚨 Security: Dependency Vulnerabilities Detected";
-              const body = `Found ${vulns.length} vulnerabilities. Please run pip-audit locally.`;
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: title,
-                body: body,
-                labels: ['security']
-              });
-            } else {
-              console.log("No vulnerabilities found or report format unexpected.");
+            if (!Array.isArray(vulns) || vulns.length === 0) {
+              console.log("No vulnerabilities found.");
+              return;
             }
+
+            // Deduplicate: don't open a new issue if one is already open with the same title.
+            const title = `🚨 Security: ${vulns.length} dependency vulnerabilit${vulns.length === 1 ? 'y' : 'ies'} detected`;
+            const { data: existingIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'security',
+            });
+            if (existingIssues.some(i => i.title === title)) {
+              console.log("Duplicate issue already open — skipping.");
+              return;
+            }
+
+            const details = vulns.map(v =>
+              `- **${v.name}** ${v.version}: ${v.vulns?.map(x => x.id).join(', ') || 'unknown CVE'}`
+            ).join('\n');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body: [
+                `Scheduled \`pip-audit\` found ${vulns.length} vulnerabilit${vulns.length === 1 ? 'y' : 'ies'}:`,
+                '',
+                details,
+                '',
+                '**Action required:** run `pip-audit` locally and bump the affected packages.',
+                '',
+                `_Triggered by scheduled audit on ${new Date().toISOString().split('T')[0]}._`,
+              ].join('\n'),
+              labels: ['security'],
+            });

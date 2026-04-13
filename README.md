@@ -1,4 +1,4 @@
-# awsctl v3.0.0 — Enterprise Cloud Identity & Context Manager
+# awsctl v3.0.2 — Enterprise Cloud Identity & Context Manager
 
 [![OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/1/badge)](https://bestpractices.coreinfrastructure.org/projects/1)
 [![SLSA Aligned](https://slsa.dev/images/gh-badge-level2.svg)](https://slsa.dev)
@@ -51,7 +51,7 @@ This ensures awsctl remains lightweight, secure, and natively compatible with AW
 - **Ephemeral Session Environment:** Exports STS credentials only to your current shell session using the Context Bridge pattern.
 - **Diskless Credentials:** No credentials are written to disk at any point.
 - **Isolated Contexts:** Each terminal or tab maintains an independent AWS environment.
-- **TTY Guard:** Refuses to print credentials when executed outside its validated wrapper context.
+- **TTY Guard:** Warns and requires explicit opt-in when `--eval` is used outside the validated shell wrapper context.
 - **Injection Protection:** All exported variables are sanitized via `shlex.quote()` to neutralize command injection vectors.
 
 ---
@@ -242,7 +242,7 @@ clean awsctl-managed `[sso-session]` blocks from `~/.aws/config`, and remove `~/
 
 ### 🛡️ Preventing Authentication Exposure
 **In-Memory Enforcement:** Credentials are never persisted to disk.
-**TTY Guard:** Prevents accidental output of secret material.
+**TTY Guard:** Warns and requires explicit opt-in when credentials are requested outside the validated shell wrapper context.
 **Shell Escaping:** All variable exports are sanitized with `shlex.quote()` to prevent injection payloads.
 **Scope:** Credentials are inherited only by child processes spawned from the active shell.
 
@@ -289,6 +289,27 @@ awsctl aligns with security frameworks used across high-assurance enterprise and
 
 ---
 
+## 📜 Changelog (v3.0.2)
+
+- **FIX (security):** All shell-exported credential variables now sanitized with `shlex.quote()` in both `use_exports.py` (AWS legacy path) and `providers/base.py` (Azure/GCP path).
+- **FIX:** Audit log (`~/.awsctl/audit.log`) created with explicit `0600` permissions.
+- **FIX:** `cmd_exec` no longer misreports clean `SystemExit(0)` from nested providers as a credential failure.
+- **FIX:** Azure RBAC query failure now shows a visible warning when falling back to `Contributor` default.
+- **FIX:** `awsctl switch` with no configured orgs now mentions `awsctl org add` as an option.
+- **FIX:** `pip install` subprocess in `awsctl upgrade` now has a 300-second timeout.
+- **CHORE:** `pyproject.toml` — added PyPI classifiers and URLs.
+- **CHORE:** GitHub community files added: `CONTRIBUTING.md`, `PULL_REQUEST_TEMPLATE.md`, issue templates.
+- **CHORE:** `CODEOWNERS` extended to cover all security-sensitive source paths.
+
+---
+
+## 📜 Changelog (v3.0.1)
+
+- **FIX:** `install.sh` now validates Python ≥ 3.12 before proceeding; emits a clear error with install guidance if the system `pip3` resolves to Python 3.9.
+- **FIX:** `uninstall.sh` now removes legacy v2.x shell wrapper formats (`# AWSCTL SHELL INTEGRATION (v2.2-SECURE)`) and stale venv PATH entries that the v3 remover did not match.
+
+---
+
 ## 📜 Changelog (v3.0.0)
 
 ### Lifecycle completeness
@@ -329,9 +350,11 @@ awsctl aligns with security frameworks used across high-assurance enterprise and
 
 ---
 
-### ✅ Validation Summary (v3.0.0)
+### ✅ Validation Summary (v3.0.2)
 
-- ✅ 220+ unit tests passing (doctor, shell, wizard, providers, CLI)
+- ✅ 339 unit tests passing (doctor, shell, wizard, providers, CLI)
+- ✅ Python 3.12, 3.13, 3.14 tested in CI matrix
 - ✅ Cross-platform: macOS (zsh/bash/fish), Linux (bash/zsh/fish), Windows (PowerShell/pwsh), WSL2
-- ✅ Static analysis: Bandit, `pip-audit`, ruff, black compliant
-- ✅ CI/CD integrity: SLSA-aligned artifact release and cryptographic signature verification
+- ✅ Static analysis: Bandit, `pip-audit`, ruff, black, Gitleaks all passing
+- ✅ 0 known CVEs in dependency lockfile (`pip-audit`)
+- ✅ CI/CD: tag-driven release with GitHub Releases distribution
