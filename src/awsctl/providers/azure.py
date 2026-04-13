@@ -110,6 +110,12 @@ class AzureProvider(CloudProvider):
             ]
         )
         if result["returncode"] != 0:
+            from ..utils import console
+
+            console.print(
+                "[yellow]Warning: could not query Azure RBAC assignments "
+                f"for subscription {account_id}. Defaulting to Contributor.[/]"
+            )
             return ["Contributor"]  # sensible default so the picker isn't empty
         try:
             assignments = json.loads(result["stdout"])

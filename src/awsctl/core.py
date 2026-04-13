@@ -144,6 +144,8 @@ def cmd_exec(account: str, role: str, region: str, command: List[str]) -> int:
             utils.console.print("Failed to get credentials")
             return 1
         except SystemExit as e:
+            if e.code == 0:
+                return 0
             if "ExpiredToken" in str(e):
                 utils.console.print("Session expired.")
             else:
@@ -170,6 +172,8 @@ def cmd_exec(account: str, role: str, region: str, command: List[str]) -> int:
                 utils.console.print("Command not found")
                 return 127
         except SystemExit as e:
+            if e.code == 0:
+                return 0
             if "ExpiredToken" in str(e):
                 utils.console.print("Session expired.")
             else:
