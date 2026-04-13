@@ -18,7 +18,9 @@ awsctl() {
     local tmp=$(mktemp)
     AWSCTL_WRAPPER_ACTIVE=1 command awsctl --eval "$@" > "$tmp"
     local exit_code=$?
-    source "$tmp"
+    if [[ $exit_code -eq 0 ]]; then
+        source "$tmp" || exit_code=$?
+    fi
     rm -f "$tmp"
     return $exit_code
 }"""

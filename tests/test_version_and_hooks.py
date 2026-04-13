@@ -108,3 +108,31 @@ def test_emit_exports_no_creds(monkeypatch, capsys):
 
     captured = capsys.readouterr()
     assert "No role credentials" in captured.out
+
+
+def test_emit_exports_shellquote_metacharacters(monkeypatch):
+    """Credential values containing shell metacharacters must be safely quoted."""
+    mock_token = SsoToken("tok", "u", "r", datetime.now(timezone.utc), {})
+    monkeypatch.setattr(
+        "awsctl.use_exports.load_active_sso_token", lambda o: mock_token
+    )
+    creds = {
+        "roleCredentials": {
+            "accessKeyId": "AK",
+            "secretAccessKey": "SK;echo injected",
+            "sessionToken": "ST$(malicious)",
+        }
+    }
+    monkeypatch.setattr("awsctl.use_exports._aws_json", lambda args: creds)
+
+    org = MagicMock()
+    org.name = "btavm"
+    org.region = "us-east-1"
+
+    out = use_exports.emit_exports(org, "123", "role", "us-east-1")
+    # shlex.quote must wrap values containing metacharacters in single quotes
+    assert "='SK;echo injected'" in out
+    assert "='ST$(malicious)'" in out
+    # Raw values must not appear immediately after = without quoting
+    assert "=SK;echo injected" not in out
+    assert "=ST$(malicious)" not in out

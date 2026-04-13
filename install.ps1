@@ -14,6 +14,35 @@ $ApiBase    = "https://api.github.com/repos/$GithubOrg/$GithubRepo"
 Write-Host "🚀 Starting awsctl installation..." -ForegroundColor Cyan
 
 # ---------------------------------------------------------------------------
+# 0. Python version guard — require 3.12+
+# ---------------------------------------------------------------------------
+$PythonBin = $null
+foreach ($candidate in @("python", "python3")) {
+    try {
+        $ver = & $candidate -c "import sys; v=sys.version_info; print(f'{v.major}.{v.minor}')" 2>$null
+        if ($ver) {
+            $parts = $ver.Split('.')
+            $major = [int]$parts[0]; $minor = [int]$parts[1]
+            if ($major -gt 3 -or ($major -eq 3 -and $minor -ge 12)) {
+                $PythonBin = $candidate
+                Write-Host "  Using: $candidate $ver" -ForegroundColor DarkGray
+                break
+            }
+        }
+    } catch {}
+}
+if (-not $PythonBin) {
+    Write-Host "❌ awsctl requires Python 3.12 or newer." -ForegroundColor Red
+    $detected = try { & python --version 2>&1 } catch { "not found" }
+    Write-Host "   Detected: $detected" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "   Install Python 3.12+ from https://www.python.org/downloads/" -ForegroundColor Yellow
+    Write-Host "   or via winget:  winget install Python.Python.3.12" -ForegroundColor Yellow
+    exit 1
+}
+$PipCmd = "$PythonBin -m pip"
+
+# ---------------------------------------------------------------------------
 # 1. Install the Python package
 # ---------------------------------------------------------------------------
 Write-Host "📦 Installing package..." -ForegroundColor Cyan
@@ -44,12 +73,12 @@ if ($env:GITHUB_TOKEN) {
     Invoke-WebRequest -Uri $WheelAsset.url -Headers $DownloadHeaders -OutFile $TmpWhl
 
     Write-Host "  Installing from wheel (dependencies from PyPI)..." -ForegroundColor DarkGray
-    pip install --user $TmpWhl --extra-index-url "https://pypi.org/simple/"
+    Invoke-Expression "$PipCmd install --user $TmpWhl --extra-index-url https://pypi.org/simple/"
     Remove-Item -Force $TmpWhl -ErrorAction SilentlyContinue
 } else {
     Write-Host "  ⚠️  GITHUB_TOKEN not set — installing from local source." -ForegroundColor Yellow
     Write-Host "  For the latest release: `$env:GITHUB_TOKEN = '<your-PAT>' and re-run." -ForegroundColor Yellow
-    pip install --user . --extra-index-url "https://pypi.org/simple/"
+    Invoke-Expression "$PipCmd install --user . --extra-index-url https://pypi.org/simple/"
 }
 
 # Ensure the user Scripts directory is on PATH for this session

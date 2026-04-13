@@ -1,4 +1,6 @@
 import json
+import os
+import tempfile
 from typing import Any, Dict, Optional
 
 from .config import CONFIG_DIR
@@ -40,7 +42,17 @@ def save_context_update(**kwargs: Any) -> None:
         new_ctx["previous"] = {k: v for k, v in existing.items() if k != "previous"}
 
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    CONTEXT_FILE.write_text(json.dumps(new_ctx))
+    # Atomic write: write to a temp file then replace, so concurrent readers
+    # never see a partially-written context file.
+    fd, tmp_path = tempfile.mkstemp(dir=CONFIG_DIR)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(new_ctx))
+        os.replace(tmp_path, CONTEXT_FILE)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
 
 
 def save_context(org_name: str, account: str, role: str, region: str) -> None:

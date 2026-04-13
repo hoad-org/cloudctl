@@ -1,2 +1,2 @@
 def print_help():
-    print("Help text")
+    """Stub — awsctl uses argparse's built-in help. This module is retained for backwards-compatibility."""

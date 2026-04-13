@@ -17,13 +17,13 @@ MAX_REGISTRY_SIZE = 1024 * 1024  # 1 MB
 
 def fetch_registry() -> List[Dict[str, Any]]:
     """
-    Fetches the remote registry.
+    Fetches the remote registry with Minisign signature verification.
     Contract:
     - Must verify signature if minisign is installed.
     - Must fail with SystemExit if signature is invalid or minisign is missing.
     - Must handle zip-bomb/overflow protection.
     """
-    return fetch_remote_registry(REGISTRY_URL)
+    return fetch_remote_registry(REGISTRY_URL, PUB_KEY)
 
 
 def fetch_remote_registry(url: str, public_key: str = None) -> List[Dict[str, Any]]:

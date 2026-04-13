@@ -1,13 +1,13 @@
-# awsctl v3.0.2 — Enterprise Cloud Identity & Context Manager
+# awsctl v3.0.4 — Enterprise Cloud Identity & Context Manager
 
 [![OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/1/badge)](https://bestpractices.coreinfrastructure.org/projects/1)
 [![SLSA Aligned](https://slsa.dev/images/gh-badge-level2.svg)](https://slsa.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Security: Zero Trust](https://img.shields.io/badge/Security-Zero%20Trust-blueviolet)](docs/SECURITY.md)
-[![NIST 800-53](https://img.shields.io/badge/NIST_800--53-Compliant-blue?style=flat&logo=nist)](docs/SECURITY_APPRAISAL.md)
-[![FedRAMP Supporting](https://img.shields.io/badge/FedRAMP-Ready-005288?style=flat&logo=files)](docs/SECURITY_APPRAISAL.md)
-[![GovCloud Compatible](https://img.shields.io/badge/AWS_GovCloud-Compatible-232F3E?style=flat&logo=amazon-aws)](docs/USER_GUIDE.md)
-[![FIPS 140-3 Compatible](https://img.shields.io/badge/FIPS_140--3-Compatible-green?style=flat&logo=openssl)](docs/SECURITY.md)
+[![Security: Zero Trust](https://img.shields.io/badge/Security-Zero%20Trust-blueviolet)](docs/originals/SECURITY.md)
+[![NIST 800-53](https://img.shields.io/badge/NIST_800--53-Compliant-blue?style=flat&logo=nist)](docs/originals/SECURITY_APPRAISAL.md)
+[![FedRAMP Supporting](https://img.shields.io/badge/FedRAMP-Ready-005288?style=flat&logo=files)](docs/originals/SECURITY_APPRAISAL.md)
+[![GovCloud Compatible](https://img.shields.io/badge/AWS_GovCloud-Compatible-232F3E?style=flat&logo=amazon-aws)](docs/originals/USER_GUIDE.md)
+[![FIPS 140-3 Compatible](https://img.shields.io/badge/FIPS_140--3-Compatible-green?style=flat&logo=openssl)](docs/originals/SECURITY.md)
 
 ⚠️ **INTERNAL TOOL:** This repository is for internal use by **BeyondTrust Engineering only.**
 Do **not** fork to public repositories or distribute binaries outside the corporate network.
@@ -289,6 +289,25 @@ awsctl aligns with security frameworks used across high-assurance enterprise and
 
 ---
 
+## 📜 Changelog (v3.0.4)
+
+- **FIX (security):** Registry signature verification was bypassed — `fetch_registry()` now passes `PUB_KEY` to `fetch_remote_registry()` (previously called without it, silently skipping Minisign validation).
+- **FIX:** Shell wrapper (`AWSCTL_WRAPPER`) now propagates `source` exit code — previously a failed `source` was masked by the `--eval` exit code.
+- **FIX:** `context_manager.py` now uses atomic `mkstemp + os.replace()` write — eliminates race condition where concurrent readers could see a partial file.
+- **FIX:** `install.ps1` now validates Python ≥ 3.12 before installing (matching `install.sh` behaviour).
+- **FIX:** CI `pip-audit` step no longer suppresses `poetry export` errors with `2>/dev/null` — failures now surface correctly.
+- **CHORE:** Gitleaks updated from 8.18.4 → 8.30.1 with SHA256 checksum verification in CI.
+- **TEST:** Added 3 missing tests: `shlex.quote` metacharacter injection, Azure RBAC fallback warning visibility, and audit log 0600 permission assertion.
+
+---
+
+## 📜 Changelog (v3.0.3)
+
+- **FIX:** README badge links corrected from `docs/SECURITY.md` → `docs/originals/SECURITY.md`.
+- **CHORE:** `help_text.py` dead stub replaced with backwards-compat docstring.
+
+---
+
 ## 📜 Changelog (v3.0.2)
 
 - **FIX (security):** All shell-exported credential variables now sanitized with `shlex.quote()` in both `use_exports.py` (AWS legacy path) and `providers/base.py` (Azure/GCP path).
@@ -350,9 +369,9 @@ awsctl aligns with security frameworks used across high-assurance enterprise and
 
 ---
 
-### ✅ Validation Summary (v3.0.2)
+### ✅ Validation Summary (v3.0.4)
 
-- ✅ 339 unit tests passing (doctor, shell, wizard, providers, CLI)
+- ✅ 342 unit tests passing (doctor, shell, wizard, providers, CLI)
 - ✅ Python 3.12, 3.13, 3.14 tested in CI matrix
 - ✅ Cross-platform: macOS (zsh/bash/fish), Linux (bash/zsh/fish), Windows (PowerShell/pwsh), WSL2
 - ✅ Static analysis: Bandit, `pip-audit`, ruff, black, Gitleaks all passing

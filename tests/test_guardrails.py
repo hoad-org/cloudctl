@@ -97,6 +97,18 @@ def test_check_break_glass_prompt(monkeypatch, mock_rich_console, tmp_path):
     assert "SENSITIVE ROLE ACCESS" in "".join(mock_rich_console.captured)
 
 
+def test_audit_log_created_with_0600_permissions(monkeypatch, tmp_path):
+    """Audit log file must be created with 0600 permissions to prevent unauthorized access."""
+    audit_file = tmp_path / "audit.log"
+    monkeypatch.setattr(guardrails, "AUDIT_LOG", audit_file)
+
+    guardrails._audit_log("prod", "Admin", "Testing permissions")
+
+    assert audit_file.exists()
+    mode = oct(audit_file.stat().st_mode)[-3:]
+    assert mode == "600", f"Expected 0600 permissions on audit log, got {mode}"
+
+
 def test_check_break_glass_abort(monkeypatch, mock_rich_console):
     """Verify that access is denied if the user cancels the 'reason' prompt."""
     mock_rich_console.clear()

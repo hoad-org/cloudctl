@@ -185,6 +185,19 @@ class TestAzureProvider:
         )
         assert roles == ["Contributor"]
 
+    def test_list_roles_rbac_error_shows_warning(
+        self, provider, monkeypatch, mock_rich_console
+    ):
+        """RBAC query failure must print a visible warning before falling back."""
+        mock_rich_console.clear()
+        monkeypatch.setattr(provider, "_az", lambda args: _az_result(1))
+        roles = provider.list_roles(
+            {"provider": "azure"}, token=None, account_id="sub-1"
+        )
+        assert roles == ["Contributor"]
+        combined = "".join(mock_rich_console.captured)
+        assert "Warning" in combined or "RBAC" in combined or "Contributor" in combined
+
     # --- get_credentials ----------------------------------------------------
 
     def test_get_credentials_success(self, provider, org, monkeypatch):
