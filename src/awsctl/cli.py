@@ -249,7 +249,7 @@ def cmd_switch(args: Any) -> int:
             orgs = [o["name"] for o in cfg.get("orgs", [])]
             if not orgs:
                 utils.console.print(
-                    "[red]No organizations configured. Run 'awsctl init'[/]"
+                    "[red]No organizations configured.[/] Run [bold]awsctl init[/bold] or [bold]awsctl org add[/bold]."
                 )
                 return 1
             if len(orgs) == 1:
@@ -548,6 +548,7 @@ def cmd_upgrade(args: Any = None) -> int:
                 "--extra-index-url",
                 "https://pypi.org/simple/",
             ],
+            timeout=300,
         )
     except Exception as exc:
         console.print(f"[red]Download failed:[/] {exc}")

@@ -86,6 +86,8 @@ def _audit_log(org_name: str, role: str, reason: str) -> None:
     """
     try:
         AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
+        if not AUDIT_LOG.exists():
+            AUDIT_LOG.touch(mode=0o600)
         if AUDIT_LOG.exists() and AUDIT_LOG.stat().st_size > MAX_LOG_SIZE:
             try:
                 backup = Path(str(AUDIT_LOG) + ".bak")

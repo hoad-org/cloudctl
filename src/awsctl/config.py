@@ -61,11 +61,20 @@ def load_config() -> Dict[str, Any]:
         return {"orgs": []}
 
 
+_VALID_PROVIDERS = {"aws", "azure", "gcp"}
+
+
 def get_org(name: str) -> Dict[str, Any]:
     # Orgs live in orgs.yaml (load_raw_config), not config.yaml (load_config).
     data = load_raw_config()
     for org in data.get("orgs", []):
         if org.get("name") == name:
+            provider = org.get("provider", "aws")
+            if provider not in _VALID_PROVIDERS:
+                raise ValueError(
+                    f"Organization '{name}' has unknown provider '{provider}'. "
+                    f"Valid providers: {', '.join(sorted(_VALID_PROVIDERS))}."
+                )
             return org
     raise ValueError(f"Organization '{name}' not found in configuration.")
 
