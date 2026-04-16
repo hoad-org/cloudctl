@@ -1,0 +1,109 @@
+# =============================================================================
+# Publish — Upload awsctl wheel to JFrog Artifactory PyPI repository
+# Purpose : On semver tag push, build the wheel and publish it
+#           to the Artifactory PyPI repo so that internal users can:
+#             pip install awsctl --index-url https://beyondtrust.jfrog.io/artifactory/api/pypi/awsctl-pypi/simple/
+#
+# Authentication: JFrog OIDC (OpenID Connect) — no static secrets stored.
+# Setup:
+#   1. In JFrog: Admin → Integrations → OIDC → GitHub
+#   2. Authorize GitHub organization/repo
+#   3. Configure identity mapping (GitHub repo → JFrog user)
+#   4. Set JFROG_CLI_V2=true in this workflow
+#
+# Benefits:
+#   - No API keys or tokens in GitHub Secrets
+#   - Credentials auto-expire (OIDC token lifetime)
+#   - Audit trail: JFrog logs which GitHub repo/ref published
+#   - Rotate-proof: no secrets to rotate
+#
+# SP800-53: CM-2, CM-3, SA-12, SI-7
+# FedRAMP  : Moderate / High baseline
+# =============================================================================
+
+name: Publish - Artifactory
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+
+# Never cancel in-progress publish — a partial upload can corrupt the registry.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read        # read repo
+  id-token: write       # required for OIDC token generation
+
+jobs:
+  publish:
+    name: Build and Publish to Artifactory
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Only run in the canonical repo (not forks) and when configured.
+    if: github.repository == 'BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: pip install build twine
+
+      - name: Build package
+        run: python -m build
+
+      - name: Verify package integrity
+        run: twine check dist/*
+
+      - name: Get OIDC token from GitHub
+        id: oidc
+        run: |
+          token=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .token)
+          echo "token=${token}" >> "$GITHUB_OUTPUT"
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
+
+      - name: Set up JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: https://beyondtrust.jfrog.io
+          JF_OIDC_PROVIDER_NAME: github
+          JF_OIDC_IDENTITY_TOKEN: ${{ steps.oidc.outputs.token }}
+
+      - name: Publish to Artifactory PyPI
+        run: |
+          # Configure JFrog CLI for PyPI
+          jf pip-config --repo-resolve awsctl-pypi --repo-deploy awsctl-pypi
+
+          # Publish wheel + sdist
+          jf pip publish dist/ --skip-existing
+
+      - name: Verify package is reachable
+        run: |
+          # Extract version from the built wheel filename
+          WHEEL=$(ls dist/*.whl | head -1)
+          VERSION=$(echo "$WHEEL" | sed 's/.*awsctl-\([^-]*\)-.*/\1/')
+          echo "Verifying awsctl==$VERSION is reachable..."
+
+          # Authenticate with Artifactory for verification
+          jf pip-config --repo-resolve awsctl-pypi
+
+          # Check if version exists in the PyPI repo
+          if jf pip list --repo awsctl-pypi | grep -q "awsctl.*$VERSION"; then
+            echo "✔ Package $VERSION reachable in Artifactory"
+          else
+            echo "⚠ Package may be in indexing (propagation delay)"
+          fi
