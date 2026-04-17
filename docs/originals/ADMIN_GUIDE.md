@@ -26,7 +26,7 @@ This means the authoritative definitions of organizations, URLs, regions, and gu
 ### 1.2 Corporate Registry (Future State)
 **Scope:** Immutable policy (Source of Truth)
 Currently, `src/awsctl/registry.py` contains a **Placeholder**.
-The authoritative configuration is hosted on [Confluence](https://beyondtrust.atlassian.net/wiki/x/CgD9qw).
+The authoritative configuration is in the repository.
 
 ---
 
