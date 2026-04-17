@@ -6,6 +6,7 @@ All check_* functions return Tuple[bool, str]:
   (False, <detail message>)   on failure
 """
 
+import concurrent.futures
 import os
 import platform
 import shutil
@@ -99,16 +100,24 @@ def check_permissions() -> Tuple[bool, str]:
 
 
 def check_time_sync() -> Tuple[bool, str]:
-    """Return (True, 'Synced') if we can reach an NTP endpoint, else warn."""
-    try:
-        # A lightweight TCP connect to pool.ntp.org:123 tells us if the network is up.
-        # Real skew detection would require parsing NTP packets — overkill here.
-        sock = socket.create_connection(("pool.ntp.org", 123), timeout=5)
+    """Return (True, 'Synced') if we can reach a time endpoint, else warn.
+
+    Uses a thread with a hard 3-second wall-clock timeout so filtered firewall
+    rules (which cause the OS TCP stack to retry beyond the socket timeout) can
+    never cause this check to hang.
+    """
+    def _connect() -> None:
+        # Port 443 on time.cloudflare.com — unlikely to be blocked on corporate networks.
+        sock = socket.create_connection(("time.cloudflare.com", 443), timeout=2)
         sock.close()
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            executor.submit(_connect).result(timeout=3)
         return True, "Synced"
     except Exception:
         # Not a hard failure — clock may still be fine; just can't verify.
-        return True, "Could not reach NTP (network may be restricted)"
+        return True, "Could not reach time server (network may be restricted)"
 
 
 def check_network_ssl() -> Tuple[bool, str]:

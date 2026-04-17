@@ -80,14 +80,17 @@ def load_active_sso_token(
     if not os.access(target, os.R_OK):
         raise RuntimeError(f"Permission denied accessing cache: {target}")
 
-    norm_target = _normalize_start_url(org.sso_start_url)
+    # Handle both OrgRef objects and dicts
+    sso_start_url = org.get("sso_start_url", "") if isinstance(org, dict) else org.sso_start_url
+    sso_region = org.get("sso_region", "") if isinstance(org, dict) else org.sso_region
+    norm_target = _normalize_start_url(sso_start_url)
     try:
         for f in target.glob("*.json"):
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
                 if (
                     _normalize_start_url(data.get("startUrl", "")) == norm_target
-                    and data.get("region") == org.sso_region
+                    and data.get("region") == sso_region
                 ):
                     exp = _parse_timestamp(data.get("expiresAt", ""))
                     if data.get("accessToken") and exp:

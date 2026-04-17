@@ -15,14 +15,27 @@ _ORIGINAL_HOME = HOME
 # Contract: Exact markers and content for shell wrapper.
 AWSCTL_WRAPPER = """# AWSCTL SHELL INTEGRATION
 awsctl() {
-    local tmp=$(mktemp)
-    AWSCTL_WRAPPER_ACTIVE=1 command awsctl --eval "$@" > "$tmp"
-    local exit_code=$?
-    if [[ $exit_code -eq 0 ]]; then
-        source "$tmp" || exit_code=$?
+    local first="${1:-}" needs_eval=0 arg
+    case "$first" in
+        switch|use|logout) needs_eval=1 ;;
+        login)
+            for arg in "$@"; do
+                case "$arg" in --account|-a|--role|-r|--region|-R) needs_eval=1; break ;; esac
+            done ;;
+    esac
+    if [[ $needs_eval -eq 1 ]]; then
+        local tmp exit_code
+        tmp=$(mktemp)
+        AWSCTL_WRAPPER_ACTIVE=1 command awsctl --eval "$@" > "$tmp"
+        exit_code=$?
+        if [[ $exit_code -eq 0 ]]; then
+            source "$tmp" || exit_code=$?
+        fi
+        rm -f "$tmp"
+        return $exit_code
+    else
+        AWSCTL_WRAPPER_ACTIVE=1 command awsctl "$@"
     fi
-    rm -f "$tmp"
-    return $exit_code
 }"""
 
 # ---------------------------------------------------------------------------

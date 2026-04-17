@@ -102,10 +102,11 @@ def _check_unsafe_config(path: Optional[Path] = None) -> None:
 
 def sso_list_accounts(token: Any) -> List[Dict[str, str]]:
     tk = token.accessToken if hasattr(token, "accessToken") else token
+    region = token.region if hasattr(token, "region") else "us-east-1"
     accounts = []
     next_token = None
     while True:
-        args = ["sso", "list-accounts", "--access-token", tk]
+        args = ["sso", "list-accounts", "--access-token", tk, "--region", region]
         if next_token:
             args.extend(["--next-token", next_token])
         res = run_aws(args)
@@ -121,6 +122,7 @@ def sso_list_accounts(token: Any) -> List[Dict[str, str]]:
 
 def sso_list_account_roles(token: Any, account_id: str) -> List[Dict[str, str]]:
     tk = token.accessToken if hasattr(token, "accessToken") else token
+    region = token.region if hasattr(token, "region") else "us-east-1"
     roles = []
     next_token = None
     while True:
@@ -131,6 +133,8 @@ def sso_list_account_roles(token: Any, account_id: str) -> List[Dict[str, str]]:
             tk,
             "--account-id",
             account_id,
+            "--region",
+            region,
         ]
         if next_token:
             args.extend(["--next-token", next_token])

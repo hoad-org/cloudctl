@@ -122,12 +122,19 @@ sequenceDiagram
 
 ## 🐚 Shell Integration (Optional)
 
-Shell integration is optional, explicit, and process-scoped. To enable the session wrapper:
+Shell integration is **opt-in**. To install the shell wrapper so that `awsctl switch` and `awsctl use` export credentials into the current shell:
 
 ```bash
-source <(awsctl shell init)
+awsctl init
 ```
-*Note: This does not modify `.zshrc` or `.bashrc` startup files.*
+
+This injects a small wrapper function into your `.bashrc`, `.zshrc`, or equivalent profile file (with your explicit confirmation). For shell tab-completion, run:
+
+```bash
+awsctl completion --install
+```
+
+Both operations can be reviewed and reversed at any time with `awsctl uninstall`.
 
 ---
 

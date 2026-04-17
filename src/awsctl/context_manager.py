@@ -80,6 +80,30 @@ def save_context(org_name: str, account: str, role: str, region: str) -> None:
     )
 
 
+def _format_expiry(token: Any) -> str:
+    """Return a human-readable expiry string for a token object."""
+    try:
+        from datetime import datetime, timezone
+
+        if not hasattr(token, "expiresAt"):
+            return ""
+        delta = token.expiresAt - datetime.now(timezone.utc)
+        total_seconds = int(delta.total_seconds())
+        if total_seconds <= 0:
+            return "[red]EXPIRED[/red]"
+        if total_seconds < 900:  # < 15 minutes
+            mins = total_seconds // 60
+            secs = total_seconds % 60
+            return f"[red]⚠  expires in {mins}m {secs}s[/red]"
+        if total_seconds < 3600:
+            return f"[yellow]expires in {total_seconds // 60}m[/yellow]"
+        hours = total_seconds // 3600
+        mins = (total_seconds % 3600) // 60
+        return f"[green]expires in {hours}h {mins}m[/green]"
+    except Exception:
+        return ""
+
+
 def print_status() -> None:
     """Renders the context dashboard."""
     ctx = load_context()
@@ -90,8 +114,9 @@ def print_status() -> None:
     provider_name = ctx.get("provider", "aws")
     org_name = ctx.get("current_org", "")
 
-    # Provider-specific session validity check
+    # Provider-specific session validity check + expiry
     session_status = "Unknown"
+    expiry_str = ""
     try:
         from .config import get_org
         from .providers import get_provider
@@ -99,19 +124,37 @@ def print_status() -> None:
         org_data = get_org(org_name) if org_name else {"provider": provider_name}
         provider = get_provider(org_data)
         token = provider.load_token(org_data)
-        session_status = "Active" if token else "Expired"
+        if token:
+            session_status = "Active"
+            expiry_str = _format_expiry(token)
+        else:
+            session_status = "Expired"
     except Exception:
         session_status = "Unknown"
 
     provider_label = {"aws": "AWS", "azure": "Azure", "gcp": "GCP"}.get(
         provider_name, provider_name.upper()
     )
+    status_color = {"Active": "green", "Expired": "red"}.get(session_status, "yellow")
 
-    utils.console.print(f"--- {provider_label} Active Context ({session_status}) ---")
-    utils.console.print(f"Organization: {org_name}")
-    utils.console.print(f"Account:      {ctx.get('account')}")
-    utils.console.print(f"Role:         {ctx.get('role')}")
-    utils.console.print(f"Region:       {ctx.get('region')}")
+    utils.console.print(
+        f"\n[bold]── {provider_label} Context[/bold]  "
+        f"[{status_color}]{session_status}[/{status_color}]"
+        + (f"  {expiry_str}" if expiry_str else "")
+    )
+    utils.console.print(f"  Organization : [bold]{org_name}[/bold]")
+    utils.console.print(f"  Account      : {ctx.get('account', '—')}")
+    utils.console.print(f"  Role         : {ctx.get('role', '—')}")
+    utils.console.print(f"  Region       : {ctx.get('region', '—')}")
+
+    prev = ctx.get("previous")
+    if prev and prev.get("current_org"):
+        utils.console.print(
+            f"\n  [dim]Previous: {prev.get('current_org')} / "
+            f"{prev.get('account', '—')} / {prev.get('role', '—')}[/dim]"
+        )
+        utils.console.print("  [dim]Run 'awsctl switch -' to go back[/dim]")
+    utils.console.print()
 
 
 def clear_context() -> None:

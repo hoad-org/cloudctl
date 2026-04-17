@@ -41,10 +41,13 @@ def _aws_json(args: List[str]) -> Dict[str, Any]:
         sys.exit(1)
 
 
-def get_credentials(account: str, role: str, region: str) -> Dict[str, str]:
+def get_credentials(account: str, role: str, region: str, token: Any) -> Dict[str, str]:
+    tk = token.accessToken if hasattr(token, "accessToken") else token
     args = [
         "sso",
         "get-role-credentials",
+        "--access-token",
+        tk,
         "--account-id",
         account,
         "--role-name",
@@ -105,11 +108,22 @@ def emit_exports(org: Any, account: str, role: str, region: str) -> str:
 
     # AWS legacy path — preserves monkeypatching contracts for existing tests
     # Check token FIRST to give a helpful message before attempting credentials
-    if not load_active_sso_token(org):
+    # Convert dict to OrgRef if needed
+    if isinstance(org, dict):
+        from .sso_cache import OrgRef
+        org_ref = OrgRef(
+            org.get("name", ""),
+            org.get("sso_start_url", ""),
+            org.get("sso_region", "")
+        )
+    else:
+        org_ref = org
+    token = load_active_sso_token(org_ref)
+    if not token:
         sys.stdout.write("No valid SSO token\n")
         sys.exit(1)
     try:
-        c = get_credentials(account, role, region)
+        c = get_credentials(account, role, region, token)
         lines = [f"export {k}={shlex.quote(v)}" for k, v in c.items()]
         lines.append(
             f"export AWS_PROFILE={shlex.quote(f'{org_name}-{account}-{role}')}"

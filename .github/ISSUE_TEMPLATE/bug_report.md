@@ -37,4 +37,4 @@ labels: bug
 
 <!-- Anything else relevant — awsctl doctor output, AWS CLI version, etc. -->
 
-> **Security issues:** Do NOT file security vulnerabilities here. Email `cloud-security-emergency@beyondtrust.com` instead.
+> **Security issues:** Do NOT file security vulnerabilities here. Email `craighoad+security@hotmail.com` instead.

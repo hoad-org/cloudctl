@@ -1,4 +1,4 @@
-# awsctl v3.0.4 — Enterprise Cloud Identity & Context Manager
+# awsctl v3.1.0 — Enterprise Cloud Identity & Context Manager
 
 [![OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/1/badge)](https://bestpractices.coreinfrastructure.org/projects/1)
 [![SLSA Aligned](https://slsa.dev/images/gh-badge-level2.svg)](https://slsa.dev)
@@ -219,16 +219,162 @@ awsctl upgrade
 
 ---
 
+### Upgrading via Artifactory (internal PyPI)
+
+Once your team has access to the JFrog Artifactory instance, you can upgrade without a GitHub token:
+
+```bash
+# Set once (add to ~/.zshrc / ~/.bashrc to persist)
+export AWSCTL_INDEX_URL=https://your-org.jfrog.io/artifactory/api/pypi/awsctl-pypi/simple/
+
+# Then upgrade like any pip package
+awsctl upgrade
+
+# Or pass the URL inline
+awsctl upgrade --index-url https://your-org.jfrog.io/artifactory/api/pypi/awsctl-pypi/simple/
+```
+
+`install.sh` also reads `AWSCTL_INDEX_URL` for fresh installs:
+
+```bash
+export AWSCTL_INDEX_URL=https://your-org.jfrog.io/artifactory/api/pypi/awsctl-pypi/simple/
+bash install.sh
+```
+
+Publishing to Artifactory (maintainers only):
+
+```bash
+export ARTIFACTORY_URL=https://your-org.jfrog.io/artifactory/api/pypi/awsctl-pypi/
+export ARTIFACTORY_TOKEN=<your-identity-token>
+make publish-artifactory
+```
+
+---
+
 ### Uninstall
 
 ```bash
+# Interactive — prompts before removing anything
+awsctl uninstall
+
+# Preview what would be removed without changing anything
+awsctl uninstall --dry-run
+
+# Remove only the package, leave shell integration intact
+awsctl uninstall --package-only
+
+# Remove everything but keep ~/.config/awsctl/ (context, config)
+awsctl uninstall --keep-config
+```
+
+Or use the shell scripts directly:
+
+```bash
 bash uninstall.sh   # macOS / Linux / WSL
-# or
 .\uninstall.ps1     # Windows PowerShell
 ```
 
-The uninstall scripts remove the shell wrapper from all profiles, uninstall the pip package,
-clean awsctl-managed `[sso-session]` blocks from `~/.aws/config`, and remove `~/.awsctl`.
+---
+
+## 💻 Command Reference
+
+### Authentication
+
+```bash
+awsctl login <org>          # Authenticate (SSO / az login / gcloud auth login)
+awsctl login bt-avm --force # Force re-authentication even if token is still valid
+awsctl logout               # Clear active session and unset all credential env vars
+```
+
+### Context switching
+
+```bash
+awsctl switch               # Interactive picker: org → account → role → region
+awsctl switch bt-avm        # Skip org picker, go straight to account/role selection
+awsctl switch bt-avm --account 111111111111 --role AdminAccess --region us-east-1
+awsctl switch @prod         # Restore a named alias (configured in orgs.yaml)
+awsctl switch -             # Switch back to the previous context (like cd -)
+awsctl use bt-avm           # Alias for switch
+```
+
+### Credential injection (without changing shell context)
+
+```bash
+# Run any command with fresh credentials for a specific org
+awsctl exec --org bt-avm -- terraform plan
+awsctl exec --org fdr-gvc --account 222222222222 --role ReadOnly -- aws s3 ls
+
+# Without --org, uses active context
+awsctl exec -- aws sts get-caller-identity
+```
+
+### Status and identity
+
+```bash
+awsctl status               # Show active context: org, account, role, region, expiry
+awsctl env                  # Alias for status
+awsctl whoami               # Show caller identity via STS (AWS) or provider CLI
+```
+
+### Background credential refresh
+
+```bash
+# Keep credentials alive in a dedicated terminal pane
+awsctl watch                # Watch active context, refresh 15 min before expiry
+awsctl watch bt-avm         # Watch a specific org
+awsctl watch --interval 30  # Check every 30 seconds instead of 60
+awsctl watch --threshold 1800  # Refresh when 30 minutes remain (instead of 15)
+awsctl watch --once         # Check once and exit (useful for CI health checks)
+```
+
+### Shell prompt integration
+
+```bash
+# Print current context for PS1 (outputs nothing when no context active)
+awsctl prompt               # ☁ bt-avm (111111111111/AdminAccess/us-east-1)
+awsctl prompt --short       # ☁ bt-avm
+awsctl prompt --json        # {"provider":"aws","org":"bt-avm","account":"..."}
+awsctl prompt --warn-expiry 30  # Show ⚠ when < 30 minutes remain
+
+# Get a ready-to-paste snippet for your prompt tool
+awsctl prompt --starship    # Prints ~/.config/starship.toml fragment
+awsctl prompt --p10k        # Prints ~/.p10k.zsh segment function
+
+# Add to .zshrc/.bashrc (minimal, no extra dependencies)
+PS1='$(awsctl prompt --short 2>/dev/null) '"$PS1"
+```
+
+### Configuration management
+
+```bash
+awsctl init                 # Full interactive setup wizard
+awsctl init --shell-only    # Inject shell wrapper only (no org wizard)
+awsctl org add              # Add a new org interactively
+awsctl org list             # List all configured orgs
+awsctl org remove <name>    # Remove an org from config
+awsctl accounts <org>       # List accessible accounts/subscriptions/projects
+```
+
+### Shell tab completion
+
+```bash
+# Print activation instructions for your shell
+awsctl completion           # Auto-detects bash/zsh/fish
+awsctl completion --shell zsh
+awsctl completion --install # Write activation line to your shell profile automatically
+```
+
+After setup, restart your shell and press Tab after any `awsctl` subcommand.
+
+### Maintenance
+
+```bash
+awsctl doctor               # Full system health check (tools, shell, permissions, network)
+awsctl doctor --fix-path    # Also attempt to repair missing PATH entries
+awsctl upgrade              # Upgrade to latest release (GitHub or Artifactory)
+awsctl upgrade --index-url <url>   # Upgrade from a specific Artifactory index
+awsctl open                 # Open the cloud console for the active org in your browser
+```
 
 ---
 
@@ -286,6 +432,48 @@ awsctl aligns with security frameworks used across high-assurance enterprise and
 | **NIST 800-53** | **IA-5** | No static credentials on disk—ephemeral session tokens only. |
 | **NIST 800-53** | **AU-2** | “Break Glass” logging with time-stamped justification records. |
 | **SLSA** | **Aligned Practices** | Tag-driven CI/CD, immutable artifacts, signed builds, and provenance tracking. |
+
+---
+
+## 📜 Changelog (v3.1.0)
+
+### New commands
+- **FEATURE:** `awsctl prompt` — compact cloud context string for PS1, Starship, and Powerlevel10k. Supports `--short`, `--json`, `--starship`, `--p10k`, `--no-icon`, `--warn-expiry`. Silent when no context is active.
+- **FEATURE:** `awsctl watch` — background credential refresh loop; re-authenticates when token falls below `--threshold` (default 15 min). Works for AWS, Azure, and GCP. Supports `--interval`, `--threshold`, `--once`.
+- **FEATURE:** `awsctl switch -` — restore the previous context instantly (analogous to `cd -`).
+- **FEATURE:** `awsctl exec --org` — run a command with credentials for a specific org without changing the active shell context. Interactive account/role picker when `--account`/`--role` are omitted.
+- **FEATURE:** `awsctl env` — alias for `awsctl status`.
+- **FEATURE:** `awsctl completion` — print shell tab-completion activation snippet for bash/zsh/fish. `--install` writes the activation line to your shell profile automatically.
+- **FEATURE:** `awsctl uninstall` — guided uninstaller with `--dry-run`, `--keep-config`, and `--package-only` flags. Correctly removes the multi-line shell wrapper function from all detected profiles.
+
+### Artifactory support
+- **FEATURE:** `awsctl upgrade --index-url <url>` — upgrade from a JFrog Artifactory PyPI repo instead of GitHub Releases. Also reads `AWSCTL_INDEX_URL` env var. Uses `pipx runpip` for isolated-venv installs.
+- **FEATURE:** `install.sh` reads `AWSCTL_INDEX_URL` for fresh installs from Artifactory.
+- **FEATURE:** `.github/workflows/publish-artifactory.yaml` — manual/tag-triggered workflow to publish the wheel to Artifactory (guarded by `ARTIFACTORY_CONFIGURED` repo variable until access is provisioned).
+- **FEATURE:** `make build` and `make publish-artifactory` Makefile targets.
+- **CHORE:** `pyproject.toml` — commented `[[tool.poetry.source]]` block ready to uncomment once Artifactory URL is known.
+
+### Provider improvements
+- **FEATURE:** `get_token_expiry()` added to `CloudProvider` base class. Azure overrides it via `az account get-access-token` (real expiry). GCP overrides it to return `now + 1h` (tokens are exactly 1hr; gcloud auto-refreshes). AWS uses existing `expiresAt` on the SSO token object.
+- **FIX:** `awsctl watch` now supports Azure and GCP with real expiry data, not just "expiry unknown".
+
+### Install / setup
+- **FEATURE:** `install.sh` — pipx-first install (PEP 668 safe), falls back to pip with `--break-system-packages` when supported. WSL browser guidance for SSO flows. `AWSCTL_INDEX_URL` support.
+- **FEATURE:** `awsctl init` wizard now shows inline field guidance (where to find SSO URL, Tenant ID, Project ID) directly in the prompts.
+
+### Bug fixes
+- **FIX:** `awsctl switch -` routing — `cmd_switch` was checking `args.target` but the parser stored the arg as `args.org`; switch-back never triggered.
+- **FIX:** `awsctl exec --org` routing — `cmd_exec` dispatched to the old handler that ignored `exec_org`/`exec_account`; now delegates to `ExecCommand`.
+- **FIX:** `awsctl env` subparser was missing from `_build_parser()`; argparse would reject the command.
+- **FIX:** `awsctl doctor` NTP check — `socket.create_connection("pool.ntp.org", 123)` hangs indefinitely on corporate networks with port 123 filtered. Replaced with `concurrent.futures` + `time.cloudflare.com:443` with a 3-second hard timeout.
+- **FIX:** Shell wrapper — previously passed `--eval` to ALL commands; `doctor` output was sourced as shell code. Wrapper now only eval-sources `switch`/`use`/`logout`; all other commands stream directly.
+- **FIX:** `awsctl uninstall` shell profile removal — previous implementation only removed the marker line and `awsctl() {` header, leaving the full function body. Replaced with `_remove_awsctl_blocks()`: index-based algorithm that correctly handles multi-line function blocks and single-line eval commands.
+- **FIX:** `awsctl upgrade` Artifactory pipx path — `pipx upgrade --pip-args` does not reliably pass index URL; replaced with `pipx runpip awsctl install --upgrade`.
+- **CHORE:** Deleted dead `commands/switch.py::SwitchCommand` (never dispatched; `cmd_switch` in `cli.py` is the real implementation).
+
+### Quality
+- **TEST:** 89 new tests covering: `awsctl prompt`, `awsctl watch`, `awsctl switch -`, `awsctl exec --org`, token expiry display, `_remove_awsctl_blocks`, `awsctl completion`, `awsctl uninstall`. Total: **431 tests passing**.
+- **CHORE:** `argcomplete>=3.0` added as dependency; `_build_parser()` registers completions automatically.
 
 ---
 
@@ -369,11 +557,11 @@ awsctl aligns with security frameworks used across high-assurance enterprise and
 
 ---
 
-### ✅ Validation Summary (v3.0.4)
+### ✅ Validation Summary (v3.1.0)
 
-- ✅ 342 unit tests passing (doctor, shell, wizard, providers, CLI)
+- ✅ **431 unit tests passing** (doctor, shell, wizard, providers, CLI, prompt, watch, exec --org, switch -, completion, uninstall)
 - ✅ Python 3.12, 3.13, 3.14 tested in CI matrix
 - ✅ Cross-platform: macOS (zsh/bash/fish), Linux (bash/zsh/fish), Windows (PowerShell/pwsh), WSL2
 - ✅ Static analysis: Bandit, `pip-audit`, ruff, black, Gitleaks all passing
 - ✅ 0 known CVEs in dependency lockfile (`pip-audit`)
-- ✅ CI/CD: tag-driven release with GitHub Releases distribution
+- ✅ CI/CD: tag-driven GitHub Releases + Artifactory publish workflow ready

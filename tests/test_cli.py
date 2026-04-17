@@ -96,38 +96,40 @@ def test_cmd_switch_dispatch_simple(monkeypatch):
 
 
 def test_cmd_exec_dispatch(monkeypatch):
-    """Verify dispatcher correctly resolves defaults from context before calling core.exec."""
-    mock_core_exec = MagicMock(return_value=0)
-    monkeypatch.setattr("awsctl.core.cmd_exec", mock_core_exec)
+    """Verify cmd_exec delegates to ExecCommand, picking up credentials from context."""
+    from unittest.mock import MagicMock
+    import subprocess
 
-    # Setup context that should be used as fallbacks
-    monkeypatch.setattr(
-        "awsctl.cli.load_context",
-        lambda: {
-            "current_org": "btavm",
-            "account": "123",
-            "role": "Admin",
-            "region": "us-east-1",
-        },
-    )
-    monkeypatch.setattr("awsctl.core.load_orgs_config", lambda: {"orgs": []})
-    monkeypatch.setattr("awsctl.cli._get_org_ref", lambda n: MagicMock())
-    monkeypatch.setattr("awsctl.cli._resolve_account_id", lambda ref, target: "123")
+    ctx = {
+        "current_org": "btavm",
+        "account": "123",
+        "role": "Admin",
+        "region": "us-east-1",
+    }
+    import awsctl.commands.exec as _exec_mod
+    monkeypatch.setattr(_exec_mod, "load_context", lambda: ctx)
+    monkeypatch.setattr("awsctl.commands.exec.get_org", lambda n: {"name": n, "provider": "aws"})
 
-    # Args are all None to force fallback logic
+    mock_provider = MagicMock()
+    mock_provider.get_credentials.return_value = {"AWS_ACCESS_KEY_ID": "AKID"}
+    monkeypatch.setattr("awsctl.providers.get_provider", lambda _: mock_provider)
+
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: mock_result)
+
     args = type(
         "Args",
         (),
         {
-            "account": None,
-            "role": None,
-            "region": None,
-            "command": ["ls", "-la"],
-            "org": None,
+            "exec_org": None,
+            "exec_account": None,
+            "exec_role": None,
+            "exec_region": None,
+            "cmd": ["ls", "-la"],
         },
     )
     assert cli.cmd_exec(args) == 0
-    mock_core_exec.assert_called_with("123", "Admin", "us-east-1", ["ls", "-la"])
 
 
 def test_cmd_doctor_dispatch(monkeypatch):

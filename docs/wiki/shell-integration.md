@@ -113,11 +113,13 @@ sequenceDiagram
 * **fish** — function written to `~/.config/fish/functions/awsctl.fish`
 
 ### Manual Installation (Optional)
-Shell integration is strictly opt-in. To enable the wrapper:
+Shell integration is strictly opt-in. To install the wrapper into your shell profile:
 
 ```bash
-source <(awsctl shell init)
+awsctl init
 ```
+
+`awsctl init` detects your shell automatically and appends the wrapper function to `.bashrc`, `.zshrc`, `$PROFILE` (PowerShell), or `~/.config/fish/functions/awsctl.fish`. You are prompted to confirm before any file is modified.
 
 ## 🪟 PowerShell Integration
 
@@ -144,12 +146,47 @@ awsctl init
 
 ---
 
-## 🚫 What awsctl Will Never Do
+## 🚫 What awsctl Will Never Do Without Consent
 
-* **Modify Dotfiles:** It will never automatically edit `.bashrc`, `.zshrc`, or other profile scripts.
-* **Execute Commands:** It will never spawn subprocesses in your shell.
-* **Persistent Daemons:** It will never leave background processes running.
-* **Override Aliases:** It will never silence user errors or override existing aliases without consent.
+* **Silently modify dotfiles:** `awsctl init` and `awsctl completion --install` will write to shell profile files, but **only after you confirm the prompt**. They will never modify files without explicit user acknowledgement.
+* **Execute commands in your shell automatically:** All credential exports require the shell wrapper to evaluate them; `awsctl` only emits the text.
+* **Run persistent daemons:** `awsctl watch` polls on a configurable interval but runs in the foreground and exits immediately on `Ctrl+C`; it does not background itself.
+* **Override existing aliases without warning:** The wrapper function is named `awsctl`; if a conflicting alias exists, `awsctl init` will warn before proceeding.
+
+---
+
+## 🛠️ Shell-Related Commands (v3.1.0)
+
+| Command | Purpose |
+|---|---|
+| `awsctl init` | Install the shell wrapper into your profile (prompts for confirmation) |
+| `awsctl completion` | Print the tab-completion activation snippet for your shell |
+| `awsctl completion --install` | Append the completion snippet to your shell profile |
+| `awsctl uninstall` | Remove the wrapper and completion blocks from all detected profiles |
+| `awsctl watch` | Continuously monitor token expiry and re-authenticate proactively |
+| `awsctl prompt` | Emit a shell prompt segment showing active org, account, and expiry |
+
+### Shell Prompt Integration
+
+`awsctl prompt` outputs a compact status string suitable for embedding in PS1, Powerlevel10k, or Starship:
+
+```bash
+# Bash / zsh — add to PS1
+PS1='$(awsctl prompt --short) \$ '
+
+# Starship — starship.toml
+[custom.awsctl]
+command = “awsctl prompt --short --no-icon”
+when = “true”
+```
+
+### Uninstalling Shell Integration
+
+```bash
+awsctl uninstall             # full removal: wrapper, completion, config
+awsctl uninstall --dry-run   # preview what would be removed
+awsctl uninstall --keep-config  # remove wrapper only, preserve ~/.config/awsctl
+```
 
 ---
 

@@ -12,7 +12,7 @@
 
 **DO NOT open a public GitHub issue for security vulnerabilities.**
 
-Email **`cloud-security-emergency@beyondtrust.com`** with:
+Email **`craighoad+security@hotmail.com`** with:
 - A description of the vulnerability
 - Steps to reproduce (proof-of-concept if available)
 - Affected versions

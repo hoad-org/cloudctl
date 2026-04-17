@@ -82,6 +82,27 @@ class AzureProvider(CloudProvider):
         except (json.JSONDecodeError, ValueError):
             return None
 
+    def get_token_expiry(self, org: Dict[str, Any]) -> "Optional[Any]":
+        """
+        Return token expiry by calling 'az account get-access-token'.
+        The expiresOn field is a UTC datetime string: "2024-03-15 10:30:00.000000"
+        """
+        from datetime import datetime, timezone
+
+        result = self._az(["account", "get-access-token", "--output", "json"])
+        if result["returncode"] != 0:
+            return None
+        try:
+            data = json.loads(result["stdout"])
+            expires_on = data.get("expiresOn", "")
+            if not expires_on:
+                return None
+            # Format: "2024-03-15 10:30:00.000000" (UTC)
+            dt = datetime.strptime(expires_on, "%Y-%m-%d %H:%M:%S.%f")
+            return dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+
     def list_accounts(self, org: Dict[str, Any], token: Any) -> List[Dict[str, str]]:
         result = self._az(["account", "list", "--output", "json"])
         if result["returncode"] != 0:

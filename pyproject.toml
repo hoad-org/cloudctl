@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "awsctl"
-version = "3.0.4"
+version = "3.1.0"
 description = "Enterprise Cloud Identity & Context Manager (AWS, Azure, GCP)"
 authors = ["BeyondTrust CloudOps"]
 license = "MIT"
@@ -25,6 +25,15 @@ classifiers = [
     "Topic :: Security",
 ]
 
+# ---------------------------------------------------------------------------
+# Artifactory PyPI source — set AWSCTL_INDEX_URL env var when this is active.
+# Uncomment and fill in your org's Artifactory URL once access is provisioned.
+# ---------------------------------------------------------------------------
+# [[tool.poetry.source]]
+# name = "artifactory"
+# url = "https://org.jfrog.io/artifactory/api/pypi/awsctl-pypi/simple/"
+# priority = "supplemental"
+
 [tool.poetry.urls]
 "Repository" = "https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl"
 "Bug Tracker" = "https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl/issues"
@@ -40,6 +49,7 @@ rich = "^14.3.0"
 inquirerpy = "^0.3.4"
 py-minisign = ">=0.9.1"
 requests = ">=2.33.0"
+argcomplete = ">=3.0"
 # Minimum versions for transitive-dep CVE fixes
 cryptography = ">=46.0.7"
 pygments = ">=2.20.0"

@@ -161,7 +161,7 @@ def cmd_switch(args: Any) -> int:
     from .config import get_org, load_config
 
     try:
-        target = getattr(args, "target", None)
+        target = getattr(args, "target", None) or getattr(args, "org", None)
 
         # Handle previous context switch: "awsctl switch -"
         if target == "-":
@@ -316,17 +316,8 @@ def cmd_logout(args: Any) -> int:
 
 
 def cmd_exec(args: Any) -> int:
-    ctx = load_context()
-    account = getattr(args, "account", None) or (ctx.get("account") if ctx else None)
-    role = getattr(args, "role", None) or (ctx.get("role") if ctx else None)
-    region = getattr(args, "region", None) or (ctx.get("region") if ctx else None)
-    command = getattr(args, "command", None) or getattr(args, "cmd", None) or []
-
-    if not account or not role:
-        console.print("[red]No active context. Run 'awsctl switch' first.[/]")
-        return 1
-
-    return core.cmd_exec(account, role, region or "", command)
+    from .commands.exec import ExecCommand
+    return ExecCommand().execute(args)
 
 
 def cmd_status(args: Any) -> int:
@@ -454,8 +445,281 @@ def cmd_open(args: Any = None) -> int:
         return 1
 
 
+def _remove_awsctl_blocks(lines: list, markers: list) -> list:
+    """
+    Remove awsctl-injected blocks from a list of shell profile lines.
+
+    Two block types are handled:
+
+    1. Multi-line function block:
+       # AWSCTL SHELL INTEGRATION
+       awsctl() {
+           ...
+       }        ← standalone '}' terminates the block
+
+    2. Single-line command:
+       # awsctl completion
+       eval "$(register-python-argcomplete awsctl)"
+
+    Uses an index-based pass so it can look ahead without fragile state machines.
+    """
+    result = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if any(m in line for m in markers):
+            # Marker line — skip it and determine block extent
+            i += 1
+            if i >= len(lines):
+                break
+            next_stripped = lines[i].rstrip("\n").strip()
+            if next_stripped.startswith("awsctl()") or next_stripped.startswith("function awsctl"):
+                # Multi-line function: skip until standalone closing brace
+                while i < len(lines):
+                    if lines[i].rstrip("\n").rstrip() == "}":
+                        i += 1  # skip the closing brace too
+                        break
+                    i += 1
+            elif next_stripped.startswith("eval") or next_stripped.startswith("register-python"):
+                # Single-line command — skip just that one line
+                i += 1
+            # else: marker with no recognised follow-on — just removed the marker
+        else:
+            result.append(line)
+            i += 1
+    return result
+
+
+def cmd_completion(args: Any = None) -> int:
+    """Print shell completion activation instructions (or install them)."""
+    import os
+
+    shell = getattr(args, "shell", None)
+    install = getattr(args, "install", False)
+
+    # Auto-detect shell from $SHELL
+    if not shell:
+        shell_bin = os.environ.get("SHELL", "")
+        if "zsh" in shell_bin:
+            shell = "zsh"
+        elif "fish" in shell_bin:
+            shell = "fish"
+        else:
+            shell = "bash"
+
+    snippets = {
+        "bash": (
+            'eval "$(register-python-argcomplete awsctl)"',
+            "~/.bashrc",
+        ),
+        "zsh": (
+            'eval "$(register-python-argcomplete awsctl)"',
+            "~/.zshrc",
+        ),
+        "fish": (
+            "register-python-argcomplete --shell fish awsctl | source",
+            "~/.config/fish/config.fish",
+        ),
+    }
+
+    line, profile = snippets[shell]
+
+    if install:
+        profile_path = os.path.expanduser(profile)
+        try:
+            with open(profile_path, "r") as f:
+                content = f.read()
+        except FileNotFoundError:
+            content = ""
+
+        marker = "# awsctl completion"
+        if marker in content:
+            console.print(f"[yellow]Completion already installed in {profile}[/]")
+            return 0
+
+        with open(profile_path, "a") as f:
+            f.write(f"\n{marker}\n{line}\n")
+        console.print(f"[green]✔ Completion installed in {profile}[/]")
+        console.print(f"  Restart your shell or run: [bold]source {profile}[/bold]")
+        return 0
+
+    console.print(
+        f"\n[bold]awsctl tab completion — {shell}[/bold]\n\n"
+        f"Add this line to [bold]{profile}[/bold]:\n\n"
+        f"  [cyan]{line}[/cyan]\n\n"
+        f"Or run [bold]awsctl completion --install[/bold] to add it automatically.\n"
+        f"\nThen restart your shell or run [bold]source {profile}[/bold].\n"
+    )
+    return 0
+
+
+def cmd_uninstall(args: Any = None) -> int:
+    """Remove awsctl shell integration and optionally uninstall the package."""
+    import os
+    import shutil
+
+    dry_run = getattr(args, "dry_run", False)
+    keep_config = getattr(args, "keep_config", False)
+    package_only = getattr(args, "package_only", False)
+
+    if not dry_run:
+        try:
+            from InquirerPy import inquirer
+            confirmed = inquirer.confirm(
+                message="This will remove awsctl shell integration. Continue?",
+                default=False,
+            ).execute()
+        except Exception:
+            confirmed = True  # non-interactive mode
+        if not confirmed:
+            console.print("[yellow]Uninstall cancelled.[/]")
+            return 0
+
+    removed = []
+    skipped = []
+
+    # ── 1. Remove shell integration lines ───────────────────────────────────
+    if not package_only:
+        shell_profiles = [
+            os.path.expanduser("~/.bashrc"),
+            os.path.expanduser("~/.zshrc"),
+            os.path.expanduser("~/.config/fish/config.fish"),
+        ]
+        markers = [
+            "# AWSCTL SHELL INTEGRATION",
+            "# awsctl completion",
+        ]
+        for profile in shell_profiles:
+            if not os.path.exists(profile):
+                continue
+            try:
+                with open(profile) as f:
+                    lines = f.readlines()
+                new_lines = _remove_awsctl_blocks(lines, markers)
+                if new_lines != lines:
+                    if not dry_run:
+                        with open(profile, "w") as f:
+                            f.writelines(new_lines)
+                    removed.append(profile)
+            except Exception as e:
+                skipped.append(f"{profile} ({e})")
+
+    # ── 2. Remove config directory ───────────────────────────────────────────
+    if not keep_config and not package_only:
+        config_dir = os.path.expanduser("~/.config/awsctl")
+        if os.path.isdir(config_dir):
+            if not dry_run:
+                shutil.rmtree(config_dir)
+            removed.append(config_dir)
+
+    # ── 3. Uninstall the package ─────────────────────────────────────────────
+    import subprocess
+
+    uninstall_cmd = None
+    if utils.which("pipx"):
+        probe = subprocess.run(
+            ["pipx", "list", "--short"], capture_output=True, text=True
+        )
+        if "awsctl" in probe.stdout:
+            uninstall_cmd = ["pipx", "uninstall", "awsctl"]
+    if not uninstall_cmd:
+        uninstall_cmd = [sys.executable, "-m", "pip", "uninstall", "awsctl", "-y"]
+
+    if not dry_run:
+        result = subprocess.run(uninstall_cmd)
+        if result.returncode == 0:
+            removed.append("awsctl package")
+        else:
+            skipped.append("package uninstall (check output above)")
+    else:
+        console.print(f"[dim][dry-run] Would run: {' '.join(uninstall_cmd)}[/dim]")
+
+    # ── 4. Summary ───────────────────────────────────────────────────────────
+    prefix = "[dim][dry-run][/dim] " if dry_run else ""
+    if removed:
+        console.print(f"\n{prefix}[green]Removed:[/green]")
+        for item in removed:
+            console.print(f"  {prefix}✔ {item}")
+    if skipped:
+        console.print(f"\n{prefix}[yellow]Skipped:[/yellow]")
+        for item in skipped:
+            console.print(f"  {prefix}  {item}")
+    if not dry_run:
+        console.print("\n[bold]awsctl has been uninstalled.[/bold]")
+        console.print("Open a new shell to clear the awsctl function from memory.")
+    return 0
+
+
+def cmd_prompt(args: Any = None) -> int:
+    from .commands.prompt import PromptCommand
+    return PromptCommand().execute(args)
+
+
+def cmd_watch(args: Any = None) -> int:
+    from .commands.watch import WatchCommand
+    return WatchCommand().execute(args)
+
+
 def cmd_upgrade(args: Any = None) -> int:
-    """Upgrade awsctl by downloading the latest release wheel from GitHub."""
+    """Upgrade awsctl — prefers Artifactory pip, falls back to GitHub Releases."""
+    import subprocess
+
+    # Resolve index URL: flag > env var > None (GitHub fallback)
+    index_url = (
+        getattr(args, "index_url", None)
+        or os.environ.get("AWSCTL_INDEX_URL", "")
+    )
+
+    if index_url:
+        return _upgrade_via_pip(index_url)
+    return _upgrade_via_github(args)
+
+
+def _upgrade_via_pip(index_url: str) -> int:
+    """Upgrade awsctl from an Artifactory (or any PyPI-compatible) index."""
+    import subprocess
+
+    console.print(f"[bold]Upgrading awsctl from:[/] {index_url}")
+
+    # Prefer pipx if available (it manages the isolated venv).
+    # Use 'pipx runpip awsctl install --upgrade' which directly invokes pip
+    # inside the pipx-managed venv — this correctly accepts --index-url.
+    if utils.which("pipx"):
+        console.print("  Using pipx...")
+        result = subprocess.run(
+            [
+                "pipx", "runpip", "awsctl", "install", "--upgrade", "awsctl",
+                "--index-url", index_url,
+                "--extra-index-url", "https://pypi.org/simple/",
+            ],
+        )
+    else:
+        pip_args = [
+            sys.executable, "-m", "pip", "install", "--upgrade",
+            "--user", "awsctl",
+            "--index-url", index_url,
+            "--extra-index-url", "https://pypi.org/simple/",
+        ]
+        # PEP 668: add --break-system-packages if supported
+        probe = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--help"],
+            capture_output=True, text=True,
+        )
+        if "break-system-packages" in probe.stdout:
+            pip_args.insert(pip_args.index("--user") + 1, "--break-system-packages")
+
+        result = subprocess.run(pip_args)
+
+    if result.returncode == 0:
+        console.print("[green]✅ awsctl upgraded successfully.[/]")
+        console.print("Restart your shell to pick up the new version.")
+    else:
+        console.print("[red]Upgrade failed.[/] Check output above.")
+    return result.returncode
+
+
+def _upgrade_via_github(args: Any) -> int:
+    """Legacy upgrade path: download wheel from GitHub Releases."""
     import json
     import subprocess
     import tempfile
@@ -469,9 +733,13 @@ def cmd_upgrade(args: Any = None) -> int:
     token = os.environ.get("GITHUB_TOKEN", "")
     if not token:
         console.print(
-            "[red]GITHUB_TOKEN not set.[/] A GitHub PAT with [bold]read:contents[/bold] "
-            "scope is required to download from the private repository.\n"
-            "  export GITHUB_TOKEN=<your-PAT>   # then re-run: awsctl upgrade"
+            "[yellow]No AWSCTL_INDEX_URL set and GITHUB_TOKEN not set.[/]\n\n"
+            "To upgrade via Artifactory:\n"
+            "  export AWSCTL_INDEX_URL=https://your-org.jfrog.io/artifactory/api/pypi/pypi-local/simple\n"
+            "  awsctl upgrade\n\n"
+            "To upgrade via GitHub Releases (legacy):\n"
+            "  export GITHUB_TOKEN=<your-PAT>  # read:contents scope required\n"
+            "  awsctl upgrade"
         )
         return 1
 
@@ -630,20 +898,29 @@ def _build_parser():
     sub.add_parser("logout", help="Log out and clear context")
 
     # exec
-    ep = sub.add_parser("exec", help="Run a command in the active context")
-    ep.add_argument("command", nargs="+", metavar="CMD")
+    ep = sub.add_parser(
+        "exec", help="Run a command with credentials (without changing shell context)"
+    )
+    ep.add_argument("--org", dest="exec_org", help="Organisation name")
+    ep.add_argument("--account", dest="exec_account", help="Account/project ID")
+    ep.add_argument("--role", dest="exec_role", help="Role/permission-set")
+    ep.add_argument("--region", dest="exec_region", help="Region")
+    ep.add_argument("cmd", nargs="+", metavar="CMD")
 
-    # status
+    # status / env (alias)
     sub.add_parser("status", help="Show active context")
+    sub.add_parser("env", help="Show active context (alias for status)")
 
     # accounts
     ap = sub.add_parser("accounts", help="List accessible accounts")
     ap.add_argument("org", help="Organization name")
-    ap.add_argument("--sync", action="store_true")
+    ap.add_argument("--sync", action="store_true",
+                    help="Refresh account list from the provider before displaying")
 
     # doctor
     dp = sub.add_parser("doctor", help="Validate system configuration")
-    dp.add_argument("--fix-path", action="store_true")
+    dp.add_argument("--fix-path", action="store_true",
+                    help="Attempt to add missing bin directories to PATH")
 
     # init
     ip = sub.add_parser("init", help="Initialize configuration wizard")
@@ -654,8 +931,59 @@ def _build_parser():
         help="Install shell integration only (no wizard)",
     )
 
+    # prompt
+    pp = sub.add_parser(
+        "prompt",
+        help="Emit cloud context for shell prompt (PS1/Starship/p10k)",
+        description=(
+            "Print the current cloud context as a compact string for use in PS1, "
+            "Starship, or Powerlevel10k. Outputs nothing when no context is active "
+            "(keeps prompt clean). Use --starship or --p10k to print a ready-to-paste "
+            "config snippet."
+        ),
+    )
+    ppg = pp.add_mutually_exclusive_group()
+    ppg.add_argument("--short", action="store_true",
+                     help="Short form: icon + org name only (e.g. ☁ bt-avm)")
+    ppg.add_argument("--json", action="store_true",
+                     help="Output full context as JSON for custom tooling")
+    ppg.add_argument("--starship", action="store_true",
+                     help="Print a ready-to-paste ~/.config/starship.toml snippet and exit")
+    ppg.add_argument("--p10k", action="store_true",
+                     help="Print a ready-to-paste ~/.p10k.zsh segment snippet and exit")
+    pp.add_argument("--format", choices=["plain", "ps1"], default="plain",
+                    help="Output format: plain (default) or ps1 (bash/zsh escape sequences)")
+    pp.add_argument("--no-icon", action="store_true",
+                    help="Omit the provider icon (☁/⬡/◆)")
+    pp.add_argument("--warn-expiry", type=int, default=15, metavar="MINUTES",
+                    help="Show ⚠ warning when credentials expire within N minutes (default: 15)")
+
+    # watch
+    wp = sub.add_parser(
+        "watch",
+        help="Auto-refresh credentials before they expire",
+        description=(
+            "Run a background loop that checks token expiry every --interval seconds "
+            "and re-authenticates when less than --threshold seconds remain. "
+            "Run in a dedicated terminal pane or tmux window alongside long-running "
+            "Terraform operations. Press Ctrl+C to stop."
+        ),
+    )
+    wp.add_argument("org", nargs="?",
+                    help="Organisation to watch (defaults to active context)")
+    wp.add_argument("--interval", type=int, default=60, metavar="SECS",
+                    help="How often to check token expiry in seconds (default: 60)")
+    wp.add_argument("--threshold", type=int, default=900, metavar="SECS",
+                    help="Refresh when this many seconds remain on the token (default: 900 = 15m)")
+    wp.add_argument("--once", action="store_true",
+                    help="Check once and exit (useful for scripts and CI health checks)")
+
     # upgrade
-    sub.add_parser("upgrade", help="Upgrade awsctl from GitHub Packages")
+    up = sub.add_parser("upgrade", help="Upgrade awsctl (Artifactory or GitHub)")
+    up.add_argument(
+        "--index-url", dest="index_url", metavar="URL",
+        help="Artifactory PyPI index URL (or set AWSCTL_INDEX_URL env var)",
+    )
 
     # org
     op = sub.add_parser("org", help="Manage cloud organizations")
@@ -668,6 +996,31 @@ def _build_parser():
     org_sub.add_parser("list", help="List configured organizations")
     rm_p = org_sub.add_parser("remove", help="Remove an organization")
     rm_p.add_argument("name", help="Org name to remove")
+
+    # uninstall
+    un_p = sub.add_parser("uninstall", help="Remove awsctl shell integration and package")
+    un_p.add_argument("--dry-run", action="store_true", help="Show what would be removed without doing it")
+    un_p.add_argument("--keep-config", action="store_true", help="Keep ~/.config/awsctl/ intact")
+    un_p.add_argument("--package-only", action="store_true", help="Uninstall package only (leave shell integration)")
+
+    # completion
+    comp_p = sub.add_parser("completion", help="Print shell completion setup instructions")
+    comp_p.add_argument(
+        "--shell", choices=["bash", "zsh", "fish"], default=None,
+        help="Target shell (auto-detected if omitted)",
+    )
+    comp_p.add_argument(
+        "--install", action="store_true",
+        help="Write the activation line to your shell profile",
+    )
+
+    # Register argcomplete — must come after all subparsers are added.
+    # This is a no-op when argcomplete is not installed or stdout is not a terminal.
+    try:
+        import argcomplete
+        argcomplete.autocomplete(p)
+    except ImportError:
+        pass
 
     return p
 
@@ -683,6 +1036,7 @@ _DISPATCH = {
     "logout": "cmd_logout",
     "exec": "cmd_exec",
     "status": "cmd_status",
+    "env": "cmd_status",
     "accounts": "cmd_accounts",
     "doctor": "cmd_doctor",
     "init": "cmd_init",
@@ -693,6 +1047,10 @@ _DISPATCH = {
     "whoami": "cmd_whoami",
     "open": "cmd_open",
     "upgrade": "cmd_upgrade",
+    "prompt": "cmd_prompt",
+    "watch": "cmd_watch",
+    "completion": "cmd_completion",
+    "uninstall": "cmd_uninstall",
 }
 
 
@@ -717,7 +1075,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     if "--help" in argv or "-h" in argv:
         stdout_console.print(
             "[bold]awsctl[/bold] — Enterprise Cloud Identity & Context Manager\n\n"
-            "Commands: login, switch, logout, exec, status, accounts, doctor, init, org\n"
+            "Commands: login, switch, logout, exec, status, env, accounts, doctor, init,\n"
+            "          org, prompt, watch, upgrade, completion, uninstall\n"
             "Options:  --version, --help, --check-strategy <cmd>"
         )
         return 0

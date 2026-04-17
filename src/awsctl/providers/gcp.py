@@ -87,6 +87,21 @@ class GcpProvider(CloudProvider):
         token = result["stdout"].strip()
         return token if token else None
 
+    def get_token_expiry(self, org: Dict[str, Any]) -> "Optional[Any]":
+        """
+        GCP access tokens issued by gcloud expire in ~1 hour; gcloud refreshes
+        them automatically.  We estimate expiry as now+1h when a valid token
+        exists, so awsctl watch can proactively re-auth near the threshold.
+        """
+        from datetime import datetime, timezone, timedelta
+
+        token = self.load_token(org)
+        if not token:
+            return None
+        # GCP ADC tokens last exactly 3600 s; we can't read the exact issue time
+        # without parsing gcloud's credential cache, so we estimate conservatively.
+        return datetime.now(timezone.utc) + timedelta(hours=1)
+
     def list_accounts(self, org: Dict[str, Any], token: Any) -> List[Dict[str, str]]:
         result = self._gcloud(["projects", "list", "--format=json"])
         if result["returncode"] != 0:

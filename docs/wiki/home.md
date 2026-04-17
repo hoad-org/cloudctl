@@ -67,5 +67,3 @@ Governance and process documentation.
 * [[Diagram Standards|diagrams]] — Standards for Mermaid and AWSDAC.
 
 ***
-
-**Would you like me to generate the `_Sidebar.md` file to match this new structure?**

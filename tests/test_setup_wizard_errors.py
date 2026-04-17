@@ -5,11 +5,27 @@ import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
-from awsctl import registry, shell, utils, wizard
+from awsctl import shell, utils, wizard
 from awsctl.wizard import inquirer
 
 
-# [FIX] Skip on Windows
+def _seq_mock(values):
+    """Return an inquirer factory whose .execute() yields *values* in order."""
+    it = iter(values)
+
+    def factory(**kw):
+        m = MagicMock()
+        m.execute.return_value = next(it)
+        return m
+
+    return factory
+
+
+# ---------------------------------------------------------------------------
+# Shell-function injection tests (unrelated to wizard flow)
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.skipif(os.name == "nt", reason="Sudo/chown logic is Posix only")
 def test_inject_shell_no_sudo_uid(monkeypatch, tmp_path):
     """Ensure chown is skipped if SUDO_UID is not present."""
@@ -23,69 +39,82 @@ def test_inject_shell_no_sudo_uid(monkeypatch, tmp_path):
         mock_chown.assert_not_called()
 
 
+# ---------------------------------------------------------------------------
+# Wizard write failure
+# ---------------------------------------------------------------------------
+
+
 def test_wizard_write_fail(monkeypatch, tmp_path, mock_rich_console):
-    """Test that the wizard returns False and prints an error when disk write fails."""
-    # 1. Setup mocks to bypass prompts
-    monkeypatch.setattr("awsctl.registry.get_registry", lambda: [{"name": "org"}])
+    """Wizard returns False and reports error when mkstemp fails."""
+    mock_org = {"name": "org", "provider": "aws"}
     monkeypatch.setattr(
-        registry, "get_choices", lambda: [{"name": "Org", "value": {"name": "org"}}]
+        "awsctl.wizard._load_registry_choices",
+        lambda: [{"name": "Org", "value": mock_org}],
     )
 
-    mock_cb = MagicMock()
-    mock_cb.execute.return_value = [{"name": "org"}]
-    monkeypatch.setattr(inquirer, "checkbox", lambda **k: mock_cb)
+    # checkbox: providers → ["aws"], registry → [mock_org]
+    monkeypatch.setattr(inquirer, "checkbox", _seq_mock([["aws"], [mock_org]]))
+    # confirm: no manual, yes save
+    monkeypatch.setattr(inquirer, "confirm", _seq_mock([False, True]))
 
-    # 2. Mock path and force write failure via mkstemp (used for atomic writes)
-    conf = tmp_path / "orgs.yaml"
-    monkeypatch.setattr("awsctl.config.get_orgs_path", lambda ensure=True: conf)
+    from awsctl import core
+    monkeypatch.setattr(core, "get_orgs_path", lambda ensure=True: tmp_path / "orgs.yaml")
 
     with patch("tempfile.mkstemp", side_effect=OSError("Write Fail")):
         assert wizard.run_wizard() is False
 
-    # 3. Verify capture
     output = "".join(mock_rich_console.captured)
-    assert "Failed to update config" in output
+    assert "Failed to write config" in output
     assert "Write Fail" in output
 
 
+# ---------------------------------------------------------------------------
+# AWS profile sync failure — non-fatal warning
+# ---------------------------------------------------------------------------
+
+
 def test_wizard_cli_sync_fail(monkeypatch, tmp_path, mock_rich_console):
-    """Test that the wizard continues but reports failure if profile sync fails."""
-    monkeypatch.setattr("awsctl.registry.get_registry", lambda: [{"name": "org"}])
+    """Sync failure is surfaced as a warning; wizard still returns True."""
+    mock_org = {"name": "org", "provider": "aws"}
     monkeypatch.setattr(
-        registry, "get_choices", lambda: [{"name": "Org", "value": {"name": "org"}}]
+        "awsctl.wizard._load_registry_choices",
+        lambda: [{"name": "Org", "value": mock_org}],
     )
 
-    mock_cb = MagicMock()
-    mock_cb.execute.return_value = [{"name": "org"}]
-    monkeypatch.setattr(inquirer, "checkbox", lambda **k: mock_cb)
+    # checkbox: providers → ["aws"], registry → [mock_org]
+    monkeypatch.setattr(inquirer, "checkbox", _seq_mock([["aws"], [mock_org]]))
+    # confirm: no manual, yes save, yes shell
+    monkeypatch.setattr(inquirer, "confirm", _seq_mock([False, True, True]))
 
-    # Mock the config path to a real temp location
-    monkeypatch.setattr(
-        "awsctl.config.get_orgs_path", lambda ensure=True: tmp_path / "orgs.yaml"
-    )
+    from awsctl import core
+    monkeypatch.setattr(core, "get_orgs_path", lambda ensure=True: tmp_path / "orgs.yaml")
+    monkeypatch.setattr(core, "cmd_config_sync", MagicMock(return_value=1))
+    monkeypatch.setattr(shell, "detect_shell_profile", lambda: tmp_path / "rc")
+    monkeypatch.setattr(shell, "inject_shell_function", lambda x: True)
 
-    # Force the sync command to return non-zero/fail
-    monkeypatch.setattr("awsctl.core.cmd_config_sync", MagicMock(return_value=1))
-    monkeypatch.setattr("awsctl.shell.detect_shell_profile", lambda: tmp_path / "rc")
-    monkeypatch.setattr("awsctl.shell.inject_shell_function", lambda x: True)
+    # Sync failure is a warning — wizard succeeds overall
+    assert wizard.run_wizard() is True
 
-    # If sync fails, the wizard should return False (non-zero exit)
-    assert wizard.run_wizard() is False
-    assert "Failed to sync profiles" in "".join(mock_rich_console.captured)
+    output = "".join(mock_rich_console.captured)
+    # Warning must be surfaced to the user
+    assert "awsctl doctor" in output
+
+
+# ---------------------------------------------------------------------------
+# Process-kill on timeout
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.skipif(os.name == "nt", reason="os.killpg is Posix only")
 def test_run_new_session_kill(monkeypatch):
-    """Test killpg is called correctly for timeouts."""
+    """killpg is called correctly on subprocess timeout."""
     monkeypatch.setattr("os.name", "posix")
 
-    # Implementation uses subprocess.run, so we mock that directly
     with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(["cmd"], 0.1)):
         with patch("os.killpg") as mock_killpg:
-            # Implementation uses os.getpgid(0) for session groups
             with patch("os.getpgid", return_value=999):
-                with pytest.raises(RuntimeError) as e:
+                with pytest.raises(RuntimeError) as exc:
                     utils.run(["sleep"], timeout=0.1, capture=True)
 
-                assert "timed out" in str(e.value).lower()
+                assert "timed out" in str(exc.value).lower()
                 mock_killpg.assert_called_with(999, signal.SIGKILL)

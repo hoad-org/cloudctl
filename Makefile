@@ -14,7 +14,7 @@ PYTEST      := $(POETRY) run pytest
 SRC         := $(SRC_DIR)
 TESTS       := $(TEST_DIR)
 
-.PHONY: all bootstrap check clean lint format docs manifest smoke security install help
+.PHONY: all bootstrap check clean lint format docs manifest smoke security install help publish-artifactory build
 
 all: install check
 
@@ -27,6 +27,8 @@ help:
 	@echo "make lint      : Run quality checks (Ruff, Black, Mypy)"
 	@echo "make format    : Auto-fix formatting and imports"
 	@echo "make security  : Run security audits (Checkov, Bandit, Pip-audit)"
+	@echo "make build     : Build wheel + sdist and verify with twine"
+	@echo "make publish-artifactory : Upload to Artifactory (requires ARTIFACTORY_URL + ARTIFACTORY_TOKEN)"
 
 install:
 	$(PIP) install -e .
@@ -78,3 +80,29 @@ clean:
 
 manifest:
 	$(PYTHON) $(MANIFEST_TOOL)
+
+build:
+	@echo "Building wheel and sdist..."
+	$(PYTHON) -m build
+	twine check dist/*
+	@echo "Build complete. Artifacts in dist/"
+
+publish-artifactory: build
+	@echo "Publishing to Artifactory..."
+	@if [ -z "$$ARTIFACTORY_URL" ]; then \
+		echo "ERROR: ARTIFACTORY_URL is not set."; \
+		echo "  export ARTIFACTORY_URL=https://org.jfrog.io/artifactory/api/pypi/awsctl-pypi/"; \
+		exit 1; \
+	fi
+	@if [ -z "$$ARTIFACTORY_TOKEN" ]; then \
+		echo "ERROR: ARTIFACTORY_TOKEN is not set."; \
+		exit 1; \
+	fi
+	twine upload \
+		--repository-url "$$ARTIFACTORY_URL" \
+		--username "$${ARTIFACTORY_USERNAME:-}" \
+		--password "$$ARTIFACTORY_TOKEN" \
+		--skip-existing \
+		dist/*
+	@echo "Done. Install with:"
+	@echo "  pip install awsctl --index-url $$ARTIFACTORY_URL"

@@ -61,6 +61,26 @@ class CloudProvider(ABC):
         """Terminate the active session. Returns exit code."""
         ...
 
+    def get_token_expiry(self, org: Dict[str, Any]) -> "Optional[Any]":
+        """
+        Return the expiry datetime for the active session, or None if unknown.
+
+        The default implementation calls load_token() and checks for an
+        expiresAt attribute (AWS SSO token pattern).  Providers that carry
+        expiry information in a different form should override this method.
+
+        Returns a timezone-aware datetime.datetime, or None.
+        """
+        from datetime import datetime, timezone
+
+        try:
+            token = self.load_token(org)
+            if token and hasattr(token, "expiresAt"):
+                return token.expiresAt
+        except Exception:
+            pass
+        return None
+
     def get_exports(
         self, org: Dict[str, Any], account: str, role: str, region: str
     ) -> str:

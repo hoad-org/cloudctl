@@ -53,7 +53,7 @@ def test_status_dashboard(monkeypatch, mock_rich_console):
 
     # 5. Verify output using unified mock_rich_console
     output = "".join(mock_rich_console.captured)
-    assert "AWS Active Context" in output
+    assert "AWS Context" in output
     assert "foo" in output
     assert "123" in output
 
