@@ -1,6 +1,6 @@
 {
-  "projectName": "Guardrails-Enabled Repository",
-  "description": "Enterprise-grade infrastructure with permanent guardrails",
+  "projectName": "Enterprise with Guardrails & Mandatory Atlassian",
+  "description": "Infrastructure enforcement + documentation + issue tracking",
   "hooks": {
     "preCommit": [
       {
@@ -18,13 +18,35 @@
       {
         "comment": "Require ADR for security changes",
         "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/require-adr-for-security-changes.sh"
+      },
+      {
+        "comment": "MANDATORY: Documentation in Confluence, not local markdown",
+        "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/require-confluence.sh"
+      },
+      {
+        "comment": "MANDATORY: Issues tracked in Jira, not TODO comments",
+        "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/require-jira.sh"
       }
     ],
     "postCommit": [
       {
         "comment": "Validate terraform state after commit",
         "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/validate-terraform-drift.sh"
+      },
+      {
+        "comment": "Suggest Confluence sync for new ADRs",
+        "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/update-confluence-adr.sh"
       }
     ]
-  }
+  },
+  "customCommands": {
+    "confluence-search": "Search Confluence: /confluence-search <query>",
+    "confluence-create": "Create Confluence page: /confluence-create --title <title> --space <space> --body <content>",
+    "confluence-update": "Update Confluence page: /confluence-update --page-id <id> --body <content>",
+    "jira-search": "Search Jira: /jira-search <query>",
+    "jira-create": "Create Jira issue: /jira-create --project <key> --type <type> --summary <summary> --description <desc>",
+    "jira-transition": "Transition Jira issue: /jira-transition <issue-key> --status <status>",
+    "jira-link": "Link Jira issues: /jira-link <from-key> <to-key> --type <type>"
+  },
+  "comment": "All hooks are MANDATORY (exit code 2) - no bypassing infrastructure, security, or Atlassian enforcement"
 }
