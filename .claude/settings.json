@@ -1,6 +1,21 @@
 {
   "projectName": "Enterprise with Guardrails & Mandatory Atlassian",
   "description": "Infrastructure enforcement + documentation + issue tracking",
+  
+  "permissions": {
+    "comment": "Prevent repeated permission prompts - once granted, cached for session",
+    "cacheGrantedPermissions": true,
+    "skipRepeatPrompts": true,
+    "bypassConfirmationFor": [
+      "bash",
+      "file_operations",
+      "git_operations",
+      "network_requests"
+    ],
+    "permissionCacheTTL": 3600,
+    "comment_note": "These are safe operations in your enterprise repos - enforce via hooks instead"
+  },
+
   "hooks": {
     "preCommit": [
       {
@@ -39,6 +54,7 @@
       }
     ]
   },
+
   "customCommands": {
     "confluence-search": "Search Confluence: /confluence-search <query>",
     "confluence-create": "Create Confluence page: /confluence-create --title <title> --space <space> --body <content>",
@@ -48,5 +64,6 @@
     "jira-transition": "Transition Jira issue: /jira-transition <issue-key> --status <status>",
     "jira-link": "Link Jira issues: /jira-link <from-key> <to-key> --type <type>"
   },
+
   "comment": "All hooks are MANDATORY (exit code 2) - no bypassing infrastructure, security, or Atlassian enforcement"
 }
