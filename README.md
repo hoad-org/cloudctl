@@ -1,4 +1,4 @@
-# awsctl v3.1.0 — Enterprise Cloud Identity & Context Manager
+# cloudctl v3.1.0 — Enterprise Cloud Identity & Context Manager
 
 [![OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/1/badge)](https://bestpractices.coreinfrastructure.org/projects/1)
 [![SLSA Aligned](https://slsa.dev/images/gh-badge-level2.svg)](https://slsa.dev)
@@ -16,7 +16,7 @@ Do **not** fork to public repositories or distribute binaries outside the corpor
 
 **Secure. Governed. Zero-Trust. Auditor-Ready.**
 
-`awsctl` is an enterprise security tool that provides controlled, auditable access to cloud accounts across **AWS, Microsoft Azure, and Google Cloud Platform** through each provider's native authentication mechanism.
+`cloudctl` is an enterprise security tool that provides controlled, auditable access to cloud accounts across **AWS, Microsoft Azure, and Google Cloud Platform** through each provider's native authentication mechanism.
 
 It delivers:
 
@@ -30,7 +30,7 @@ It delivers:
 
 ## 🛠 The Identity Engine: No Reinvented Wheels
 
-`awsctl` does **not** implement its own identity or cryptographic protocols.
+`cloudctl` does **not** implement its own identity or cryptographic protocols.
 It depends exclusively on **official AWS and open-source components**, ensuring compatibility, reliability, and security.
 
 - **Token Management:** Uses AWS CLI v2’s `~/.aws/sso/cache` for OIDC token persistence.
@@ -40,7 +40,7 @@ It depends exclusively on **official AWS and open-source components**, ensuring 
 - **Azure Credentials:** Short-lived access tokens are fetched via `az account get-access-token`, emitted as `ARM_*` / `AZURE_*` env vars.
 - **GCP Credentials:** Access tokens are fetched via `gcloud auth print-access-token`, emitted as `GOOGLE_*` / `CLOUDSDK_*` env vars.
 
-This ensures awsctl remains lightweight, secure, and natively compatible with AWS infrastructure.
+This ensures cloudctl remains lightweight, secure, and natively compatible with AWS infrastructure.
 
 ---
 
@@ -58,13 +58,13 @@ This ensures awsctl remains lightweight, secure, and natively compatible with AW
 
 ### 🛡️ Registry-Backed Governance
 
-- **Hydration Model:** awsctl loads configuration from a centrally managed governance registry.
+- **Hydration Model:** cloudctl loads configuration from a centrally managed governance registry.
 - **Hybrid Integrity:**
   - *Pilot Mode (Current):* Relies on administrative control of distributed registries.
   - *Tier 3 (Future):* Adopts signed Minisign manifest validation anchored to an Ed25519 public key.
 - **Region Locking:** Prevents interactive use in non-approved AWS regions.
 - **Bypass Notes:** If users are authorized to use `aws` CLI directly, client enforcement can be bypassed—SCPs and Organization policies must remain active.
-- **Plugin Sandboxing:** Enforces namespace boundaries (`awsctl.plugins.*`) to prevent untrusted execution through plugin tampering.
+- **Plugin Sandboxing:** Enforces namespace boundaries (`cloudctl.plugins.*`) to prevent untrusted execution through plugin tampering.
 
 ---
 
@@ -74,7 +74,7 @@ The **Split-Plane Architecture** addresses the core limitation of CLI tools:
 child processes cannot mutate their parent shell’s environment.
 
 - **Shell Wrapper (Data Plane):** Injected into `.zshrc` or `.bashrc`; intercepts commands for real-time context bridging.
-- **Bash Shim (Control Plane):** POSIX binary (`/usr/local/bin/awsctl`) that routes commands and enforces safety constraints.
+- **Bash Shim (Control Plane):** POSIX binary (`/usr/local/bin/cloudctl`) that routes commands and enforces safety constraints.
 - **Python Core:** Executes AWS SDK/CLI logic and emits environment variables.
 - **The Bridge:** For mutating commands (e.g., `switch`), the core emits `export` statements that the wrapper applies via `eval`.
 
@@ -86,25 +86,25 @@ This design guarantees security, portability, and full session-level context con
 
 ### 🎯 Trust Boundaries
 
-awsctl defines and enforces clear operational trust assumptions:
+cloudctl defines and enforces clear operational trust assumptions:
 
 | Boundary | Trust Level | Description |
 |-----------|-------------|-------------|
 | **Workstation** | Untrusted | The local endpoint is considered semi-trusted; malicious software could potentially access environment variables. |
 | **Shell Environment** | Limited-Trust | Considered the boundary for session mutability; secure only against unauthorized shell commands, not local memory scraping. |
 | **Registry** | Trusted Anchor | Configuration integrity and signed manifests originate here. |
-| **Identity Provider (IdP)** | Trusted | Delegated trust boundary connecting awsctl to the enterprise authentication system (AWS SSO / SAML). |
+| **Identity Provider (IdP)** | Trusted | Delegated trust boundary connecting cloudctl to the enterprise authentication system (AWS SSO / SAML). |
 
 ---
 
 ### 🚫 Non-Goals
 
-awsctl **does not** replace or duplicate other enterprise systems:
+cloudctl **does not** replace or duplicate other enterprise systems:
 
 - **Privileged Access Management (PAM):** It does not manage IdP passwords or MFA policies.
-- **Service Control Policies (SCPs):** Enforcement remains server-side; awsctl acts as a complementary client guardrail.
-- **IAM Policy Design:** awsctl does not define or modify permissions; it enforces existing governance.
-- **Runtime Guardrails:** Once valid credentials are assumed, awsctl does not prevent intended AWS operations.
+- **Service Control Policies (SCPs):** Enforcement remains server-side; cloudctl acts as a complementary client guardrail.
+- **IAM Policy Design:** cloudctl does not define or modify permissions; it enforces existing governance.
+- **Runtime Guardrails:** Once valid credentials are assumed, cloudctl does not prevent intended AWS operations.
 
 ---
 
@@ -121,7 +121,7 @@ awsctl **does not** replace or duplicate other enterprise systems:
 
 ### Option A: GitHub Release — direct wheel download (recommended)
 
-awsctl is distributed as a wheel attached to each [GitHub Release](https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl/releases).
+cloudctl is distributed as a wheel attached to each [GitHub Release](https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-cloudctl/releases).
 You need a GitHub [Personal Access Token (PAT)](https://github.com/settings/tokens) with
 `read:contents` (or `repo`) scope to access the private repository.
 
@@ -145,13 +145,13 @@ Or install manually in one command:
 # macOS / Linux / WSL2 — one-liner (queries the Releases API, downloads the wheel)
 export GITHUB_TOKEN=ghp_your_token_here
 RELEASE=$(curl -sf -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-  https://api.github.com/repos/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl/releases/latest)
+  https://api.github.com/repos/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-cloudctl/releases/latest)
 WHEEL_URL=$(echo "${RELEASE}" | python3 -c \
   "import sys,json; d=json.load(sys.stdin); print(next(a['url'] for a in d['assets'] if a['name'].endswith('.whl')))")
 curl -sf -L -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-  -H "Accept: application/octet-stream" "${WHEEL_URL}" -o /tmp/awsctl.whl
-pip3 install --user /tmp/awsctl.whl --extra-index-url "https://pypi.org/simple/"
-awsctl init --shell-only
+  -H "Accept: application/octet-stream" "${WHEEL_URL}" -o /tmp/cloudctl.whl
+pip3 install --user /tmp/cloudctl.whl --extra-index-url "https://pypi.org/simple/"
+cloudctl init --shell-only
 ```
 
 ---
@@ -164,8 +164,8 @@ when `GITHUB_TOKEN` is set, then injects the shell wrapper.
 ```bash
 export GITHUB_TOKEN=ghp_your_token_here
 
-git clone https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl.git
-cd aws-terraform-infra-cloudops-awsctl
+git clone https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-cloudctl.git
+cd aws-terraform-infra-cloudops-cloudctl
 bash install.sh
 ```
 
@@ -179,8 +179,8 @@ adds the user Scripts directory to PATH for the session, and injects the shell w
 ```powershell
 $env:GITHUB_TOKEN = "ghp_your_token_here"
 
-git clone https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl.git
-cd aws-terraform-infra-cloudops-awsctl
+git clone https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-cloudctl.git
+cd aws-terraform-infra-cloudops-cloudctl
 .\install.ps1
 ```
 
@@ -191,9 +191,9 @@ Downloads the latest release wheel from GitHub Releases and injects the PowerShe
 ### Post-install: first-time setup
 
 ```bash
-awsctl init         # full interactive wizard — configure orgs + shell wrapper
+cloudctl init         # full interactive wizard — configure orgs + shell wrapper
 # OR
-awsctl org add      # add a single org interactively (auth-first for Azure/GCP)
+cloudctl org add      # add a single org interactively (auth-first for Azure/GCP)
 ```
 
 ---
@@ -201,21 +201,21 @@ awsctl org add      # add a single org interactively (auth-first for Azure/GCP)
 ### Upgrading
 
 Once installed, upgrade in place without cloning the repo.
-`awsctl upgrade` queries the GitHub Releases API, downloads the latest wheel, and runs `pip install --upgrade`:
+`cloudctl upgrade` queries the GitHub Releases API, downloads the latest wheel, and runs `pip install --upgrade`:
 
 ```bash
 # macOS / Linux / WSL2
 export GITHUB_TOKEN=ghp_your_token_here
-awsctl upgrade
+cloudctl upgrade
 
 # Windows PowerShell
 $env:GITHUB_TOKEN = "ghp_your_token_here"
-awsctl upgrade
+cloudctl upgrade
 ```
 
 `GITHUB_TOKEN` must have `read:contents` (or `repo`) scope on the repository.
 
-`awsctl upgrade` queries the GitHub Releases API, downloads the latest wheel, and installs it via pip.
+`cloudctl upgrade` queries the GitHub Releases API, downloads the latest wheel, and installs it via pip.
 
 ---
 
@@ -225,26 +225,26 @@ Once your team has access to the JFrog Artifactory instance, you can upgrade wit
 
 ```bash
 # Set once (add to ~/.zshrc / ~/.bashrc to persist)
-export AWSCTL_INDEX_URL=https://your-org.jfrog.io/artifactory/api/pypi/awsctl-pypi/simple/
+export AWSCTL_INDEX_URL=https://your-org.jfrog.io/artifactory/api/pypi/cloudctl-pypi/simple/
 
 # Then upgrade like any pip package
-awsctl upgrade
+cloudctl upgrade
 
 # Or pass the URL inline
-awsctl upgrade --index-url https://your-org.jfrog.io/artifactory/api/pypi/awsctl-pypi/simple/
+cloudctl upgrade --index-url https://your-org.jfrog.io/artifactory/api/pypi/cloudctl-pypi/simple/
 ```
 
 `install.sh` also reads `AWSCTL_INDEX_URL` for fresh installs:
 
 ```bash
-export AWSCTL_INDEX_URL=https://your-org.jfrog.io/artifactory/api/pypi/awsctl-pypi/simple/
+export AWSCTL_INDEX_URL=https://your-org.jfrog.io/artifactory/api/pypi/cloudctl-pypi/simple/
 bash install.sh
 ```
 
 Publishing to Artifactory (maintainers only):
 
 ```bash
-export ARTIFACTORY_URL=https://your-org.jfrog.io/artifactory/api/pypi/awsctl-pypi/
+export ARTIFACTORY_URL=https://your-org.jfrog.io/artifactory/api/pypi/cloudctl-pypi/
 export ARTIFACTORY_TOKEN=<your-identity-token>
 make publish-artifactory
 ```
@@ -255,16 +255,16 @@ make publish-artifactory
 
 ```bash
 # Interactive — prompts before removing anything
-awsctl uninstall
+cloudctl uninstall
 
 # Preview what would be removed without changing anything
-awsctl uninstall --dry-run
+cloudctl uninstall --dry-run
 
 # Remove only the package, leave shell integration intact
-awsctl uninstall --package-only
+cloudctl uninstall --package-only
 
-# Remove everything but keep ~/.config/awsctl/ (context, config)
-awsctl uninstall --keep-config
+# Remove everything but keep ~/.config/cloudctl/ (context, config)
+cloudctl uninstall --keep-config
 ```
 
 Or use the shell scripts directly:
@@ -281,99 +281,99 @@ bash uninstall.sh   # macOS / Linux / WSL
 ### Authentication
 
 ```bash
-awsctl login <org>          # Authenticate (SSO / az login / gcloud auth login)
-awsctl login bt-avm --force # Force re-authentication even if token is still valid
-awsctl logout               # Clear active session and unset all credential env vars
+cloudctl login <org>          # Authenticate (SSO / az login / gcloud auth login)
+cloudctl login bt-avm --force # Force re-authentication even if token is still valid
+cloudctl logout               # Clear active session and unset all credential env vars
 ```
 
 ### Context switching
 
 ```bash
-awsctl switch               # Interactive picker: org → account → role → region
-awsctl switch bt-avm        # Skip org picker, go straight to account/role selection
-awsctl switch bt-avm --account 111111111111 --role AdminAccess --region us-east-1
-awsctl switch @prod         # Restore a named alias (configured in orgs.yaml)
-awsctl switch -             # Switch back to the previous context (like cd -)
-awsctl use bt-avm           # Alias for switch
+cloudctl switch               # Interactive picker: org → account → role → region
+cloudctl switch bt-avm        # Skip org picker, go straight to account/role selection
+cloudctl switch bt-avm --account 111111111111 --role AdminAccess --region us-east-1
+cloudctl switch @prod         # Restore a named alias (configured in orgs.yaml)
+cloudctl switch -             # Switch back to the previous context (like cd -)
+cloudctl use bt-avm           # Alias for switch
 ```
 
 ### Credential injection (without changing shell context)
 
 ```bash
 # Run any command with fresh credentials for a specific org
-awsctl exec --org bt-avm -- terraform plan
-awsctl exec --org fdr-gvc --account 222222222222 --role ReadOnly -- aws s3 ls
+cloudctl exec --org bt-avm -- terraform plan
+cloudctl exec --org fdr-gvc --account 222222222222 --role ReadOnly -- aws s3 ls
 
 # Without --org, uses active context
-awsctl exec -- aws sts get-caller-identity
+cloudctl exec -- aws sts get-caller-identity
 ```
 
 ### Status and identity
 
 ```bash
-awsctl status               # Show active context: org, account, role, region, expiry
-awsctl env                  # Alias for status
-awsctl whoami               # Show caller identity via STS (AWS) or provider CLI
+cloudctl status               # Show active context: org, account, role, region, expiry
+cloudctl env                  # Alias for status
+cloudctl whoami               # Show caller identity via STS (AWS) or provider CLI
 ```
 
 ### Background credential refresh
 
 ```bash
 # Keep credentials alive in a dedicated terminal pane
-awsctl watch                # Watch active context, refresh 15 min before expiry
-awsctl watch bt-avm         # Watch a specific org
-awsctl watch --interval 30  # Check every 30 seconds instead of 60
-awsctl watch --threshold 1800  # Refresh when 30 minutes remain (instead of 15)
-awsctl watch --once         # Check once and exit (useful for CI health checks)
+cloudctl watch                # Watch active context, refresh 15 min before expiry
+cloudctl watch bt-avm         # Watch a specific org
+cloudctl watch --interval 30  # Check every 30 seconds instead of 60
+cloudctl watch --threshold 1800  # Refresh when 30 minutes remain (instead of 15)
+cloudctl watch --once         # Check once and exit (useful for CI health checks)
 ```
 
 ### Shell prompt integration
 
 ```bash
 # Print current context for PS1 (outputs nothing when no context active)
-awsctl prompt               # ☁ bt-avm (111111111111/AdminAccess/us-east-1)
-awsctl prompt --short       # ☁ bt-avm
-awsctl prompt --json        # {"provider":"aws","org":"bt-avm","account":"..."}
-awsctl prompt --warn-expiry 30  # Show ⚠ when < 30 minutes remain
+cloudctl prompt               # ☁ bt-avm (111111111111/AdminAccess/us-east-1)
+cloudctl prompt --short       # ☁ bt-avm
+cloudctl prompt --json        # {"provider":"aws","org":"bt-avm","account":"..."}
+cloudctl prompt --warn-expiry 30  # Show ⚠ when < 30 minutes remain
 
 # Get a ready-to-paste snippet for your prompt tool
-awsctl prompt --starship    # Prints ~/.config/starship.toml fragment
-awsctl prompt --p10k        # Prints ~/.p10k.zsh segment function
+cloudctl prompt --starship    # Prints ~/.config/starship.toml fragment
+cloudctl prompt --p10k        # Prints ~/.p10k.zsh segment function
 
 # Add to .zshrc/.bashrc (minimal, no extra dependencies)
-PS1='$(awsctl prompt --short 2>/dev/null) '"$PS1"
+PS1='$(cloudctl prompt --short 2>/dev/null) '"$PS1"
 ```
 
 ### Configuration management
 
 ```bash
-awsctl init                 # Full interactive setup wizard
-awsctl init --shell-only    # Inject shell wrapper only (no org wizard)
-awsctl org add              # Add a new org interactively
-awsctl org list             # List all configured orgs
-awsctl org remove <name>    # Remove an org from config
-awsctl accounts <org>       # List accessible accounts/subscriptions/projects
+cloudctl init                 # Full interactive setup wizard
+cloudctl init --shell-only    # Inject shell wrapper only (no org wizard)
+cloudctl org add              # Add a new org interactively
+cloudctl org list             # List all configured orgs
+cloudctl org remove <name>    # Remove an org from config
+cloudctl accounts <org>       # List accessible accounts/subscriptions/projects
 ```
 
 ### Shell tab completion
 
 ```bash
 # Print activation instructions for your shell
-awsctl completion           # Auto-detects bash/zsh/fish
-awsctl completion --shell zsh
-awsctl completion --install # Write activation line to your shell profile automatically
+cloudctl completion           # Auto-detects bash/zsh/fish
+cloudctl completion --shell zsh
+cloudctl completion --install # Write activation line to your shell profile automatically
 ```
 
-After setup, restart your shell and press Tab after any `awsctl` subcommand.
+After setup, restart your shell and press Tab after any `cloudctl` subcommand.
 
 ### Maintenance
 
 ```bash
-awsctl doctor               # Full system health check (tools, shell, permissions, network)
-awsctl doctor --fix-path    # Also attempt to repair missing PATH entries
-awsctl upgrade              # Upgrade to latest release (GitHub or Artifactory)
-awsctl upgrade --index-url <url>   # Upgrade from a specific Artifactory index
-awsctl open                 # Open the cloud console for the active org in your browser
+cloudctl doctor               # Full system health check (tools, shell, permissions, network)
+cloudctl doctor --fix-path    # Also attempt to repair missing PATH entries
+cloudctl upgrade              # Upgrade to latest release (GitHub or Artifactory)
+cloudctl upgrade --index-url <url>   # Upgrade from a specific Artifactory index
+cloudctl open                 # Open the cloud console for the active org in your browser
 ```
 
 ---
@@ -382,7 +382,7 @@ awsctl open                 # Open the cloud console for the active org in your 
 
 ### 🔑 Token Length & Expiry
 **Q:** How long do my credentials last?
-**A:** By default, awsctl requests 12-hour session tokens, aligned with AWS Identity Center defaults.
+**A:** By default, cloudctl requests 12-hour session tokens, aligned with AWS Identity Center defaults.
 
 ---
 
@@ -396,7 +396,7 @@ awsctl open                 # Open the cloud console for the active org in your 
 
 ### 📝 Log Governance
 **“Break Glass” Logs:**
-- Saved at `~/.awsctl/audit.log`
+- Saved at `~/.cloudctl/audit.log`
 - Format: `ISO8601 | ORGANIZATION | ROLE | REASON`
 - Input Sanitation: Prevents injection or control characters in logs.
 **Recommendation:** Forward logs to a centralized SIEM for retention and compliance integrity.
@@ -404,8 +404,8 @@ awsctl open                 # Open the cloud console for the active org in your 
 ---
 
 ### 📁 Protecting Token Folders
-awsctl reuses AWS CLI’s official SSO cache.
-`awsctl doctor` validates that cache permissions are set to `0600` to prevent unauthorized local access.
+cloudctl reuses AWS CLI’s official SSO cache.
+`cloudctl doctor` validates that cache permissions are set to `0600` to prevent unauthorized local access.
 
 ---
 
@@ -424,9 +424,9 @@ awsctl reuses AWS CLI’s official SSO cache.
 
 ## 🔐 Security & Compliance
 
-awsctl aligns with security frameworks used across high-assurance enterprise and government environments.
+cloudctl aligns with security frameworks used across high-assurance enterprise and government environments.
 
-| Framework | Control | awsctl Implementation |
+| Framework | Control | cloudctl Implementation |
 |-----------|----------|-----------------------|
 | **NIST 800-53** | **AC-3** | Region and Role allow-list enforcement in the client registry. |
 | **NIST 800-53** | **IA-5** | No static credentials on disk—ephemeral session tokens only. |
@@ -438,16 +438,16 @@ awsctl aligns with security frameworks used across high-assurance enterprise and
 ## 📜 Changelog (v3.1.0)
 
 ### New commands
-- **FEATURE:** `awsctl prompt` — compact cloud context string for PS1, Starship, and Powerlevel10k. Supports `--short`, `--json`, `--starship`, `--p10k`, `--no-icon`, `--warn-expiry`. Silent when no context is active.
-- **FEATURE:** `awsctl watch` — background credential refresh loop; re-authenticates when token falls below `--threshold` (default 15 min). Works for AWS, Azure, and GCP. Supports `--interval`, `--threshold`, `--once`.
-- **FEATURE:** `awsctl switch -` — restore the previous context instantly (analogous to `cd -`).
-- **FEATURE:** `awsctl exec --org` — run a command with credentials for a specific org without changing the active shell context. Interactive account/role picker when `--account`/`--role` are omitted.
-- **FEATURE:** `awsctl env` — alias for `awsctl status`.
-- **FEATURE:** `awsctl completion` — print shell tab-completion activation snippet for bash/zsh/fish. `--install` writes the activation line to your shell profile automatically.
-- **FEATURE:** `awsctl uninstall` — guided uninstaller with `--dry-run`, `--keep-config`, and `--package-only` flags. Correctly removes the multi-line shell wrapper function from all detected profiles.
+- **FEATURE:** `cloudctl prompt` — compact cloud context string for PS1, Starship, and Powerlevel10k. Supports `--short`, `--json`, `--starship`, `--p10k`, `--no-icon`, `--warn-expiry`. Silent when no context is active.
+- **FEATURE:** `cloudctl watch` — background credential refresh loop; re-authenticates when token falls below `--threshold` (default 15 min). Works for AWS, Azure, and GCP. Supports `--interval`, `--threshold`, `--once`.
+- **FEATURE:** `cloudctl switch -` — restore the previous context instantly (analogous to `cd -`).
+- **FEATURE:** `cloudctl exec --org` — run a command with credentials for a specific org without changing the active shell context. Interactive account/role picker when `--account`/`--role` are omitted.
+- **FEATURE:** `cloudctl env` — alias for `cloudctl status`.
+- **FEATURE:** `cloudctl completion` — print shell tab-completion activation snippet for bash/zsh/fish. `--install` writes the activation line to your shell profile automatically.
+- **FEATURE:** `cloudctl uninstall` — guided uninstaller with `--dry-run`, `--keep-config`, and `--package-only` flags. Correctly removes the multi-line shell wrapper function from all detected profiles.
 
 ### Artifactory support
-- **FEATURE:** `awsctl upgrade --index-url <url>` — upgrade from a JFrog Artifactory PyPI repo instead of GitHub Releases. Also reads `AWSCTL_INDEX_URL` env var. Uses `pipx runpip` for isolated-venv installs.
+- **FEATURE:** `cloudctl upgrade --index-url <url>` — upgrade from a JFrog Artifactory PyPI repo instead of GitHub Releases. Also reads `AWSCTL_INDEX_URL` env var. Uses `pipx runpip` for isolated-venv installs.
 - **FEATURE:** `install.sh` reads `AWSCTL_INDEX_URL` for fresh installs from Artifactory.
 - **FEATURE:** `.github/workflows/publish-artifactory.yaml` — manual/tag-triggered workflow to publish the wheel to Artifactory (guarded by `ARTIFACTORY_CONFIGURED` repo variable until access is provisioned).
 - **FEATURE:** `make build` and `make publish-artifactory` Makefile targets.
@@ -455,24 +455,24 @@ awsctl aligns with security frameworks used across high-assurance enterprise and
 
 ### Provider improvements
 - **FEATURE:** `get_token_expiry()` added to `CloudProvider` base class. Azure overrides it via `az account get-access-token` (real expiry). GCP overrides it to return `now + 1h` (tokens are exactly 1hr; gcloud auto-refreshes). AWS uses existing `expiresAt` on the SSO token object.
-- **FIX:** `awsctl watch` now supports Azure and GCP with real expiry data, not just "expiry unknown".
+- **FIX:** `cloudctl watch` now supports Azure and GCP with real expiry data, not just "expiry unknown".
 
 ### Install / setup
 - **FEATURE:** `install.sh` — pipx-first install (PEP 668 safe), falls back to pip with `--break-system-packages` when supported. WSL browser guidance for SSO flows. `AWSCTL_INDEX_URL` support.
-- **FEATURE:** `awsctl init` wizard now shows inline field guidance (where to find SSO URL, Tenant ID, Project ID) directly in the prompts.
+- **FEATURE:** `cloudctl init` wizard now shows inline field guidance (where to find SSO URL, Tenant ID, Project ID) directly in the prompts.
 
 ### Bug fixes
-- **FIX:** `awsctl switch -` routing — `cmd_switch` was checking `args.target` but the parser stored the arg as `args.org`; switch-back never triggered.
-- **FIX:** `awsctl exec --org` routing — `cmd_exec` dispatched to the old handler that ignored `exec_org`/`exec_account`; now delegates to `ExecCommand`.
-- **FIX:** `awsctl env` subparser was missing from `_build_parser()`; argparse would reject the command.
-- **FIX:** `awsctl doctor` NTP check — `socket.create_connection("pool.ntp.org", 123)` hangs indefinitely on corporate networks with port 123 filtered. Replaced with `concurrent.futures` + `time.cloudflare.com:443` with a 3-second hard timeout.
+- **FIX:** `cloudctl switch -` routing — `cmd_switch` was checking `args.target` but the parser stored the arg as `args.org`; switch-back never triggered.
+- **FIX:** `cloudctl exec --org` routing — `cmd_exec` dispatched to the old handler that ignored `exec_org`/`exec_account`; now delegates to `ExecCommand`.
+- **FIX:** `cloudctl env` subparser was missing from `_build_parser()`; argparse would reject the command.
+- **FIX:** `cloudctl doctor` NTP check — `socket.create_connection("pool.ntp.org", 123)` hangs indefinitely on corporate networks with port 123 filtered. Replaced with `concurrent.futures` + `time.cloudflare.com:443` with a 3-second hard timeout.
 - **FIX:** Shell wrapper — previously passed `--eval` to ALL commands; `doctor` output was sourced as shell code. Wrapper now only eval-sources `switch`/`use`/`logout`; all other commands stream directly.
-- **FIX:** `awsctl uninstall` shell profile removal — previous implementation only removed the marker line and `awsctl() {` header, leaving the full function body. Replaced with `_remove_awsctl_blocks()`: index-based algorithm that correctly handles multi-line function blocks and single-line eval commands.
-- **FIX:** `awsctl upgrade` Artifactory pipx path — `pipx upgrade --pip-args` does not reliably pass index URL; replaced with `pipx runpip awsctl install --upgrade`.
+- **FIX:** `cloudctl uninstall` shell profile removal — previous implementation only removed the marker line and `cloudctl() {` header, leaving the full function body. Replaced with `_remove_cloudctl_blocks()`: index-based algorithm that correctly handles multi-line function blocks and single-line eval commands.
+- **FIX:** `cloudctl upgrade` Artifactory pipx path — `pipx upgrade --pip-args` does not reliably pass index URL; replaced with `pipx runpip cloudctl install --upgrade`.
 - **CHORE:** Deleted dead `commands/switch.py::SwitchCommand` (never dispatched; `cmd_switch` in `cli.py` is the real implementation).
 
 ### Quality
-- **TEST:** 89 new tests covering: `awsctl prompt`, `awsctl watch`, `awsctl switch -`, `awsctl exec --org`, token expiry display, `_remove_awsctl_blocks`, `awsctl completion`, `awsctl uninstall`. Total: **431 tests passing**.
+- **TEST:** 89 new tests covering: `cloudctl prompt`, `cloudctl watch`, `cloudctl switch -`, `cloudctl exec --org`, token expiry display, `_remove_cloudctl_blocks`, `cloudctl completion`, `cloudctl uninstall`. Total: **431 tests passing**.
 - **CHORE:** `argcomplete>=3.0` added as dependency; `_build_parser()` registers completions automatically.
 
 ---
@@ -499,11 +499,11 @@ awsctl aligns with security frameworks used across high-assurance enterprise and
 ## 📜 Changelog (v3.0.2)
 
 - **FIX (security):** All shell-exported credential variables now sanitized with `shlex.quote()` in both `use_exports.py` (AWS legacy path) and `providers/base.py` (Azure/GCP path).
-- **FIX:** Audit log (`~/.awsctl/audit.log`) created with explicit `0600` permissions.
+- **FIX:** Audit log (`~/.cloudctl/audit.log`) created with explicit `0600` permissions.
 - **FIX:** `cmd_exec` no longer misreports clean `SystemExit(0)` from nested providers as a credential failure.
 - **FIX:** Azure RBAC query failure now shows a visible warning when falling back to `Contributor` default.
-- **FIX:** `awsctl switch` with no configured orgs now mentions `awsctl org add` as an option.
-- **FIX:** `pip install` subprocess in `awsctl upgrade` now has a 300-second timeout.
+- **FIX:** `cloudctl switch` with no configured orgs now mentions `cloudctl org add` as an option.
+- **FIX:** `pip install` subprocess in `cloudctl upgrade` now has a 300-second timeout.
 - **CHORE:** `pyproject.toml` — added PyPI classifiers and URLs.
 - **CHORE:** GitHub community files added: `CONTRIBUTING.md`, `PULL_REQUEST_TEMPLATE.md`, issue templates.
 - **CHORE:** `CODEOWNERS` extended to cover all security-sensitive source paths.
@@ -520,19 +520,19 @@ awsctl aligns with security frameworks used across high-assurance enterprise and
 ## 📜 Changelog (v3.0.0)
 
 ### Lifecycle completeness
-- **FEATURE:** `awsctl org add` — auth-first interactive wizard; logs into AWS/Azure/GCP first, then discovers subscriptions/projects live for the picker.
-- **FEATURE:** `awsctl org list` — tabular view of all configured orgs with provider label and key identifier (SSO URL / tenant ID / project ID).
-- **FEATURE:** `awsctl org remove` — removes an org entry from orgs.yaml.
-- **FEATURE:** `awsctl init --shell-only` — non-interactive flag to inject the shell wrapper only (no wizard); used by Homebrew `post_install` and CI.
-- **FEATURE:** `awsctl doctor` — full health-check implementation; `check_tool`, `check_aws_version`, `check_shell_integration`, `check_permissions`, `check_time_sync`, `check_network_ssl`, `check_wsl_performance` all return `(bool, str)` tuples; `run_diagnostics` prints sectioned System Health Check report.
-- **FEATURE:** `Formula/awsctl.rb` — Homebrew formula with hermetic virtualenv install, shim scripts, and `post_install` shell integration.
-- **FIX:** `uninstall.sh` now removes awsctl-managed `[sso-session <name>]` sections from `~/.aws/config`.
+- **FEATURE:** `cloudctl org add` — auth-first interactive wizard; logs into AWS/Azure/GCP first, then discovers subscriptions/projects live for the picker.
+- **FEATURE:** `cloudctl org list` — tabular view of all configured orgs with provider label and key identifier (SSO URL / tenant ID / project ID).
+- **FEATURE:** `cloudctl org remove` — removes an org entry from orgs.yaml.
+- **FEATURE:** `cloudctl init --shell-only` — non-interactive flag to inject the shell wrapper only (no wizard); used by Homebrew `post_install` and CI.
+- **FEATURE:** `cloudctl doctor` — full health-check implementation; `check_tool`, `check_aws_version`, `check_shell_integration`, `check_permissions`, `check_time_sync`, `check_network_ssl`, `check_wsl_performance` all return `(bool, str)` tuples; `run_diagnostics` prints sectioned System Health Check report.
+- **FEATURE:** `Formula/cloudctl.rb` — Homebrew formula with hermetic virtualenv install, shim scripts, and `post_install` shell integration.
+- **FIX:** `uninstall.sh` now removes cloudctl-managed `[sso-session <name>]` sections from `~/.aws/config`.
 
 ### Cross-cloud
 - **FEATURE:** Cross-cloud provider support — Azure and GCP alongside AWS via a unified `CloudProvider` interface.
-- **FEATURE:** Native PowerShell shell wrapper (`awsctl` PS function) — full Split-Plane support on Windows without WSL.
-- **FEATURE:** Fish shell wrapper — `~/.config/fish/functions/awsctl.fish` auto-installed via `awsctl init`.
-- **FEATURE:** `awsctl init` wizard detects the running shell (bash/zsh/PowerShell/fish) and installs the appropriate wrapper.
+- **FEATURE:** Native PowerShell shell wrapper (`cloudctl` PS function) — full Split-Plane support on Windows without WSL.
+- **FEATURE:** Fish shell wrapper — `~/.config/fish/functions/cloudctl.fish` auto-installed via `cloudctl init`.
+- **FEATURE:** `cloudctl init` wizard detects the running shell (bash/zsh/PowerShell/fish) and installs the appropriate wrapper.
 - **FEATURE:** `provider` field in org config selects the cloud backend (`aws` | `azure` | `gcp`; defaults to `aws` for backward compatibility).
 
 ### Quality

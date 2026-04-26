@@ -27,7 +27,7 @@
 - [x] **Remote Registry (GitOps):** Load `registry.json` from a signed S3/HTTPS URL to update guardrails without rebuilding the binary.
 - [x] **Pinned Trust Anchor:** Hardcoded Public Key enforcement for Remote Registry (Trust Downgrade prevention).
 - [x] **Break Glass Audit:** Intercept sensitive role assumptions (e.g., `AdministratorAccess`) and require a justification ticket/reason.
-- [x] **Quick Switch Aliases:** Support `@alias` syntax (e.g., `awsctl switch @prod-db`).
+- [x] **Quick Switch Aliases:** Support `@alias` syntax (e.g., `cloudctl switch @prod-db`).
 - [x] **Min Version Enforcement:** Registry-driven policy to force client upgrades (block login if version < X).
 
 ---
@@ -41,7 +41,7 @@ The goal is to decouple the core "Context Bridge" shell integration from AWS-spe
 ### 3.1 Core Abstraction (The Adapter Pattern)
 - [ ] **Abstract Base Class:** Create `AuthProvider` interface defining `login()`, `get_credentials()`, and `list_contexts()`.
 - [ ] **Config Schema V2:** Update `orgs.yaml` and Registry to support a `provider: aws|gcp|azure` field.
-- [ ] **AWS Adapter:** Move existing `boto3`/SSO logic into `src/awsctl/providers/aws.py`.
+- [ ] **AWS Adapter:** Move existing `boto3`/SSO logic into `src/cloudctl/providers/aws.py`.
 
 ### 3.2 Shell Integration V2
 - [ ] **Generic Exports:** Update shell wrapper to handle provider-agnostic export maps (e.g., mapping generic `ACCESS_TOKEN` to `AWS_SESSION_TOKEN` or `CLOUDSDK_AUTH_ACCESS_TOKEN`).
@@ -70,7 +70,7 @@ Google Cloud shares the "Environment Variable" authentication model with AWS, ma
 - [ ] **Splunk/Datadog Forwarder:** Optional plugin to emit structured JSON audit logs to a local agent.
 
 ### 5.2 "Headless" Session Management
-- [ ] **Session Refresh:** `awsctl refresh --background` to attempt token renewal without browser interaction (if refresh token is valid).
+- [ ] **Session Refresh:** `cloudctl refresh --background` to attempt token renewal without browser interaction (if refresh token is valid).
 - [ ] **Docker Credential Helper:** Expose a local socket or credential helper binary compatible with `docker-credential-ecr-login`.
 
 ### 5.3 Policy as Code (OPA)
@@ -84,6 +84,6 @@ Google Cloud shares the "Environment Variable" authentication model with AWS, ma
 
 Upon achieving multi-cloud parity (AWS + GCP), the tool will be renamed to reflect its provider-agnostic nature.
 
-- [ ] **Rename Binary:** Migrate `awsctl` -> `ssoctl`.
-- [ ] **Unified Config:** Migrate `~/.awsctl` -> `~/.ssoctl`.
-- [ ] **Legacy Alias:** Provide `awsctl` alias for backward compatibility.
+- [ ] **Rename Binary:** Migrate `cloudctl` -> `ssoctl`.
+- [ ] **Unified Config:** Migrate `~/.cloudctl` -> `~/.ssoctl`.
+- [ ] **Legacy Alias:** Provide `cloudctl` alias for backward compatibility.

@@ -6,33 +6,33 @@ These target logic paths that are OS-agnostic but missed by main suites.
 
 from unittest.mock import MagicMock, patch
 
-from awsctl import core, doctor, utils
+from cloudctl import core, doctor, utils
 
 
 def test_login_force_flag(mock_rich_console, monkeypatch):
     """Cover the 'force=True' path in cmd_login."""
     # 1. Setup happy path for config
     monkeypatch.setattr(
-        "awsctl.config.get_org",
+        "cloudctl.config.get_org",
         lambda x: {"name": "test", "sso_start_url": "u", "sso_region": "r"},
     )
     # Patch both the aws module AND the provider's imported reference.
     # providers/aws.py does 'from ..aws import ensure_sso_base_profile', so
-    # patching only awsctl.aws won't intercept the call inside the provider.
-    monkeypatch.setattr("awsctl.aws.ensure_sso_base_profile", lambda x: "p")
-    monkeypatch.setattr("awsctl.providers.aws.ensure_sso_base_profile", lambda x: "p")
-    monkeypatch.setattr("awsctl.aws._resolve_aws_cli", lambda: "aws")
+    # patching only cloudctl.aws won't intercept the call inside the provider.
+    monkeypatch.setattr("cloudctl.aws.ensure_sso_base_profile", lambda x: "p")
+    monkeypatch.setattr("cloudctl.providers.aws.ensure_sso_base_profile", lambda x: "p")
+    monkeypatch.setattr("cloudctl.aws._resolve_aws_cli", lambda: "aws")
 
     # 2. Mock successful execution
     # Implementation expects a dict return from utils.run
     monkeypatch.setattr(
-        "awsctl.utils.run", lambda *a, **k: {"returncode": 0, "stdout": ""}
+        "cloudctl.utils.run", lambda *a, **k: {"returncode": 0, "stdout": ""}
     )
 
     # 3. Mock token loading
     # cmd_login checks for an active token to verify login was successful
     monkeypatch.setattr(
-        "awsctl.core.load_active_sso_token", lambda *a, **k: MagicMock()
+        "cloudctl.core.load_active_sso_token", lambda *a, **k: MagicMock()
     )
 
     # 4. Run with force=True (skips "Already logged in" check)
@@ -47,15 +47,15 @@ def test_login_force_flag(mock_rich_console, monkeypatch):
 def test_doctor_network_fail(mock_rich_console, monkeypatch):
     """Cover the failure branch in doctor network check."""
     # 1. Mock standard checks to pass
-    monkeypatch.setattr("awsctl.doctor.check_permissions", lambda: (True, "ok"))
-    monkeypatch.setattr("awsctl.doctor.check_aws_version", lambda: (True, "ok"))
-    monkeypatch.setattr("awsctl.doctor.check_shell_integration", lambda: (True, "ok"))
-    monkeypatch.setattr("awsctl.doctor.check_time_sync", lambda: (True, "ok"))
-    monkeypatch.setattr("awsctl.doctor.check_tool", lambda x: (True, "ok"))
+    monkeypatch.setattr("cloudctl.doctor.check_permissions", lambda: (True, "ok"))
+    monkeypatch.setattr("cloudctl.doctor.check_aws_version", lambda: (True, "ok"))
+    monkeypatch.setattr("cloudctl.doctor.check_shell_integration", lambda: (True, "ok"))
+    monkeypatch.setattr("cloudctl.doctor.check_time_sync", lambda: (True, "ok"))
+    monkeypatch.setattr("cloudctl.doctor.check_tool", lambda x: (True, "ok"))
 
     # 2. Fail the network check specifically
     monkeypatch.setattr(
-        "awsctl.doctor.check_network_ssl", lambda: (False, "Timeout Error")
+        "cloudctl.doctor.check_network_ssl", lambda: (False, "Timeout Error")
     )
 
     # 3. Run diagnostics

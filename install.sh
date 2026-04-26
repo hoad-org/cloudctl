@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — awsctl installer for macOS, Linux, and WSL2 (bash / zsh / fish)
+# install.sh — cloudctl installer for macOS, Linux, and WSL2 (bash / zsh / fish)
 # For Windows PowerShell, run install.ps1 instead.
 #
 # Install order of preference:
@@ -47,7 +47,7 @@ _check_python() {
 }
 
 PYTHON_BIN=$(_check_python) || {
-    _red "❌ awsctl requires Python 3.12 or newer."
+    _red "❌ cloudctl requires Python 3.12 or newer."
     echo "   Detected: $(python3 --version 2>&1 || echo 'Python not found')"
     echo ""
     echo "   Install Python 3.12+:"
@@ -71,15 +71,15 @@ if _is_wsl; then
     _yellow "⚠  WSL detected."
     echo "   SSO login flows open a browser. For best results:"
     echo "   • Ensure 'wslu' is installed:  sudo apt install wslu"
-    echo "   • Or manually visit the URL printed during 'awsctl login <org>'"
+    echo "   • Or manually visit the URL printed during 'cloudctl login <org>'"
     echo ""
 fi
 
 GITHUB_ORG="BT-IT-Infrastructure-CloudOps"
-GITHUB_REPO="aws-terraform-infra-cloudops-awsctl"
+GITHUB_REPO="aws-terraform-infra-cloudops-cloudctl"
 API_BASE="https://api.github.com/repos/${GITHUB_ORG}/${GITHUB_REPO}"
 
-echo "🚀 Starting awsctl installation..."
+echo "🚀 Starting cloudctl installation..."
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -93,7 +93,7 @@ _install_via_pipx() {
     echo "   Installing via pipx (recommended)..."
 
     if [[ -n "${AWSCTL_INDEX_URL:-}" ]]; then
-        pipx install awsctl \
+        pipx install cloudctl \
             --index-url "${AWSCTL_INDEX_URL}" \
             --pip-args "--extra-index-url https://pypi.org/simple/"
     elif [[ -n "${GITHUB_TOKEN:-}" ]]; then
@@ -125,7 +125,7 @@ if not whl:
 print(whl['url'])
 ")
 
-    TMP_WHL=$(mktemp --suffix=.whl 2>/dev/null || mktemp -t awsctl.XXXXXX.whl)
+    TMP_WHL=$(mktemp --suffix=.whl 2>/dev/null || mktemp -t cloudctl.XXXXXX.whl)
     echo "   Downloading wheel..."
     curl -sf \
         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
@@ -145,7 +145,7 @@ _install_via_pip() {
 
     if [[ -n "${AWSCTL_INDEX_URL:-}" ]]; then
         echo "   Installing from Artifactory: ${AWSCTL_INDEX_URL}"
-        "$PYTHON_BIN" -m pip "${pip_args[@]}" awsctl \
+        "$PYTHON_BIN" -m pip "${pip_args[@]}" cloudctl \
             --index-url "${AWSCTL_INDEX_URL}" \
             --extra-index-url "https://pypi.org/simple/"
     elif [[ -n "${GITHUB_TOKEN:-}" ]]; then
@@ -190,8 +190,8 @@ echo "🐚 Installing shell integration..."
 
 "$PYTHON_BIN" - <<'PYEOF'
 import sys
-from awsctl.env_detection import detect_shell
-from awsctl import shell
+from cloudctl.env_detection import detect_shell
+from cloudctl import shell
 
 detected = detect_shell()
 if detected == "fish":
@@ -217,8 +217,8 @@ PYEOF
 # 3. Completion message
 # ---------------------------------------------------------------------------
 RELOAD_CMD=$("$PYTHON_BIN" - <<'PYEOF'
-from awsctl.env_detection import detect_shell
-from awsctl import shell
+from cloudctl.env_detection import detect_shell
+from cloudctl import shell
 detected = detect_shell()
 if detected == "fish":
     print("fish: functions are reloaded automatically")
@@ -235,16 +235,16 @@ echo "   Reload your shell:"
 echo "     ${RELOAD_CMD}"
 echo ""
 echo "   Then run:"
-echo "     awsctl --version"
-echo "     awsctl doctor"
-echo "     awsctl init          # run setup wizard"
+echo "     cloudctl --version"
+echo "     cloudctl doctor"
+echo "     cloudctl init          # run setup wizard"
 echo ""
 if [[ -n "${AWSCTL_INDEX_URL:-}" ]]; then
-    echo "   To upgrade:  awsctl upgrade"
+    echo "   To upgrade:  cloudctl upgrade"
 elif [[ -n "${GITHUB_TOKEN:-}" ]]; then
-    echo "   To upgrade:  awsctl upgrade   (requires GITHUB_TOKEN)"
+    echo "   To upgrade:  cloudctl upgrade   (requires GITHUB_TOKEN)"
 else
-    echo "   To upgrade:  export AWSCTL_INDEX_URL=<your-artifactory-url> && awsctl upgrade"
+    echo "   To upgrade:  export AWSCTL_INDEX_URL=<your-artifactory-url> && cloudctl upgrade"
 fi
 echo ""
 echo "💡 Windows (PowerShell) users: run  .\\install.ps1  instead."

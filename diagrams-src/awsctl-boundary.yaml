@@ -1,4 +1,4 @@
-#### file: docs/diagrams/awsctl-boundary.yaml
+#### file: docs/diagrams/cloudctl-boundary.yaml
 Diagram:
   DefinitionFiles:
     - Type: URL
@@ -17,16 +17,16 @@ Diagram:
       Title: "Local Workstation (Execution Plane)"
       Children:
         - UserShell
-        - awsctl
+        - cloudctl
         - LocalCache
 
     UserShell:
       Type: AWS::Groups::GenericGroup
       Title: "User Shell"
 
-    awsctl:
+    cloudctl:
       Type: AWS::DeveloperTools::CommandLineInterface
-      Title: "awsctl (Identity Broker)"
+      Title: "cloudctl (Identity Broker)"
 
     LocalCache:
       Type: AWS::Storage::SimpleStorageService
@@ -54,20 +54,20 @@ Diagram:
 
   Links:
     - Source: UserShell
-      Target: awsctl
+      Target: cloudctl
       Label: "Invokes"
-    - Source: awsctl
+    - Source: cloudctl
       Target: IdentityCenter
       Label: "SSO Auth"
     - Source: IdentityCenter
-      Target: awsctl
+      Target: cloudctl
       Label: "SAML/OIDC"
-    - Source: awsctl
+    - Source: cloudctl
       Target: STS
       Label: "AssumeRole"
     - Source: STS
-      Target: awsctl
+      Target: cloudctl
       Label: "Credentials"
-    - Source: awsctl
+    - Source: cloudctl
       Target: TargetAccounts
       Label: "API Calls"

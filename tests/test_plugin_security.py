@@ -12,7 +12,7 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from unittest.mock import MagicMock, patch
 
 import pytest
-from awsctl import aws, plugins, sso_cache, utils
+from cloudctl import aws, plugins, sso_cache, utils
 
 
 def test_plugin_security_block(mock_rich_console):
@@ -26,7 +26,7 @@ def test_plugin_security_block(mock_rich_console):
 def test_plugin_import_error(mock_rich_console):
     mock_rich_console.clear()
     with pytest.raises(SystemExit):
-        plugins.load_plugins(["awsctl.plugins.missing"])
+        plugins.load_plugins(["cloudctl.plugins.missing"])
     assert "Failed to load" in "".join(mock_rich_console.captured)
 
 
@@ -116,7 +116,7 @@ def test_load_token_permission_error(tmp_path):
 def test_config_lock_timeout(tmp_path, monkeypatch):
     # [FIX] Point to a file that can have a .lock sibling
     cfg_file = tmp_path / "config"
-    monkeypatch.setattr("awsctl.aws.AWS_CONFIG", cfg_file)
+    monkeypatch.setattr("cloudctl.aws.AWS_CONFIG", cfg_file)
 
     # Simulate a stale lock
     lock_file = cfg_file.with_suffix(".lock")
@@ -133,7 +133,7 @@ def test_unsafe_config_check(tmp_path, monkeypatch):
     cfg = tmp_path / "config"
     # Test expects detection of 'include'
     cfg.write_text("include = /etc/passwd\n[default]\n", encoding="utf-8")
-    monkeypatch.setattr("awsctl.aws.AWS_CONFIG", cfg)
+    monkeypatch.setattr("cloudctl.aws.AWS_CONFIG", cfg)
 
     with pytest.raises(RuntimeError) as e:
         # [FIX] Signature allows 0 arguments, defaulting to AWS_CONFIG

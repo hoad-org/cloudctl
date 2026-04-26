@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from awsctl.context_manager import _format_expiry
+from cloudctl.context_manager import _format_expiry
 
 
 # ---------------------------------------------------------------------------
@@ -84,28 +84,28 @@ class TestPrintStatus:
         return ctx
 
     def test_no_context_prints_warning(self):
-        from awsctl import utils
+        from cloudctl import utils
         messages = []
 
-        with patch("awsctl.context_manager.load_context", return_value={}):
+        with patch("cloudctl.context_manager.load_context", return_value={}):
             with patch.object(utils.console, "print", side_effect=lambda *a, **_: messages.append(str(a[0]) if a else "")):
-                from awsctl.context_manager import print_status
+                from cloudctl.context_manager import print_status
                 print_status()
 
         combined = " ".join(messages)
         assert "No active" in combined or "context" in combined.lower()
 
     def test_status_shows_org_and_account(self):
-        from awsctl import utils
+        from cloudctl import utils
         messages = []
         mock_provider = MagicMock()
         mock_provider.load_token.return_value = None
 
-        with patch("awsctl.context_manager.load_context", return_value=self._make_ctx()):
-            with patch("awsctl.config.get_org", return_value={"provider": "aws"}):
-                with patch("awsctl.providers.get_provider", return_value=mock_provider):
+        with patch("cloudctl.context_manager.load_context", return_value=self._make_ctx()):
+            with patch("cloudctl.config.get_org", return_value={"provider": "aws"}):
+                with patch("cloudctl.providers.get_provider", return_value=mock_provider):
                     with patch.object(utils.console, "print", side_effect=lambda *a, **_: messages.append(str(a[0]) if a else "")):
-                        from awsctl.context_manager import print_status
+                        from cloudctl.context_manager import print_status
                         print_status()
 
         combined = " ".join(messages)
@@ -113,7 +113,7 @@ class TestPrintStatus:
         assert "111111111111" in combined
 
     def test_previous_context_hint_shown(self):
-        from awsctl import utils
+        from cloudctl import utils
         messages = []
         mock_provider = MagicMock()
         mock_provider.load_token.return_value = None
@@ -125,11 +125,11 @@ class TestPrintStatus:
             "region": "us-gov-east-1",
         })
 
-        with patch("awsctl.context_manager.load_context", return_value=ctx):
-            with patch("awsctl.config.get_org", return_value={"provider": "aws"}):
-                with patch("awsctl.providers.get_provider", return_value=mock_provider):
+        with patch("cloudctl.context_manager.load_context", return_value=ctx):
+            with patch("cloudctl.config.get_org", return_value={"provider": "aws"}):
+                with patch("cloudctl.providers.get_provider", return_value=mock_provider):
                     with patch.object(utils.console, "print", side_effect=lambda *a, **_: messages.append(str(a[0]) if a else "")):
-                        from awsctl.context_manager import print_status
+                        from cloudctl.context_manager import print_status
                         print_status()
 
         combined = " ".join(messages)
@@ -137,18 +137,18 @@ class TestPrintStatus:
         assert "switch -" in combined or "switch" in combined
 
     def test_expiry_shown_when_token_has_expiry(self):
-        from awsctl import utils
+        from cloudctl import utils
         messages = []
         mock_token = MagicMock()
         mock_token.expiresAt = datetime.now(timezone.utc) + timedelta(hours=2)
         mock_provider = MagicMock()
         mock_provider.load_token.return_value = mock_token
 
-        with patch("awsctl.context_manager.load_context", return_value=self._make_ctx()):
-            with patch("awsctl.config.get_org", return_value={"provider": "aws"}):
-                with patch("awsctl.providers.get_provider", return_value=mock_provider):
+        with patch("cloudctl.context_manager.load_context", return_value=self._make_ctx()):
+            with patch("cloudctl.config.get_org", return_value={"provider": "aws"}):
+                with patch("cloudctl.providers.get_provider", return_value=mock_provider):
                     with patch.object(utils.console, "print", side_effect=lambda *a, **_: messages.append(str(a[0]) if a else "")):
-                        from awsctl.context_manager import print_status
+                        from cloudctl.context_manager import print_status
                         print_status()
 
         combined = " ".join(messages)

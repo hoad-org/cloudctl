@@ -1,5 +1,5 @@
 """
-tests/test_exec_org.py — Unit tests for `awsctl exec --org`.
+tests/test_exec_org.py — Unit tests for `cloudctl exec --org`.
 
 Covers:
   - --org without --account/--role triggers interactive picker
@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from awsctl.commands.exec import ExecCommand
+from cloudctl.commands.exec import ExecCommand
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@ class TestExecNoContext:
         messages = []
         ec.console.print.side_effect = lambda m, **_: messages.append(str(m))
 
-        with patch("awsctl.commands.exec.load_context", return_value={}):
+        with patch("cloudctl.commands.exec.load_context", return_value={}):
             rc = ec.execute(args)
 
         assert rc == 1
@@ -75,7 +75,7 @@ class TestExecNoContext:
         messages = []
         ec.console.print.side_effect = lambda m, **_: messages.append(str(m))
 
-        with patch("awsctl.commands.exec.load_context", return_value={}):
+        with patch("cloudctl.commands.exec.load_context", return_value={}):
             rc = ec.execute(args)
 
         assert rc == 1
@@ -97,11 +97,11 @@ class TestExecOrgFlag:
         mock_provider = MagicMock()
         mock_provider.get_credentials.return_value = _CREDS
 
-        with patch("awsctl.commands.exec.load_context", return_value={}):
-            with patch("awsctl.commands.exec.get_org", return_value=_ORG_DATA):
-                with patch("awsctl.providers.get_provider", return_value=mock_provider):
+        with patch("cloudctl.commands.exec.load_context", return_value={}):
+            with patch("cloudctl.commands.exec.get_org", return_value=_ORG_DATA):
+                with patch("cloudctl.providers.get_provider", return_value=mock_provider):
                     with patch("subprocess.run", return_value=mock_result):
-                        with patch("awsctl.interactive.run_interactive_use") as mock_interactive:
+                        with patch("cloudctl.interactive.run_interactive_use") as mock_interactive:
                             rc = ec.execute(args)
 
         # Interactive should NOT be called when account+role are provided
@@ -116,12 +116,12 @@ class TestExecOrgFlag:
         mock_provider = MagicMock()
         mock_provider.get_credentials.return_value = _CREDS
 
-        with patch("awsctl.commands.exec.load_context", return_value={}):
-            with patch("awsctl.commands.exec.get_org", return_value=_ORG_DATA):
-                with patch("awsctl.providers.get_provider", return_value=mock_provider):
+        with patch("cloudctl.commands.exec.load_context", return_value={}):
+            with patch("cloudctl.commands.exec.get_org", return_value=_ORG_DATA):
+                with patch("cloudctl.providers.get_provider", return_value=mock_provider):
                     with patch("subprocess.run", return_value=mock_result):
                         with patch(
-                            "awsctl.interactive.run_interactive_use",
+                            "cloudctl.interactive.run_interactive_use",
                             return_value=("111111111111", "AdminAccess", "us-east-1"),
                         ) as mock_interactive:
                             rc = ec.execute(args)
@@ -133,8 +133,8 @@ class TestExecOrgFlag:
         ec = _make_cmd()
         args = _make_args(org="nonexistent", account="111", role="Role", region="us-east-1")
 
-        with patch("awsctl.commands.exec.load_context", return_value={}):
-            with patch("awsctl.commands.exec.get_org", side_effect=Exception("not found")):
+        with patch("cloudctl.commands.exec.load_context", return_value={}):
+            with patch("cloudctl.commands.exec.get_org", side_effect=Exception("not found")):
                 rc = ec.execute(args)
 
         assert rc == 1
@@ -143,10 +143,10 @@ class TestExecOrgFlag:
         ec = _make_cmd()
         args = _make_args(org="bt-avm")
 
-        with patch("awsctl.commands.exec.load_context", return_value={}):
-            with patch("awsctl.commands.exec.get_org", return_value=_ORG_DATA):
+        with patch("cloudctl.commands.exec.load_context", return_value={}):
+            with patch("cloudctl.commands.exec.get_org", return_value=_ORG_DATA):
                 with patch(
-                    "awsctl.interactive.run_interactive_use",
+                    "cloudctl.interactive.run_interactive_use",
                     return_value=(None, None, None),
                 ):
                     rc = ec.execute(args)
@@ -178,9 +178,9 @@ class TestExecSubprocess:
             called_env.update(env)
             return mock_result
 
-        with patch("awsctl.commands.exec.load_context", return_value=ctx):
-            with patch("awsctl.commands.exec.get_org", return_value=_ORG_DATA):
-                with patch("awsctl.providers.get_provider", return_value=mock_provider):
+        with patch("cloudctl.commands.exec.load_context", return_value=ctx):
+            with patch("cloudctl.commands.exec.get_org", return_value=_ORG_DATA):
+                with patch("cloudctl.providers.get_provider", return_value=mock_provider):
                     with patch("subprocess.run", side_effect=_capture_run):
                         rc = ec.execute(args)
 
@@ -191,9 +191,9 @@ class TestExecSubprocess:
     def test_nonzero_returncode_propagated(self):
         ec, args, ctx, mock_result, mock_provider = self._setup_exec(["false"], returncode=2)
 
-        with patch("awsctl.commands.exec.load_context", return_value=ctx):
-            with patch("awsctl.commands.exec.get_org", return_value=_ORG_DATA):
-                with patch("awsctl.providers.get_provider", return_value=mock_provider):
+        with patch("cloudctl.commands.exec.load_context", return_value=ctx):
+            with patch("cloudctl.commands.exec.get_org", return_value=_ORG_DATA):
+                with patch("cloudctl.providers.get_provider", return_value=mock_provider):
                     with patch("subprocess.run", return_value=mock_result):
                         rc = ec.execute(args)
 
@@ -202,9 +202,9 @@ class TestExecSubprocess:
     def test_file_not_found_returns_127(self):
         ec, args, ctx, _, mock_provider = self._setup_exec(["nonexistent-cmd"])
 
-        with patch("awsctl.commands.exec.load_context", return_value=ctx):
-            with patch("awsctl.commands.exec.get_org", return_value=_ORG_DATA):
-                with patch("awsctl.providers.get_provider", return_value=mock_provider):
+        with patch("cloudctl.commands.exec.load_context", return_value=ctx):
+            with patch("cloudctl.commands.exec.get_org", return_value=_ORG_DATA):
+                with patch("cloudctl.providers.get_provider", return_value=mock_provider):
                     with patch("subprocess.run", side_effect=FileNotFoundError):
                         rc = ec.execute(args)
 
@@ -217,9 +217,9 @@ class TestExecSubprocess:
         mock_provider = MagicMock()
         mock_provider.get_credentials.side_effect = RuntimeError("STS error")
 
-        with patch("awsctl.commands.exec.load_context", return_value=ctx):
-            with patch("awsctl.commands.exec.get_org", return_value=_ORG_DATA):
-                with patch("awsctl.providers.get_provider", return_value=mock_provider):
+        with patch("cloudctl.commands.exec.load_context", return_value=ctx):
+            with patch("cloudctl.commands.exec.get_org", return_value=_ORG_DATA):
+                with patch("cloudctl.providers.get_provider", return_value=mock_provider):
                     rc = ec.execute(args)
 
         assert rc == 1

@@ -6,7 +6,7 @@ Direct tests for cli_accounts to boost coverage.
 import json
 
 import pytest
-from awsctl import accounts, cli_accounts
+from cloudctl import accounts, cli_accounts
 
 
 @pytest.fixture()

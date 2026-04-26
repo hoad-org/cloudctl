@@ -2,7 +2,7 @@
 
 # 📖 Docs-as-Code Contract
 
-This document defines the **Docs-as-Code contract** for `awsctl`. It specifies how documentation is authored, published, and maintained as a first-class citizen of the system.
+This document defines the **Docs-as-Code contract** for `cloudctl`. It specifies how documentation is authored, published, and maintained as a first-class citizen of the system.
 
 This document is authoritative.
 
@@ -10,13 +10,13 @@ This document is authoritative.
 
 ## 🏗️ Core Assertion
 
-Documentation for `awsctl` is **part of the system**, not commentary about it. If documentation is wrong, the system is wrong.
+Documentation for `cloudctl` is **part of the system**, not commentary about it. If documentation is wrong, the system is wrong.
 
 ---
 
 ## 🎯 Why Docs-as-Code Exists
 
-`awsctl` is a security-sensitive and audit-relevant tool. In such systems, unmanaged documentation becomes a technical liability. 
+`cloudctl` is a security-sensitive and audit-relevant tool. In such systems, unmanaged documentation becomes a technical liability. 
 
 **Docs-as-Code ensures:**
 * **Versioning:** Documentation matches the specific state of the code.
@@ -96,7 +96,7 @@ Documentation can **block a release**. During review, maintainers must verify th
 
 ## 📝 Summary
 
-`awsctl` documentation is code-adjacent, review-gated, and auditable. If documentation is allowed to drift, the system becomes unsafe. This contract exists to ensure that the "Root of Trust" is always clearly defined and verifiable.
+`cloudctl` documentation is code-adjacent, review-gated, and auditable. If documentation is allowed to drift, the system becomes unsafe. This contract exists to ensure that the "Root of Trust" is always clearly defined and verifiable.
 
 > [!IMPORTANT]
-> By contributing to `awsctl`, you agree to uphold this contract. Documentation debt is treated with the same severity as technical debt.
+> By contributing to `cloudctl`, you agree to uphold this contract. Documentation debt is treated with the same severity as technical debt.

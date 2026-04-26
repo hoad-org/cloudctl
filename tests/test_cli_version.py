@@ -16,7 +16,7 @@ def _metadata_version() -> str:
     try:
         from importlib.metadata import version as pkg_version
 
-        return pkg_version("awsctl").strip()
+        return pkg_version("cloudctl").strip()
     except Exception:
         return ""
 
@@ -25,9 +25,9 @@ def _attr_version() -> str:
     """Attempt to get version from package attributes."""
     try:
         # [FIX] Most common locations for version strings
-        import awsctl
+        import cloudctl
 
-        return getattr(awsctl, "__version__", "") or ""
+        return getattr(cloudctl, "__version__", "") or ""
     except Exception:
         return ""
 
@@ -44,7 +44,7 @@ def test_version_reporting():
     try:
         # [FIX] Added timeout and stderr redirection for stability
         out = subprocess.check_output(
-            [sys.executable, "-m", "awsctl", "--version"],
+            [sys.executable, "-m", "cloudctl", "--version"],
             text=True,
             stderr=subprocess.STDOUT,
             timeout=5,
@@ -55,7 +55,7 @@ def test_version_reporting():
     # [FIX] Strengthened assertions to ensure we aren't getting empty strings
     # or generic help text.
     has_valid_version = bool(ver and ver != "0.0.0")
-    has_valid_output = any(x in out.lower() for x in ["awsctl", "version"])
+    has_valid_output = any(x in out.lower() for x in ["cloudctl", "version"])
 
     assert has_valid_version or has_valid_output or "0.0.0" in out
 
@@ -64,7 +64,7 @@ def test_version_fallback_logic(monkeypatch):
     """
     Ensures that if metadata is missing, the CLI logic handles it gracefully.
     """
-    from awsctl import cli
+    from cloudctl import cli
 
     # Mock the case where package metadata is missing
     with patch("importlib.metadata.version", side_effect=Exception("Missing")):

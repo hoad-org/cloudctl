@@ -1,15 +1,15 @@
 # file: docs/ADMIN_GUIDE.md
 # Administrator Guide
 
-This guide describes how platform, security, and cloud foundation teams manage and control `awsctl` across an engineering organization.
-`awsctl` follows a **Registry-backed Hydration Model**.
+This guide describes how platform, security, and cloud foundation teams manage and control `cloudctl` across an engineering organization.
+`cloudctl` follows a **Registry-backed Hydration Model**.
 This means the authoritative definitions of organizations, URLs, regions, and guardrails live centrally in the Registry (either Embedded or Remote).
 
 ---
 
 ## 1. Architecture Overview
 
-### 1.1 User Enablement File (`~/.awsctl/orgs.yaml`)
+### 1.1 User Enablement File (`~/.cloudctl/orgs.yaml`)
 
 **Scope:** User preference & **Manual Configuration (Pilot)**
 **Content:** Lists enabled orgs and full definitions (during Pilot).
@@ -25,14 +25,14 @@ This means the authoritative definitions of organizations, URLs, regions, and gu
 
 ### 1.2 Corporate Registry (Future State)
 **Scope:** Immutable policy (Source of Truth)
-Currently, `src/awsctl/registry.py` contains a **Placeholder**.
+Currently, `src/cloudctl/registry.py` contains a **Placeholder**.
 The authoritative configuration is in the repository.
 
 ---
 
 ## 2. Registry Strategy (Tiered Security)
 
-You can deploy `awsctl` configuration in three ways:
+You can deploy `cloudctl` configuration in three ways:
 
 | Tier | Type | Config Location | Security | Best For |
 | :--- | :--- | :--- | :--- | :--- |
@@ -46,7 +46,7 @@ You can deploy `awsctl` configuration in three ways:
 2.  **Pipeline:** On merge to `main`, sign the JSON using `minisign` and a secured private key.
 3.  **Publish:** Upload `registry.json` and `registry.json.minisig` to a public-read S3 bucket.
 4.  **Client:** Users simply configure the `url` in `orgs.yaml`.
-    - **Trust Anchor:** The Minisign **Public Key** is pinned inside the `awsctl` binary (`src/awsctl/registry.py`).
+    - **Trust Anchor:** The Minisign **Public Key** is pinned inside the `cloudctl` binary (`src/cloudctl/registry.py`).
     - **Security:** Even if a user's `orgs.yaml` is compromised, the client will **reject** any payload not signed by your private key.
 
 ---
@@ -55,7 +55,7 @@ You can deploy `awsctl` configuration in three ways:
 
 If using the Embedded Registry strategy (or updating core application logic):
 
-1. Modify Registry/Code: `vim src/awsctl/registry.py`
+1. Modify Registry/Code: `vim src/cloudctl/registry.py`
 2. **[PATCH] Run full CI suite (Mandatory Security Checks):**
    - `make lint`
    - `make typecheck`
@@ -63,7 +63,7 @@ If using the Embedded Registry strategy (or updating core application logic):
    - `make test`
 3. Commit: `git commit -m "chore(registry): update prod guardrails"`
 4. Tag release: `git tag -a v2.8.1; git push origin v2.8.1`
-5. Developers upgrade: `pipx upgrade awsctl`
+5. Developers upgrade: `pipx upgrade cloudctl`
 
 ---
 
@@ -93,13 +93,13 @@ Runs before login. If a plugin fails (e.g., VPN check), login aborts.
 
 ### 4.4 Namespace Enforcement
 
-All plugins must reside in `awsctl.plugins.*`. Arbitrary code execution via other namespaces is blocked.
+All plugins must reside in `cloudctl.plugins.*`. Arbitrary code execution via other namespaces is blocked.
 
 ### 4.5 TTY Guard (Operational Safety)
 
 The binary detects if it is running in an interactive terminal during an export operation.
 If detected, it refuses to print credentials to the screen.
-This operational control applies to **`awsctl switch`** and **`awsctl exec`** when the binary is incorrectly run directly.
+This operational control applies to **`cloudctl switch`** and **`cloudctl exec`** when the binary is incorrectly run directly.
 
 ### 4.6 Break Glass Audit (v2.5+)
 
@@ -109,9 +109,9 @@ Definition:
 
 Behavior:
 
-- When a user selects this role, `awsctl` halts.
+- When a user selects this role, `cloudctl` halts.
 - Prompts: `Justification (Ticket # / Reason):`.
-- Logs the response to `~/.awsctl/audit.log` (and CloudTrail via session tags).
+- Logs the response to `~/.cloudctl/audit.log` (and CloudTrail via session tags).
 
 ### 4.7 Client Version Enforcement (v2.5+)
 

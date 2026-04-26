@@ -3,7 +3,7 @@
 Tests for Registry logic (Manual Mode vs Remote).
 """
 
-from awsctl import config, registry
+from cloudctl import config, registry
 
 
 def test_get_registry_manual_override(monkeypatch):
@@ -30,7 +30,7 @@ def test_get_registry_remote_fallback(monkeypatch, mock_rich_console):
     # 2. Mock the remote loader
     # The signature must match registry_loader.fetch_remote_registry(url, public_key)
     monkeypatch.setattr(
-        "awsctl.registry_loader.fetch_remote_registry",
+        "cloudctl.registry_loader.fetch_remote_registry",
         lambda url, public_key=None: [{"name": "remote"}],
     )
 

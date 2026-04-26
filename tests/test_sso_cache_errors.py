@@ -6,7 +6,7 @@ Tests for sso_cache.py error handling.
 import json
 
 import pytest
-from awsctl.sso_cache import OrgRef, load_active_sso_token
+from cloudctl.sso_cache import OrgRef, load_active_sso_token
 
 
 def test_corrupt_cache_file(tmp_path):

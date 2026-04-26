@@ -1,17 +1,17 @@
 # 🚀 Getting Started
 
-This page provides a **minimal, safe introduction** to `awsctl`. It is intentionally limited; `awsctl` is a security-sensitive tool, and this page is not a general tutorial.
+This page provides a **minimal, safe introduction** to `cloudctl`. It is intentionally limited; `cloudctl` is a security-sensitive tool, and this page is not a general tutorial.
 
 ---
 
-## 🏗️ What awsctl Is
+## 🏗️ What cloudctl Is
 
-`awsctl` is a **client-side identity broker** for AWS, Microsoft Azure, and Google Cloud Platform. It helps humans select approved accounts and assume short-lived credentials safely while enforcing organizational guardrails.
+`cloudctl` is a **client-side identity broker** for AWS, Microsoft Azure, and Google Cloud Platform. It helps humans select approved accounts and assume short-lived credentials safely while enforcing organizational guardrails.
 
 
 
 **Key Constraints:**
-- **No Authentication:** `awsctl` does not authenticate users.
+- **No Authentication:** `cloudctl` does not authenticate users.
 - **No Persistence:** It does **not** store credentials on disk.
 - **No Authority:** It does **not** grant permissions or replace IAM.
 
@@ -19,7 +19,7 @@ This page provides a **minimal, safe introduction** to `awsctl`. It is intention
 
 ## 📋 Prerequisites
 
-Before using `awsctl`, you must already possess the underlying authority:
+Before using `cloudctl`, you must already possess the underlying authority:
 
 * Access to your organization’s **Identity Provider** (e.g., AWS IAM Identity Center).
 * At least one **AWS role** you are permitted to assume.
@@ -29,26 +29,26 @@ Before using `awsctl`, you must already possess the underlying authority:
 **For Azure orgs:** Azure CLI (`az`) installed and authenticated via `az login`.
 **For GCP orgs:** gcloud SDK installed and authenticated via `gcloud auth login`.
 
-`awsctl` will not create or fix these foundational requirements.
+`cloudctl` will not create or fix these foundational requirements.
 
 ---
 
 ## 📥 Installation
 
-Install `awsctl` using the approved method for your specific environment.
+Install `cloudctl` using the approved method for your specific environment.
 
 **Example (macOS, Homebrew):**
 ```bash
-brew install awsctl
+brew install cloudctl
 ```
 
 **Verify installation:**
 ```bash
-awsctl version
-awsctl doctor
+cloudctl version
+cloudctl doctor
 ```
 > [!CAUTION]
-> If `awsctl doctor` reports any errors, **do not proceed**. Resolve environmental issues first.
+> If `cloudctl doctor` reports any errors, **do not proceed**. Resolve environmental issues first.
 
 ---
 
@@ -57,10 +57,10 @@ awsctl doctor
 Start with a read-only command to verify your local configuration:
 
 ```bash
-awsctl status
+cloudctl status
 ```
 
-This command confirms `awsctl` can see your identity context **without** changing AWS state or modifying your local environment variables.
+This command confirms `cloudctl` can see your identity context **without** changing AWS state or modifying your local environment variables.
 
 ---
 
@@ -69,13 +69,13 @@ This command confirms `awsctl` can see your identity context **without** changin
 To transition into an AWS account or role:
 
 ```bash
-awsctl switch
+cloudctl switch
 ```
 
 
 
 **The Broker Sequence:**
-1.  `awsctl` displays available accounts and roles based on your identity.
+1.  `cloudctl` displays available accounts and roles based on your identity.
 2.  It prompts for confirmation when risk is elevated (e.g., sensitive accounts).
 3.  It emits short-lived credentials only after policy validation.
 **Nothing happens silently.**
@@ -84,7 +84,7 @@ awsctl switch
 sequenceDiagram
     autonumber
     actor User as Engineer
-    participant CLI as awsctl
+    participant CLI as cloudctl
     participant Cache as ~/.aws/sso/cache
     participant Browser as System Browser
     participant AWS as AWS Identity Center
@@ -93,7 +93,7 @@ sequenceDiagram
 
     Note over User, Cloud: Phase 1: Authentication (If needed)
 
-    User->>CLI: awsctl use production
+    User->>CLI: cloudctl use production
     CLI->>Cache: Check for valid SSO Access Token
 
     alt Token Missing or Expired
@@ -122,19 +122,19 @@ sequenceDiagram
 
 ## 🐚 Shell Integration (Optional)
 
-Shell integration is **opt-in**. To install the shell wrapper so that `awsctl switch` and `awsctl use` export credentials into the current shell:
+Shell integration is **opt-in**. To install the shell wrapper so that `cloudctl switch` and `cloudctl use` export credentials into the current shell:
 
 ```bash
-awsctl init
+cloudctl init
 ```
 
 This injects a small wrapper function into your `.bashrc`, `.zshrc`, or equivalent profile file (with your explicit confirmation). For shell tab-completion, run:
 
 ```bash
-awsctl completion --install
+cloudctl completion --install
 ```
 
-Both operations can be reviewed and reversed at any time with `awsctl uninstall`.
+Both operations can be reviewed and reversed at any time with `cloudctl uninstall`.
 
 ---
 
@@ -146,4 +146,4 @@ Both operations can be reviewed and reversed at any time with `awsctl uninstall`
 * [[Runbook|Runbook]]
 
 > [!IMPORTANT]
-> **If Something Feels Unclear:** Stop. `awsctl` is designed to be explicit. If behavior feels surprising or opaque, consult the authoritative documentation before proceeding. This friction is a security feature, not a limitation.
+> **If Something Feels Unclear:** Stop. `cloudctl` is designed to be explicit. If behavior feels surprising or opaque, consult the authoritative documentation before proceeding. This friction is a security feature, not a limitation.

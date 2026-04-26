@@ -4,7 +4,7 @@ Final coverage for Plugins logic.
 """
 
 import pytest
-from awsctl import plugins
+from cloudctl import plugins
 
 
 def test_call_hook_empty():

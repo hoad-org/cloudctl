@@ -1,5 +1,5 @@
 # file: tests/test_utils.py
-"""Tests for awsctl.utils."""
+"""Tests for cloudctl.utils."""
 
 import os
 import signal
@@ -8,7 +8,7 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from awsctl import utils
+from cloudctl import utils
 
 
 def test_run_success():

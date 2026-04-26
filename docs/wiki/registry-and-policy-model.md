@@ -2,7 +2,7 @@
 
 # 📋 Registry and Policy Model
 
-This document defines the **registry and policy model** used by `awsctl`. It explains what the registry is, what it is allowed to express, what it is explicitly forbidden from doing, and how policy is enforced at runtime.
+This document defines the **registry and policy model** used by `cloudctl`. It explains what the registry is, what it is allowed to express, what it is explicitly forbidden from doing, and how policy is enforced at runtime.
 
 This document is authoritative.
 
@@ -10,7 +10,7 @@ This document is authoritative.
 
 ## 🏗️ Core Assertion
 
-The `awsctl` registry defines **allowed intent**, not authority. It is a **policy constraint layer**, not a permission system.
+The `cloudctl` registry defines **allowed intent**, not authority. It is a **policy constraint layer**, not a permission system.
 
 ---
 
@@ -21,7 +21,7 @@ In large AWS organizations:
 * **Humans** define *what is intended*.
 * **Drift** happens between the two.
 
-`awsctl` exists to close that gap **without changing IAM**. The registry allows organizations to declare: *"Even if IAM allows this, we do not."*
+`cloudctl` exists to close that gap **without changing IAM**. The registry allows organizations to declare: *"Even if IAM allows this, we do not."*
 
 
 
@@ -34,7 +34,7 @@ The registry is:
 * **Static:** Fixed at execution time; no dynamic shifts.
 * **Human-Reviewable:** Stored in readable formats (YAML).
 * **Version-Controlled:** Managed via Git for a clear audit trail.
-* **Read-Only:** The `awsctl` binary never modifies the registry.
+* **Read-Only:** The `cloudctl` binary never modifies the registry.
 
 **The registry is NOT:** A credential store, a role vending system, or a source of authority. Any attempt to make it one is a design violation.
 
@@ -76,7 +76,7 @@ features:
 
 ## ⚙️ Policy Evaluation Flow
 
-`awsctl` enforces registry constraints **before** AWS is contacted.
+`cloudctl` enforces registry constraints **before** AWS is contacted.
 
 
 
@@ -86,7 +86,7 @@ features:
 flowchart TD
     Intent[User Intent]
     Registry[Policy Registry]
-    Awsctl[awsctl]
+    Awsctl[cloudctl]
     AWS[AWS IAM]
 
     Intent --> Awsctl
@@ -106,7 +106,7 @@ flowchart TD
 | Aspect | IAM | Registry |
 | :--- | :--- | :--- |
 | **Authority** | Yes | No |
-| **Enforcement** | AWS | `awsctl` |
+| **Enforcement** | AWS | `cloudctl` |
 | **Scope** | Global | Execution-time |
 | **Audit Source** | CloudTrail | CloudTrail + CLI logs |
 
@@ -115,7 +115,7 @@ flowchart TD
 ## ✅ Validation and Change Control
 
 * **Validation:** Before use, the registry is validated for schema correctness and internal consistency. Invalid registry data results in a **hard failure**.
-* **No Fallbacks:** `awsctl` does not guess or bypass if data is missing. Failure is intentional.
+* **No Fallbacks:** `cloudctl` does not guess or bypass if data is missing. Failure is intentional.
 * **GitOps:** Changes are reviewed via Git and applied explicitly. There is no dynamic reload during an active session.
 
 ---
@@ -125,12 +125,12 @@ flowchart TD
 The following are strictly prohibited as they break the trust model:
 * **Dynamic Mutation:** No runtime changes to registry state.
 * **Auto-Expansion:** No "learning" mode for allowlists.
-* **Silent Downgrade:** `awsctl` must never move to a weaker policy state without explicit operator action.
+* **Silent Downgrade:** `cloudctl` must never move to a weaker policy state without explicit operator action.
 
 ---
 
 ## 📝 Summary
 
-The `awsctl` registry model works because IAM defines authority while humans define intent. `awsctl` acts as the enforcer for that intent. The registry is powerful precisely because it is limited.
+The `cloudctl` registry model works because IAM defines authority while humans define intent. `cloudctl` acts as the enforcer for that intent. The registry is powerful precisely because it is limited.
 
 Would you like me to generate a JSON Schema to validate your current registry YAML files?

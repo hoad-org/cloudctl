@@ -1,11 +1,11 @@
 # file: tests/test_utils_extended.py
-"""Coverage boost for awsctl.utils"""
+"""Coverage boost for cloudctl.utils"""
 
 import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from awsctl import utils
+from cloudctl import utils
 
 
 def test_run_success():

@@ -2,7 +2,7 @@
 from unittest.mock import patch
 
 import yaml
-from awsctl import core
+from cloudctl import core
 
 
 def test_cmd_setup_merge_defaults(monkeypatch, tmp_path, mock_rich_console):
@@ -16,17 +16,17 @@ def test_cmd_setup_merge_defaults(monkeypatch, tmp_path, mock_rich_console):
     conf.write_text("other_key: true", encoding="utf-8")
 
     # 2. Patch Path and Shell dependencies
-    monkeypatch.setattr("awsctl.config.get_orgs_path", lambda ensure=True: conf)
-    monkeypatch.setattr("awsctl.shell.detect_shell_profile", lambda: tmp_path / "rc")
-    monkeypatch.setattr("awsctl.shell.inject_shell_function", lambda x: True)
+    monkeypatch.setattr("cloudctl.config.get_orgs_path", lambda ensure=True: conf)
+    monkeypatch.setattr("cloudctl.shell.detect_shell_profile", lambda: tmp_path / "rc")
+    monkeypatch.setattr("cloudctl.shell.inject_shell_function", lambda x: True)
 
     # 3. Patch Core and Wizard behavior
     # We must ensure cmd_config_sync returns 0 so the wizard reports success
-    monkeypatch.setattr("awsctl.core.cmd_config_sync", lambda: 0)
+    monkeypatch.setattr("cloudctl.core.cmd_config_sync", lambda: 0)
 
     # Mock the sample default yaml
     monkeypatch.setattr(
-        "awsctl.config.sample_orgs_yaml",
+        "cloudctl.config.sample_orgs_yaml",
         lambda: "enabled_orgs: [default]\nplugins: {enabled: []}",
     )
 
@@ -57,11 +57,11 @@ def test_config_sync_loop(monkeypatch):
     ]
 
     # 2. Patch config loader
-    monkeypatch.setattr("awsctl.config.load_orgs_config", lambda: {"orgs": orgs})
+    monkeypatch.setattr("cloudctl.config.load_orgs_config", lambda: {"orgs": orgs})
 
     # 3. Patch the AWS layer where profile creation happens
     # Use the absolute path to ensure the patch hits the exact reference in core.py
-    with patch("awsctl.aws.ensure_sso_base_profile") as mock_ensure:
+    with patch("cloudctl.aws.ensure_sso_base_profile") as mock_ensure:
         core.cmd_config_sync()
 
         # 4. Assert only the 'full' org triggered the AWS call

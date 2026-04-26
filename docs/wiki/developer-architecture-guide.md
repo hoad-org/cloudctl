@@ -2,7 +2,7 @@
 
 # 🛠️ Developer Architecture Guide
 
-This document explains the **internal architecture** of `awsctl`. It is written for maintainers, core contributors, and security reviewers to ensure future changes do not weaken the tool's security guarantees or collapse its trust boundaries.
+This document explains the **internal architecture** of `cloudctl`. It is written for maintainers, core contributors, and security reviewers to ensure future changes do not weaken the tool's security guarantees or collapse its trust boundaries.
 
 It is **not** a user guide.
 
@@ -10,7 +10,7 @@ It is **not** a user guide.
 
 ## 🧭 Purpose & North Star
 
-`awsctl` is a **client-side identity broker**. It is not an authentication system, credential store, or orchestrator. If a proposed feature pushes the tool toward becoming a general-purpose AWS wrapper or a stateful engine, it is architecturally out of scope.
+`cloudctl` is a **client-side identity broker**. It is not an authentication system, credential store, or orchestrator. If a proposed feature pushes the tool toward becoming a general-purpose AWS wrapper or a stateful engine, it is architecturally out of scope.
 
 ---
 
@@ -79,17 +79,17 @@ flowchart LR
 ## 🚦 Operational Safety
 
 ### Failure Handling
-`awsctl` enforces a **fail-fast, fail-safe** model. Failure semantics are a core architectural feature:
+`cloudctl` enforces a **fail-fast, fail-safe** model. Failure semantics are a core architectural feature:
 * No retries on authorization (403) failures.
 * No silent fallbacks to default credentials.
 * **Fail Closed:** If any part of the validation chain fails, no credentials are issued.
 
 ### Non-Negotiable Invariants
 Breaking any of these constitutes a security bug:
-1. `awsctl` never authenticates users (external IdP only).
-2. `awsctl` never stores credentials on disk.
-3. `awsctl` never escalates privilege beyond what IAM allows.
-4. `awsctl` never "guesses" user intent.
+1. `cloudctl` never authenticates users (external IdP only).
+2. `cloudctl` never stores credentials on disk.
+3. `cloudctl` never escalates privilege beyond what IAM allows.
+4. `cloudctl` never "guesses" user intent.
 
 ---
 
@@ -103,7 +103,7 @@ Tests must prioritize **edge cases, failure paths, and guardrail enforcement**. 
 
 ## 📝 Summary
 
-As a maintainer, your primary responsibility is to protect the **explicit boundaries** and **deterministic behavior** of `awsctl`. Convenience must always be subordinate to the predictable failure and security properties defined in this guide.
+As a maintainer, your primary responsibility is to protect the **explicit boundaries** and **deterministic behavior** of `cloudctl`. Convenience must always be subordinate to the predictable failure and security properties defined in this guide.
 
 **Related Documentation:**
 * [[Security Overview|Security-Overview]]

@@ -2,9 +2,9 @@
 
 # 🤝 Contributor Guide
 
-This document defines **how to contribute to `awsctl`**. 
+This document defines **how to contribute to `cloudctl`**. 
 
-`awsctl` is a security-sensitive control-plane tool. Contributions are welcome, but they must preserve explicit trust boundaries, failure semantics, and architectural constraints. Drive-by changes without architectural context are discouraged.
+`cloudctl` is a security-sensitive control-plane tool. Contributions are welcome, but they must preserve explicit trust boundaries, failure semantics, and architectural constraints. Drive-by changes without architectural context are discouraged.
 
 This document is authoritative.
 
@@ -12,7 +12,7 @@ This document is authoritative.
 
 ## 🏛️ Contribution Philosophy
 
-`awsctl` values **correctness over convenience** and **safety over ergonomics**. We prioritize explicit behavior over "magic" shortcuts. If a change makes `awsctl` easier to misuse, it is likely unacceptable.
+`cloudctl` values **correctness over convenience** and **safety over ergonomics**. We prioritize explicit behavior over "magic" shortcuts. If a change makes `cloudctl` easier to misuse, it is likely unacceptable.
 
 
 
@@ -35,7 +35,7 @@ Before opening a pull request, you must read and understand the following author
 Must include a regression test and preserve failure semantics. If a fix changes user-visible behavior, documentation **must** be updated simultaneously.
 
 ### 2. New Features
-Requires a clearly stated problem, identified trust boundaries, and defined failure modes. Features that blur the responsibility between `awsctl` and AWS/IAM will be rejected.
+Requires a clearly stated problem, identified trust boundaries, and defined failure modes. Features that blur the responsibility between `cloudctl` and AWS/IAM will be rejected.
 
 ### 3. Documentation Changes
 Documentation changes are treated as code changes. They must be accurate, reviewed, and match current behavior. **Do not "document the future."**
@@ -97,4 +97,4 @@ Follow the repository’s specific `SECURITY.md` policy for private reporting.
 
 ## ✅ Summary
 
-As a contributor, your role is to preserve invariants and protect users. If a change feels "nice" but weakens clarity or safety, it does not belong in `awsctl`. This guide exists to keep the tool trustworthy.
+As a contributor, your role is to preserve invariants and protect users. If a change feels "nice" but weakens clarity or safety, it does not belong in `cloudctl`. This guide exists to keep the tool trustworthy.

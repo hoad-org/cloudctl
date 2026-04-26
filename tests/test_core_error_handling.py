@@ -9,7 +9,7 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from awsctl import aws, cli, core, sso_cache, utils
+from cloudctl import aws, cli, core, sso_cache, utils
 
 
 # --- AWS Module Coverage ---
@@ -80,7 +80,7 @@ def test_cli_load_context_error(monkeypatch, mock_rich_console):
 
     utils.set_debug(True)
     # [FIX] Patch debug_print in the module where it is defined
-    with patch("awsctl.utils.debug_print") as mock_debug:
+    with patch("cloudctl.utils.debug_print") as mock_debug:
         ctx = cli.load_context()
         assert ctx == {}
         assert mock_debug.called
@@ -88,7 +88,7 @@ def test_cli_load_context_error(monkeypatch, mock_rich_console):
 
 def test_cli_switch_no_prev(monkeypatch, mock_rich_console):
     """Test switch - (hyphen) fails when no history exists."""
-    monkeypatch.setattr("awsctl.context_manager.get_previous_context", lambda: None)
+    monkeypatch.setattr("cloudctl.context_manager.get_previous_context", lambda: None)
 
     # Simulate Namespace object
     args = type("Args", (), {"target": "-", "org": None})
@@ -99,7 +99,7 @@ def test_cli_switch_no_prev(monkeypatch, mock_rich_console):
 def test_cli_switch_incomplete_prev(monkeypatch, mock_rich_console):
     """Test switch - fails when history is missing required fields."""
     monkeypatch.setattr(
-        "awsctl.context_manager.get_previous_context", lambda: {"org": "foo"}
+        "cloudctl.context_manager.get_previous_context", lambda: {"org": "foo"}
     )
 
     args = type("Args", (), {"target": "-", "org": None})
@@ -109,14 +109,14 @@ def test_cli_switch_incomplete_prev(monkeypatch, mock_rich_console):
 
 def test_cli_switch_non_interactive_validation(monkeypatch, mock_rich_console):
     """Test that explicit switches validate required flags (like --role)."""
-    monkeypatch.setattr("awsctl.cli.load_context", lambda: {"current_org": "btavm"})
+    monkeypatch.setattr("cloudctl.cli.load_context", lambda: {"current_org": "btavm"})
     org_conf = {"name": "btavm", "sso_start_url": "u", "sso_region": "r"}
 
-    monkeypatch.setattr("awsctl.core.get_org", lambda x: org_conf)
+    monkeypatch.setattr("cloudctl.core.get_org", lambda x: org_conf)
     monkeypatch.setattr(
-        "awsctl.cli._get_org_ref", lambda n: sso_cache.OrgRef("n", "u", "r")
+        "cloudctl.cli._get_org_ref", lambda n: sso_cache.OrgRef("n", "u", "r")
     )
-    monkeypatch.setattr("awsctl.cli._resolve_account_id", lambda r, t: "123")
+    monkeypatch.setattr("cloudctl.cli._resolve_account_id", lambda r, t: "123")
 
     # [FIX] role is None, which should trigger a validation error
     args = type(
@@ -133,12 +133,12 @@ def test_cli_switch_non_interactive_validation(monkeypatch, mock_rich_console):
 def test_core_logout_cleanup_error(monkeypatch, mock_rich_console):
     """Test logout proceeds even if context cleanup fails."""
     monkeypatch.setattr(
-        "awsctl.context_manager.save_context_update",
+        "cloudctl.context_manager.save_context_update",
         MagicMock(side_effect=Exception("SaveFail")),
     )
     utils.set_debug(True)
 
-    with patch("awsctl.utils.debug_print") as mock_debug:
+    with patch("cloudctl.utils.debug_print") as mock_debug:
         core.cmd_logout()
         # Should have logged the internal failure but finished logout
         assert mock_debug.called
@@ -155,10 +155,10 @@ def test_core_cache_clear_errors(monkeypatch, mock_rich_console):
     mock_path.iterdir.return_value = [mock_file]
 
     # [FIX] Simplified path mocking
-    monkeypatch.setattr("awsctl.aws.SSO_CACHE_DIR", mock_path)
+    monkeypatch.setattr("cloudctl.aws.SSO_CACHE_DIR", mock_path)
     utils.set_debug(True)
 
-    with patch("awsctl.utils.debug_print") as mock_debug:
+    with patch("cloudctl.utils.debug_print") as mock_debug:
         core.cmd_cache_clear()
         assert any("Permission Denied" in str(c) for c in mock_debug.mock_calls)
 

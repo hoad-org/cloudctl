@@ -39,8 +39,8 @@ def _make_sso_token():
 class TestAwsSwitchE2E:
     def test_full_aws_switch(self, monkeypatch, capsys):
         """Full AWS switch: org → account → role → region → export lines printed."""
-        import awsctl.cli as cli
-        import awsctl.interactive as interactive
+        import cloudctl.cli as cli
+        import cloudctl.interactive as interactive
 
         org_cfg = {
             "name": "engineering",
@@ -51,10 +51,10 @@ class TestAwsSwitchE2E:
             "allowed_regions": ["us-east-1"],
         }
 
-        monkeypatch.setattr("awsctl.config.get_org", lambda n: org_cfg)
-        monkeypatch.setattr("awsctl.config.load_config", lambda: {"orgs": [org_cfg]})
+        monkeypatch.setattr("cloudctl.config.get_org", lambda n: org_cfg)
+        monkeypatch.setattr("cloudctl.config.load_config", lambda: {"orgs": [org_cfg]})
         monkeypatch.setattr(
-            "awsctl.interactive.load_active_sso_token", lambda org: _make_sso_token()
+            "cloudctl.interactive.load_active_sso_token", lambda org: _make_sso_token()
         )
         monkeypatch.setattr(
             interactive,
@@ -72,7 +72,7 @@ class TestAwsSwitchE2E:
         monkeypatch.setattr(
             interactive, "select_role", lambda org_data, roles: "AdministratorAccess"
         )
-        monkeypatch.setattr("awsctl.context_manager.save_context", lambda *a, **k: None)
+        monkeypatch.setattr("cloudctl.context_manager.save_context", lambda *a, **k: None)
 
         fake_exports = (
             "export AWS_ACCESS_KEY_ID=FAKEKEYID4TESTING001\n"
@@ -92,7 +92,7 @@ class TestAwsSwitchE2E:
 
     def test_aws_switch_no_session_triggers_autologin(self, monkeypatch, capsys):
         """When no SSO token exists, interactive.py auto-logins then continues."""
-        import awsctl.interactive as interactive
+        import cloudctl.interactive as interactive
 
         org_cfg = {
             "name": "engineering",
@@ -109,8 +109,8 @@ class TestAwsSwitchE2E:
             call_count["n"] += 1
             return None if call_count["n"] == 1 else _make_sso_token()
 
-        monkeypatch.setattr("awsctl.interactive.load_active_sso_token", _fake_token)
-        monkeypatch.setattr("awsctl.core.cmd_login", lambda name, force=False: 0)
+        monkeypatch.setattr("cloudctl.interactive.load_active_sso_token", _fake_token)
+        monkeypatch.setattr("cloudctl.core.cmd_login", lambda name, force=False: 0)
         monkeypatch.setattr(
             interactive, "list_accounts", lambda token: [{"id": "111", "name": "acct"}]
         )
@@ -121,12 +121,12 @@ class TestAwsSwitchE2E:
         monkeypatch.setattr(
             interactive, "select_role", lambda org_data, roles: "ReadOnly"
         )
-        monkeypatch.setattr("awsctl.context_manager.save_context", lambda *a, **k: None)
+        monkeypatch.setattr("cloudctl.context_manager.save_context", lambda *a, **k: None)
         monkeypatch.setattr(
-            "awsctl.use_exports.load_active_sso_token", lambda org: _make_sso_token()
+            "cloudctl.use_exports.load_active_sso_token", lambda org: _make_sso_token()
         )
         monkeypatch.setattr(
-            "awsctl.use_exports._aws_json",
+            "cloudctl.use_exports._aws_json",
             lambda args: {
                 "roleCredentials": {
                     "accessKeyId": "AKI",
@@ -151,8 +151,8 @@ class TestAwsSwitchE2E:
 class TestAzureSwitchE2E:
     def test_full_azure_switch(self, monkeypatch, capsys):
         """Full Azure switch: emit AZURE_* environment variables."""
-        import awsctl.cli as cli
-        import awsctl.interactive as interactive
+        import cloudctl.cli as cli
+        import cloudctl.interactive as interactive
 
         org_cfg = {
             "name": "azure-prod",
@@ -162,10 +162,10 @@ class TestAzureSwitchE2E:
             "allowed_regions": ["eastus"],
         }
 
-        monkeypatch.setattr("awsctl.config.get_org", lambda n: org_cfg)
-        monkeypatch.setattr("awsctl.config.load_config", lambda: {"orgs": [org_cfg]})
+        monkeypatch.setattr("cloudctl.config.get_org", lambda n: org_cfg)
+        monkeypatch.setattr("cloudctl.config.load_config", lambda: {"orgs": [org_cfg]})
         monkeypatch.setattr(
-            "awsctl.interactive.load_active_sso_token",
+            "cloudctl.interactive.load_active_sso_token",
             lambda org: {"token": "az-token"},
         )
         monkeypatch.setattr(
@@ -182,7 +182,7 @@ class TestAzureSwitchE2E:
         monkeypatch.setattr(
             interactive, "select_role", lambda org_data, roles: "Contributor"
         )
-        monkeypatch.setattr("awsctl.context_manager.save_context", lambda *a, **k: None)
+        monkeypatch.setattr("cloudctl.context_manager.save_context", lambda *a, **k: None)
 
         fake_exports = (
             "export AZURE_SUBSCRIPTION_ID=sub-123\n"
@@ -208,8 +208,8 @@ class TestAzureSwitchE2E:
 class TestGcpSwitchE2E:
     def test_full_gcp_switch(self, monkeypatch, capsys):
         """Full GCP switch: emit GOOGLE_* environment variables."""
-        import awsctl.cli as cli
-        import awsctl.interactive as interactive
+        import cloudctl.cli as cli
+        import cloudctl.interactive as interactive
 
         org_cfg = {
             "name": "gcp-prod",
@@ -218,10 +218,10 @@ class TestGcpSwitchE2E:
             "allowed_regions": ["us-central1"],
         }
 
-        monkeypatch.setattr("awsctl.config.get_org", lambda n: org_cfg)
-        monkeypatch.setattr("awsctl.config.load_config", lambda: {"orgs": [org_cfg]})
+        monkeypatch.setattr("cloudctl.config.get_org", lambda n: org_cfg)
+        monkeypatch.setattr("cloudctl.config.load_config", lambda: {"orgs": [org_cfg]})
         monkeypatch.setattr(
-            "awsctl.interactive.load_active_sso_token", lambda org: "ya29.gcp-token"
+            "cloudctl.interactive.load_active_sso_token", lambda org: "ya29.gcp-token"
         )
         monkeypatch.setattr(
             interactive,
@@ -239,7 +239,7 @@ class TestGcpSwitchE2E:
         monkeypatch.setattr(
             interactive, "select_role", lambda org_data, roles: "roles/viewer"
         )
-        monkeypatch.setattr("awsctl.context_manager.save_context", lambda *a, **k: None)
+        monkeypatch.setattr("cloudctl.context_manager.save_context", lambda *a, **k: None)
 
         fake_exports = (
             "export GOOGLE_CLOUD_PROJECT=my-gcp-project\n"
@@ -265,15 +265,15 @@ class TestGcpSwitchE2E:
 class TestDoctorSchemaCheck:
     def test_doctor_warns_on_invalid_config(self, monkeypatch):
         """doctor.run_diagnostics reports schema errors in the config section."""
-        import awsctl.doctor as doctor
+        import cloudctl.doctor as doctor
 
         # Bad config: org with unknown provider
         bad_config = {
             "orgs": [{"name": "test", "provider": "k8s"}],
             "enabled_orgs": [],
         }
-        monkeypatch.setattr("awsctl.config.load_orgs_config", lambda: [])
-        monkeypatch.setattr("awsctl.config.load_raw_config", lambda: bad_config)
+        monkeypatch.setattr("cloudctl.config.load_orgs_config", lambda: [])
+        monkeypatch.setattr("cloudctl.config.load_raw_config", lambda: bad_config)
         monkeypatch.setattr(doctor, "is_wsl", lambda: False)
         monkeypatch.setattr(doctor, "check_aws_version", lambda: (True, "aws/2.15.0"))
         monkeypatch.setattr(

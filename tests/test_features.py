@@ -4,7 +4,7 @@
 
 from unittest.mock import MagicMock
 
-from awsctl import cli, context_manager
+from cloudctl import cli, context_manager
 
 
 def test_context_manager(tmp_path, monkeypatch):
@@ -33,22 +33,22 @@ def test_status_dashboard(monkeypatch, mock_rich_console):
     """Verify the status dashboard correctly identifies and prints context."""
     # 1. Mock context loading
     monkeypatch.setattr(
-        "awsctl.context_manager.load_context",
+        "cloudctl.context_manager.load_context",
         lambda: {"current_org": "foo", "account": "123", "role": "r", "region": "r"},
     )
     # 2. Mock config hydration for token check
     monkeypatch.setattr(
-        "awsctl.config.get_org",
+        "cloudctl.config.get_org",
         lambda name: {"name": "foo", "sso_start_url": "u", "sso_region": "r"},
     )
     # 3. Mock token check to simulate being logged in (avoiding SystemExit)
     monkeypatch.setattr(
-        "awsctl.sso_cache.load_active_sso_token",
+        "cloudctl.sso_cache.load_active_sso_token",
         lambda *a: MagicMock(),
     )
 
     # 4. Run
-    # Implementation uses awsctl.utils.console for output
+    # Implementation uses cloudctl.utils.console for output
     context_manager.print_status()
 
     # 5. Verify output using unified mock_rich_console
@@ -70,7 +70,7 @@ def test_alias_switch_success(monkeypatch, mock_rich_console):
         }
     }
     monkeypatch.setattr(
-        "awsctl.core.load_orgs_config",
+        "cloudctl.core.load_orgs_config",
         lambda: {"orgs": [], "plugins": {}, "aliases": mock_aliases},
     )
 
@@ -81,11 +81,11 @@ def test_alias_switch_success(monkeypatch, mock_rich_console):
         "sso_region": "r",
         "allowed_regions": ["eu-west-1"],
     }
-    monkeypatch.setattr("awsctl.core.get_org", lambda x: org_data)
+    monkeypatch.setattr("cloudctl.core.get_org", lambda x: org_data)
 
     # 3. Mock Token & Exports
-    monkeypatch.setattr("awsctl.cli.emit_exports", lambda *a, **k: "export A=B")
-    monkeypatch.setattr("awsctl.context_manager.save_context_update", MagicMock())
+    monkeypatch.setattr("cloudctl.cli.emit_exports", lambda *a, **k: "export A=B")
+    monkeypatch.setattr("cloudctl.context_manager.save_context_update", MagicMock())
 
     # 4. Run Switch with Alias
     # Use type('Args', ...) to simulate argparse namespace
@@ -102,7 +102,7 @@ def test_alias_switch_success(monkeypatch, mock_rich_console):
 def test_alias_switch_not_found(monkeypatch, mock_rich_console):
     """Verify error reporting when an undefined alias is requested."""
     monkeypatch.setattr(
-        "awsctl.core.load_orgs_config",
+        "cloudctl.core.load_orgs_config",
         lambda: {"orgs": [], "plugins": {}, "aliases": {}},
     )
     args = type("Args", (), {"target": "@missing", "org": None})
@@ -119,7 +119,7 @@ def test_alias_switch_invalid_definition(monkeypatch, mock_rich_console):
     """Verify validation for aliases missing required context fields."""
     mock_aliases = {"broken": {"org": "btavm"}}  # Missing account, role, etc.
     monkeypatch.setattr(
-        "awsctl.core.load_orgs_config",
+        "cloudctl.core.load_orgs_config",
         lambda: {"orgs": [], "plugins": {}, "aliases": mock_aliases},
     )
     args = type("Args", (), {"target": "@broken", "org": None})

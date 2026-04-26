@@ -5,9 +5,9 @@ import json
 
 import pytest
 
-from awsctl.providers import get_provider
-from awsctl.providers.azure import AzureProvider
-from awsctl.providers.gcp import GcpProvider
+from cloudctl.providers import get_provider
+from cloudctl.providers.azure import AzureProvider
+from cloudctl.providers.gcp import GcpProvider
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -29,13 +29,13 @@ def _gc_result(returncode=0, stdout="", stderr=""):
 
 class TestGetProvider:
     def test_defaults_to_aws(self):
-        from awsctl.providers.aws import AwsProvider
+        from cloudctl.providers.aws import AwsProvider
 
         p = get_provider({"name": "myorg"})
         assert isinstance(p, AwsProvider)
 
     def test_explicit_aws(self):
-        from awsctl.providers.aws import AwsProvider
+        from cloudctl.providers.aws import AwsProvider
 
         assert isinstance(get_provider({"provider": "aws"}), AwsProvider)
 
@@ -50,7 +50,7 @@ class TestGetProvider:
             get_provider({"provider": "magic-cloud"})
 
     def test_non_dict_org_defaults_to_aws(self):
-        from awsctl.providers.aws import AwsProvider
+        from cloudctl.providers.aws import AwsProvider
 
         assert isinstance(get_provider("not-a-dict"), AwsProvider)
 

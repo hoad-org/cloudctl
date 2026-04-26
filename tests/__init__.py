@@ -1,11 +1,11 @@
-#### file: src/awsctl/__init__.py
-"""awsctl: Enterprise AWS Identity & Context Manager."""
+#### file: src/cloudctl/__init__.py
+"""cloudctl: Enterprise AWS Identity & Context Manager."""
 
 import sys
 
 try:
     # Attempt to load the generated version file
-    from awsctl._version import __version__
+    from cloudctl._version import __version__
 except ImportError:
     # Fallback for local development or missing version file
     # We use '1.2.3' to align with test_resolved_version_fallback expectations

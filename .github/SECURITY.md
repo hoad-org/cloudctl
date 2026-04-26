@@ -33,7 +33,7 @@ We will acknowledge receipt within **1 business day** and aim to provide an asse
 | **Shell injection protection** | All exported variables sanitised with `shlex.quote()` before shell evaluation |
 | **TTY Guard** | `--eval` mode warns when used outside the validated shell wrapper context |
 | **Registry integrity** | org registry verified with Minisign signature before use |
-| **Audit logging** | Break-glass role access logged to `~/.awsctl/audit.log` (mode 0600) |
+| **Audit logging** | Break-glass role access logged to `~/.cloudctl/audit.log` (mode 0600) |
 | **Atomic file writes** | Config and profile writes use `mkstemp` + `os.replace()` to prevent partial updates |
 | **Dependency scanning** | `pip-audit` runs on every push (CI) and twice weekly (scheduled audit) |
 | **Secret scanning** | Gitleaks runs on every push and pull request |

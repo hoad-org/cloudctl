@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from awsctl import shell
+from cloudctl import shell
 
 # [FIX] Align fixture name with conftest.py (mock_home instead of mock_home_path)
 
@@ -60,7 +60,7 @@ def test_inject_shell_no_sudo_uid(monkeypatch, tmp_path):
 
 def test_shell_injection_failure(monkeypatch):
     # Ensure it raises OSError when the filesystem is "full" (mkstemp fails)
-    monkeypatch.setattr("awsctl.shell.detect_shell_profile", lambda: Path("rc"))
+    monkeypatch.setattr("cloudctl.shell.detect_shell_profile", lambda: Path("rc"))
     with patch("tempfile.mkstemp", side_effect=OSError("Disk Full")):
         with pytest.raises(OSError):
             shell.inject_shell_function(Path("some_path"))
@@ -127,7 +127,7 @@ def test_remove_shell_function_dirty_removal(tmp_path):
     rc = tmp_path / "dirty_rc"
     # Create a wrapper that has been edited by the user
     dirty_content = shell.AWSCTL_WRAPPER.replace(
-        "awsctl() {", "awsctl() {\n    # User modified this line"
+        "cloudctl() {", "cloudctl() {\n    # User modified this line"
     )
     rc.write_text(dirty_content, encoding="utf-8")
 

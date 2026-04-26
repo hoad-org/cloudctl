@@ -1,6 +1,6 @@
 # 🎨 Diagram Standards
 
-This document defines the **authoritative standards** for creating, reviewing, and publishing diagrams within the `awsctl` ecosystem. 
+This document defines the **authoritative standards** for creating, reviewing, and publishing diagrams within the `cloudctl` ecosystem. 
 
 In a security-sensitive project, visual ambiguity is a risk. This document ensures that all architectural visualizations are as deterministic and version-controlled as the code itself.
 
@@ -27,7 +27,7 @@ Used for **conceptual flows, logic branches, and sequence diagrams**.
 ### 2. AWS Diagram-as-Code (AWSDAC)
 Used for **cloud architecture and infrastructure relationship diagrams**.
 * **Storage:** YAML source files in `docs/diagrams/src/*.yaml`.
-* **Usage:** Best for explaining "How `awsctl` interacts with AWS STS and IAM."
+* **Usage:** Best for explaining "How `cloudctl` interacts with AWS STS and IAM."
 
 
 
@@ -37,7 +37,7 @@ Used for **cloud architecture and infrastructure relationship diagrams**.
 
 ### Trust Boundaries
 Trust boundaries must be explicitly visualized. 
-* Use **Subgraphs** (in Mermaid) or **Groupings** (in AWSDAC) to show where `awsctl` authority ends and AWS authority begins.
+* Use **Subgraphs** (in Mermaid) or **Groupings** (in AWSDAC) to show where `cloudctl` authority ends and AWS authority begins.
 * Direct access to credentials must be highlighted with a specific color or dashed line to indicate sensitive data flow.
 
 ### Iconography
@@ -72,7 +72,7 @@ The publication of diagrams is handled by the CI/CD pipeline as part of the [[Do
 flowchart LR
     subgraph Local[Execution Plane]
         User((Operator))
-        Binary[awsctl]
+        Binary[cloudctl]
     end
 
     subgraph Cloud[Control Plane]
@@ -90,4 +90,4 @@ flowchart LR
 
 ## ✅ Summary
 
-Diagrams in `awsctl` are not "art"—they are technical specifications. By following these standards, we ensure that our architectural intent is clear, auditable, and immutable.
+Diagrams in `cloudctl` are not "art"—they are technical specifications. By following these standards, we ensure that our architectural intent is clear, auditable, and immutable.

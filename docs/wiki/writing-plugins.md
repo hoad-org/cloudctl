@@ -2,13 +2,13 @@
 
 # 🔌 Writing Plugins
 
-This document describes how to write **awsctl plugins** safely and correctly. It serves as the authoritative guide for extending the tool's capabilities while maintaining its core security guarantees.
+This document describes how to write **cloudctl plugins** safely and correctly. It serves as the authoritative guide for extending the tool's capabilities while maintaining its core security guarantees.
 
 ---
 
 ## 🎯 Purpose of Plugins
 
-Plugins allow `awsctl` to be **extended without modifying core code**, preserving the tool's security, trust, and execution guarantees.
+Plugins allow `cloudctl` to be **extended without modifying core code**, preserving the tool's security, trust, and execution guarantees.
 
 **Plugins are intended for:**
 * **Identity provider integrations:** (e.g., Okta, Entra ID, Ping Identity).
@@ -25,9 +25,9 @@ Plugins allow `awsctl` to be **extended without modifying core code**, preservin
 
 ## 🏛️ Plugin Design Principles
 
-All plugins must obey the following invariants to remain compliant with the `awsctl` architecture:
+All plugins must obey the following invariants to remain compliant with the `cloudctl` architecture:
 
-* **Execution-Scoped:** Run only during the active `awsctl` invocation.
+* **Execution-Scoped:** Run only during the active `cloudctl` invocation.
 * **Fail-Safe:** Any plugin failure must result in a safe abort without corrupting state.
 * **Deterministic:** The same set of inputs must always yield the same output.
 * **Non-Persistent:** No background processes or side-channel executions.
@@ -37,15 +37,15 @@ All plugins must obey the following invariants to remain compliant with the `aws
 
 ## 🏗️ Plugin Architecture Overview
 
-Plugins are loaded dynamically at runtime and executed within `awsctl`’s **controlled execution boundary**.
+Plugins are loaded dynamically at runtime and executed within `cloudctl`’s **controlled execution boundary**.
 
 ### 🔄 Plugin Execution Flow (Mermaid)
 
 ```mermaid
 flowchart LR
     User[User Invocation]
-    CLI[awsctl CLI]
-    Core[awsctl Core]
+    CLI[cloudctl CLI]
+    Core[cloudctl Core]
     Plugin[Plugin Module]
     AWS[AWS APIs]
 
@@ -61,7 +61,7 @@ flowchart LR
 **Key Properties:**
 * **Isolation:** Plugins never interface directly with the shell or the user.
 * **Guardrails:** Plugins cannot bypass core security checks.
-* **Authority:** `awsctl` Core remains the sole policy enforcement point.
+* **Authority:** `cloudctl` Core remains the sole policy enforcement point.
 
 ---
 
@@ -89,7 +89,7 @@ stateDiagram-v2
 A plugin is a Python module that inherits from `PluginBase` and exposes a well-defined entry point.
 
 ```python
-from awsctl.plugins import PluginBase
+from cloudctl.plugins import PluginBase
 
 class ExamplePlugin(PluginBase):
     name = "example"
@@ -130,7 +130,7 @@ All plugins are subject to:
 
 ## 🧪 Testing & Failure Modes
 
-Plugins must be testable in isolation. Recommended testing includes unit tests for execution logic, negative tests for policy violations, and integration tests via the `awsctl` test harness.
+Plugins must be testable in isolation. Recommended testing includes unit tests for execution logic, negative tests for policy violations, and integration tests via the `cloudctl` test harness.
 
 **Safe Failure Behavior:**
 * **Abort on Error:** All failures (misconfiguration, IdP outage, etc.) must result in a safe abort.
@@ -146,7 +146,7 @@ Plugins must be testable in isolation. Recommended testing includes unit tests f
 * **Default Safety:** Failure is safe by default.
 
 > [!IMPORTANT]
-> If a plugin feels powerful, invisible, or autonomous—it has violated the `awsctl` mission.
+> If a plugin feels powerful, invisible, or autonomous—it has violated the `cloudctl` mission.
 
 ---
 

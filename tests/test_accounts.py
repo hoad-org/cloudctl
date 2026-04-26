@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import awsctl.accounts as mod
-from awsctl.sso_cache import OrgRef, SsoToken
+import cloudctl.accounts as mod
+from cloudctl.sso_cache import OrgRef, SsoToken
 
 
 def test_pagination(monkeypatch):
@@ -20,7 +20,7 @@ def test_pagination(monkeypatch):
     # [FIX] Align signature: implementation calls it with (token, raise_error=False)
     # The previous lambda was taking (url, region, token), causing a TypeError
     monkeypatch.setattr(
-        "awsctl.aws.sso_list_accounts", lambda token, raise_error=False: mock_data
+        "cloudctl.aws.sso_list_accounts", lambda token, raise_error=False: mock_data
     )
 
     # 2. Mock the token loader
@@ -30,7 +30,7 @@ def test_pagination(monkeypatch):
         "valid-tok", "https://u", "eu-west-2", datetime.now(timezone.utc), {}
     )
     monkeypatch.setattr(
-        "awsctl.accounts.load_active_sso_token", lambda org, **k: mock_token
+        "cloudctl.accounts.load_active_sso_token", lambda org, **k: mock_token
     )
 
     # 3. Execute logic
@@ -48,7 +48,7 @@ def test_pagination(monkeypatch):
 def test_list_accounts_no_token(monkeypatch, mock_rich_console):
     """Verify failure path when no active SSO session is found."""
     # Simulate token missing
-    monkeypatch.setattr("awsctl.accounts.load_active_sso_token", lambda org, **k: None)
+    monkeypatch.setattr("cloudctl.accounts.load_active_sso_token", lambda org, **k: None)
 
     # Implementation should return an empty list or raise SystemExit
     out = mod.list_accounts(OrgRef("o", "u", "r"))

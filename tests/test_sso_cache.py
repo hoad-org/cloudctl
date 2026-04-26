@@ -4,7 +4,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from awsctl.sso_cache import OrgRef, _normalize_start_url, load_active_sso_token
+from cloudctl.sso_cache import OrgRef, _normalize_start_url, load_active_sso_token
 
 
 def test_normalize():

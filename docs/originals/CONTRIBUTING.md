@@ -1,4 +1,4 @@
-# Contributing to awsctl
+# Contributing to cloudctl
 
 We welcome contributions from all **BeyondTrust Engineering** teams! Whether you’re adding a new plugin, fixing a bug, or improving documentation, please open a Pull Request (PR) on **GitHub Enterprise**.
 
@@ -24,8 +24,8 @@ Ensure the following dependencies are installed on your workstation:
 Clone the repository from the internal GitHub to your local workstation:
 
 ```
-git clone [https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git](https://github.com/BT-IT-Infrastructure-CloudOps/awsctl.git)
-cd awsctl
+git clone [https://github.com/BT-IT-Infrastructure-CloudOps/cloudctl.git](https://github.com/BT-IT-Infrastructure-CloudOps/cloudctl.git)
+cd cloudctl
 ```
 
 #### Python Virtual Environment (Recommended)
@@ -49,8 +49,8 @@ pip install -r requirements-dev.txt
 
 ### ⚠️ CRITICAL ARCHITECTURAL NOTE
 
-`pip install -e .` and `pipx install` are **not supported** for full awsctl usage.
-These methods do **not** install the critical Split-Plane system shim (`/usr/local/bin/awsctl`) and will cause `switch` and `env` commands to fail.
+`pip install -e .` and `pipx install` are **not supported** for full cloudctl usage.
+These methods do **not** install the critical Split-Plane system shim (`/usr/local/bin/cloudctl`) and will cause `switch` and `env` commands to fail.
 
 To test the complete stack (Shim + Python + Shell Integration), always use:
 
@@ -64,7 +64,7 @@ This ensures the Bash Shim, shell bridge, and Python runtime coexist in a verifi
 
 ## 2. Versioning
 
-awsctl uses **setuptools_scm** for version management.
+cloudctl uses **setuptools_scm** for version management.
 Versions are automatically derived from annotated Git tags that follow the `v*` naming convention.
 
 ### Always Sync Tags Before Work
@@ -158,11 +158,11 @@ Modifications affecting security-critical sections require explicit review by a 
 
 | Path | Description |
 |------|-------------|
-| `src/awsctl/guardrails.py` | Policy enforcement and behavioral gating |
-| `src/awsctl/registry.py` | Trust anchors and remote registry hydration logic |
-| `src/awsctl/plugins/*` | Plugin sandbox enforcement and dynamic extension management |
-| `src/awsctl/shell.py` | Evaluation bridge and input/environment hygiene |
-| `src/awsctl/config.py` | Local configuration loading and persistence controls |
+| `src/cloudctl/guardrails.py` | Policy enforcement and behavioral gating |
+| `src/cloudctl/registry.py` | Trust anchors and remote registry hydration logic |
+| `src/cloudctl/plugins/*` | Plugin sandbox enforcement and dynamic extension management |
+| `src/cloudctl/shell.py` | Evaluation bridge and input/environment hygiene |
+| `src/cloudctl/config.py` | Local configuration loading and persistence controls |
 
 ### Security Contributions Requirements
 
@@ -211,5 +211,5 @@ When using AI tools for debugging, documentation, or architecture diagrams:
 **MIT License**
 See the `LICENSE` file for full license text and usage terms.
 
-All intellectual property rights for `awsctl` and its components remain with **BeyondTrust Engineering**.
+All intellectual property rights for `cloudctl` and its components remain with **BeyondTrust Engineering**.
 ```

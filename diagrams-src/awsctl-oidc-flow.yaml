@@ -1,4 +1,4 @@
-#### file: docs/diagrams/awsctl-oidc-flow.yaml
+#### file: docs/diagrams/cloudctl-oidc-flow.yaml
 Diagram:
   DefinitionFiles:
     - Type: URL
@@ -30,7 +30,7 @@ Diagram:
 
     IdentityBroker:
       Type: AWS::IAM::Role
-      Title: awsctl-broker-role
+      Title: cloudctl-broker-role
 
   Links:
     - Source: OIDC

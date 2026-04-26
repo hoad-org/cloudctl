@@ -1,11 +1,11 @@
 # ==============================================================================
-# AWSCTL — Master Makefile
+# cloudctl — Master Makefile
 # ==============================================================================
 
 PYTHON      := python3
 PIP         := $(PYTHON) -m pip
 POETRY      := poetry
-SRC_DIR     := src/awsctl
+SRC_DIR     := src/cloudctl
 TEST_DIR    := tests
 MANIFEST_TOOL := tools/create_manifest.py
 
@@ -19,7 +19,7 @@ TESTS       := $(TEST_DIR)
 all: install check
 
 help:
-	@echo "awsctl Developer Workflow"
+	@echo "cloudctl Developer Workflow"
 	@echo "========================="
 	@echo "make install   : Install the package in editable mode"
 	@echo "make bootstrap : Re-initialize Poetry and install all dependencies"
@@ -75,7 +75,7 @@ clean:
 	rm -rf build/ dist/ *.egg-info .pytest_cache .coverage htmlcov .mypy_cache .ruff_cache 
 	find . -name "__pycache__" -exec rm -rf {} +
 	find . -name "*.pyc" -delete
-	find . -name "awsctl.egg-info" -exec rm -rf {} +
+	find . -name "cloudctl.egg-info" -exec rm -rf {} +
 	find . -name "*_manifest_*.txt" -delete
 
 manifest:
@@ -91,7 +91,7 @@ publish-artifactory: build
 	@echo "Publishing to Artifactory..."
 	@if [ -z "$$ARTIFACTORY_URL" ]; then \
 		echo "ERROR: ARTIFACTORY_URL is not set."; \
-		echo "  export ARTIFACTORY_URL=https://org.jfrog.io/artifactory/api/pypi/awsctl-pypi/"; \
+		echo "  export ARTIFACTORY_URL=https://org.jfrog.io/artifactory/api/pypi/cloudctl-pypi/"; \
 		exit 1; \
 	fi
 	@if [ -z "$$ARTIFACTORY_TOKEN" ]; then \
@@ -105,4 +105,4 @@ publish-artifactory: build
 		--skip-existing \
 		dist/*
 	@echo "Done. Install with:"
-	@echo "  pip install awsctl --index-url $$ARTIFACTORY_URL"
+	@echo "  pip install cloudctl --index-url $$ARTIFACTORY_URL"

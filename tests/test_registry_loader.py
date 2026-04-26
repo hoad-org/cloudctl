@@ -7,7 +7,7 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from awsctl import registry_loader
+from cloudctl import registry_loader
 
 
 @pytest.fixture()
@@ -111,7 +111,7 @@ def test_registry_loader_zip_bomb(mock_rich_console):
     mock_resp.__exit__.return_value = None
     mock_resp.raw.read.return_value = compressed_data
 
-    with patch("awsctl.registry_loader.MAX_DECOMPRESSED_SIZE", 10):
+    with patch("cloudctl.registry_loader.MAX_DECOMPRESSED_SIZE", 10):
         with patch("requests.get", return_value=mock_resp):
             with pytest.raises(SystemExit):
                 registry_loader.fetch_remote_registry("https://example.com/reg.gz")

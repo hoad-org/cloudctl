@@ -6,12 +6,12 @@ import time
 from unittest.mock import MagicMock, patch
 
 import pytest
-from awsctl import aws, shell
+from cloudctl import aws, shell
 
 
 def test_shell_injection_failure(monkeypatch):
     """Verify that shell injection raises OSError if the disk is full or temp creation fails."""
-    monkeypatch.setattr("awsctl.shell.detect_shell_profile", lambda: "rc")
+    monkeypatch.setattr("cloudctl.shell.detect_shell_profile", lambda: "rc")
     # mkstemp is used during the atomic write process in shell.py
     with patch("tempfile.mkstemp", side_effect=OSError("Disk Full")):
         with pytest.raises(OSError) as e:
@@ -29,7 +29,7 @@ def test_aws_config_lock_stale_cleanup(tmp_path, monkeypatch):
     old_ts = time.time() - 3601
     os.utime(lock_file, (old_ts, old_ts))
 
-    monkeypatch.setattr("awsctl.aws.AWS_CONFIG", config_file)
+    monkeypatch.setattr("cloudctl.aws.AWS_CONFIG", config_file)
 
     # The implementation of _config_file_lock should check for stale locks
     # and unlink them before yielding.

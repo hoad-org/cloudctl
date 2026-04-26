@@ -1,5 +1,5 @@
 # file: tests/test_aws.py
-"""Tests for awsctl.aws."""
+"""Tests for cloudctl.aws."""
 
 import configparser
 import json
@@ -7,7 +7,7 @@ import os
 from unittest.mock import patch
 
 import pytest
-from awsctl import aws
+from cloudctl import aws
 
 
 def test_write_target_profile(monkeypatch, tmp_path):

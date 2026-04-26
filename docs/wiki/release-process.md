@@ -2,7 +2,7 @@
 
 # 🚀 Release Process
 
-This document defines the **official release process** for `awsctl`. The goal of this process is to ensure that every release is predictable, auditable, reversible, and safe to deploy in regulated environments.
+This document defines the **official release process** for `cloudctl`. The goal of this process is to ensure that every release is predictable, auditable, reversible, and safe to deploy in regulated environments.
 
 This document is authoritative.
 
@@ -10,7 +10,7 @@ This document is authoritative.
 
 ## 🏗️ Release Philosophy
 
-`awsctl` is a **security-sensitive client**. Releases prioritize correctness and safety over speed.
+`cloudctl` is a **security-sensitive client**. Releases prioritize correctness and safety over speed.
 
 * **Correctness:** Functional behavior must match specifications.
 * **Safety:** No regressions in the trust or security models.
@@ -21,7 +21,7 @@ This document is authoritative.
 
 ## 🔢 Versioning Scheme
 
-`awsctl` follows **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
+`cloudctl` follows **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
 
 
 
@@ -72,9 +72,9 @@ git push origin vX.Y.Z
 Validation must occur on a clean machine or container:
 
 ```bash
-brew install awsctl
-awsctl version
-awsctl doctor
+brew install cloudctl
+cloudctl version
+cloudctl doctor
 ```
 
 ---
@@ -88,10 +88,10 @@ Hotfixes land on `main` and are strictly reserved for:
 3.  **Critical usability regressions.**
 
 ### Rollback Strategy
-`awsctl` is inherently easy to roll back because it is a client-side tool with no server-side state.
+`cloudctl` is inherently easy to roll back because it is a client-side tool with no server-side state.
 
-1.  **Uninstall current version:** `brew uninstall awsctl`
-2.  **Install previous version:** `brew install awsctl@<previous_version>`
+1.  **Uninstall current version:** `brew uninstall cloudctl`
+2.  **Install previous version:** `brew install cloudctl@<previous_version>`
 
 ---
 
@@ -115,4 +115,4 @@ Every release generates a trail of evidence for auditors:
 * **GitHub Metadata:** Timestamped release information.
 
 > [!IMPORTANT]
-> If releasing `awsctl` ever feels “fast and loose,” the process has been violated. This document defines the standard required to maintain the **Root of Trust**.
+> If releasing `cloudctl` ever feels “fast and loose,” the process has been violated. This document defines the standard required to maintain the **Root of Trust**.

@@ -2,13 +2,13 @@
 
 # 🛠️ Configuration Schema
 
-This document defines the **authoritative configuration schema** for `awsctl`. It is a **contract**, not a tutorial. If configuration behavior differs from this document, the implementation is incorrect.
+This document defines the **authoritative configuration schema** for `cloudctl`. It is a **contract**, not a tutorial. If configuration behavior differs from this document, the implementation is incorrect.
 
 ---
 
 ## 🏗️ Purpose
 
-`awsctl` configuration is **policy-bearing** and evaluated **before execution**. It defines:
+`cloudctl` configuration is **policy-bearing** and evaluated **before execution**. It defines:
 * Visibility of AWS accounts and roles.
 * Regional restrictions.
 * Safety gates and guardrail triggers.
@@ -18,7 +18,7 @@ This document defines the **authoritative configuration schema** for `awsctl`. I
 
 ## 📐 Configuration Model
 
-Configuration is declarative, static at runtime, and fully validated before use. `awsctl` adheres to a **Strict Parsing** model:
+Configuration is declarative, static at runtime, and fully validated before use. `cloudctl` adheres to a **Strict Parsing** model:
 * **No Permissive Mode:** Unknown keys, type mismatches, or partial configs trigger a hard failure.
 * **Deterministic:** Authority flows from configuration to execution; the reverse is never permitted.
 
@@ -107,7 +107,7 @@ orgs:
 
 ## ⚙️ Evaluation Order
 
-`awsctl` processes configuration in a strict linear sequence:
+`cloudctl` processes configuration in a strict linear sequence:
 1. **Schema Validation:** Structural integrity and type checks.
 2. **Semantic Validation:** Logic checks (e.g., duplicate IDs, valid region strings).
 3. **Registry Construction:** Building the internal policy source of truth.
@@ -124,14 +124,14 @@ orgs:
 To preserve the security model, the following are strictly prohibited:
 * **Implicit Defaults:** Every setting must be explicitly declared.
 * **Environment-Variable Overrides:** Core policy cannot be changed via the environment.
-* **Auto-Discovery:** `awsctl` will never "scan" for accounts or roles.
+* **Auto-Discovery:** `cloudctl` will never "scan" for accounts or roles.
 * **"Best Effort" Parsing:** Partial success is a total failure.
 
 ---
 
 ## ⚖️ Summary
 
-`awsctl` configuration is **policy**. It is explicit, validated, deterministic, and fail-closed. If the configuration is ambiguous, execution does not proceed.
+`cloudctl` configuration is **policy**. It is explicit, validated, deterministic, and fail-closed. If the configuration is ambiguous, execution does not proceed.
 
 > [!IMPORTANT]
 > This schema is the boundary between user intent and AWS authority. Maintaining its integrity is critical to the **Root of Trust**.

@@ -2,7 +2,7 @@
 
 # 🎭 Interactive and UX Behaviour
 
-This document defines the **interactive behavior and user experience (UX)** of `awsctl`. `awsctl` is not a traditional CLI optimized for speed or brevity; it is a **safety-oriented operator tool** where UX choices function as security controls.
+This document defines the **interactive behavior and user experience (UX)** of `cloudctl`. `cloudctl` is not a traditional CLI optimized for speed or brevity; it is a **safety-oriented operator tool** where UX choices function as security controls.
 
 This document is authoritative.
 
@@ -10,11 +10,11 @@ This document is authoritative.
 
 ## 🏗️ UX Design Philosophy
 
-`awsctl` is designed for **deliberate use**, not muscle memory. Its UX optimizes for correctness over speed and safety over convenience.
+`cloudctl` is designed for **deliberate use**, not muscle memory. Its UX optimizes for correctness over speed and safety over convenience.
 
 
 
-* **Human-in-the-Loop:** `awsctl` assumes humans make mistakes and that automation amplifies them. Interactive prompts are a core security feature.
+* **Human-in-the-Loop:** `cloudctl` assumes humans make mistakes and that automation amplifies them. Interactive prompts are a core security feature.
 * **Visibility:** Guardrails must be visible and friction must be present during high-risk transitions.
 * **Clarity:** Use of plain language and clear symbols (⚠️, ✅, ❌) ensures security-critical messages are never misinterpreted.
 
@@ -22,7 +22,7 @@ This document is authoritative.
 
 ## ⚙️ Execution Modes
 
-`awsctl` supports two distinct execution modes to balance operator safety with automation needs.
+`cloudctl` supports two distinct execution modes to balance operator safety with automation needs.
 
 ### 1. Interactive Mode (Default)
 The standard mode for human operators.
@@ -38,7 +38,7 @@ Explicitly requested for scripts and pipelines.
 
 ## 🚦 Prompting and Decision Flow
 
-`awsctl` prompts are reserved for elevated risk or ambiguous intent. Read-only or low-risk deterministic actions do not trigger prompts.
+`cloudctl` prompts are reserved for elevated risk or ambiguous intent. Read-only or low-risk deterministic actions do not trigger prompts.
 
 ### 🔄 Interactive Decision Flow (Mermaid)
 
@@ -77,7 +77,7 @@ UX elements are part of the control system, serving as **soft guardrails**:
 
 ## ❌ UX Anti-Patterns (Forbidden)
 
-To maintain the security posture, `awsctl` must never:
+To maintain the security posture, `cloudctl` must never:
 * Auto-confirm sensitive actions or hide warnings behind flags.
 * Change execution context silently.
 * Use humor or ambiguous language in security warnings.
@@ -87,4 +87,4 @@ To maintain the security posture, `awsctl` must never:
 
 ## 📝 Summary
 
-The UX of `awsctl` is intentionally conservative to make risk visible and preserve intent clarity. If `awsctl` ever feels frictionless during dangerous operations, the UX has failed to protect the operator and the organization.
+The UX of `cloudctl` is intentionally conservative to make risk visible and preserve intent clarity. If `cloudctl` ever feels frictionless during dangerous operations, the UX has failed to protect the operator and the organization.

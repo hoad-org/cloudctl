@@ -4,8 +4,8 @@
 from unittest.mock import MagicMock, patch
 
 import yaml
-from awsctl import config, core, shell, wizard
-from awsctl.wizard import inquirer
+from cloudctl import config, core, shell, wizard
+from cloudctl.wizard import inquirer
 
 
 # ---------------------------------------------------------------------------
@@ -35,7 +35,7 @@ def test_wizard_happy_path(monkeypatch, tmp_path, mock_rich_console):
 
     # ── filesystem ──────────────────────────────────────────────────────────
     monkeypatch.setattr(config, "HOME", tmp_path)
-    orgs_file = tmp_path / ".awsctl" / "orgs.yaml"
+    orgs_file = tmp_path / ".cloudctl" / "orgs.yaml"
     monkeypatch.setattr(config, "ORGS_USER", orgs_file)
 
     mock_org = {
@@ -49,7 +49,7 @@ def test_wizard_happy_path(monkeypatch, tmp_path, mock_rich_console):
     # ── registry ─────────────────────────────────────────────────────────────
     # _load_registry_choices() calls registry.get_choices() internally
     monkeypatch.setattr(
-        "awsctl.wizard._load_registry_choices",
+        "cloudctl.wizard._load_registry_choices",
         lambda: [{"name": "Engineering — [dim]Main stuff[/]", "value": mock_org}],
     )
 
@@ -89,7 +89,7 @@ def test_wizard_config_update_fail(monkeypatch, tmp_path, mock_rich_console):
     # Provide a registry org so we can reach the write step without manual entry
     mock_org = {"name": "org", "provider": "aws"}
     monkeypatch.setattr(
-        "awsctl.wizard._load_registry_choices",
+        "cloudctl.wizard._load_registry_choices",
         lambda: [{"name": "Org", "value": mock_org}],
     )
 

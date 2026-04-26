@@ -2,7 +2,7 @@
 
 # 🚨 Break-Glass Procedure
 
-This document defines the **emergency access (“break-glass”) procedure** for `awsctl`-managed environments. It describes when break-glass is permitted, how it is obtained, and the post-incident requirements.
+This document defines the **emergency access (“break-glass”) procedure** for `cloudctl`-managed environments. It describes when break-glass is permitted, how it is obtained, and the post-incident requirements.
 
 This document is authoritative.
 
@@ -27,20 +27,20 @@ This document is authoritative.
 | ✅ Permitted Conditions | ❌ Prohibited Usage |
 | :--- | :--- |
 | Identity Provider (IdP) outage | Bypassing policy disagreements |
-| `awsctl` malfunction preventing access | Testing or routine maintenance |
+| `cloudctl` malfunction preventing access | Testing or routine maintenance |
 | CI/CD pipeline failure blocking remediation | General convenience or speed |
 | Active security incident response | Circumventing existing guardrails |
 
 ---
 
-## 🛡️ awsctl’s Role in Break-Glass
+## 🛡️ cloudctl’s Role in Break-Glass
 
-`awsctl` **does not provide** break-glass access. This is an intentional architectural choice. 
+`cloudctl` **does not provide** break-glass access. This is an intentional architectural choice. 
 
-Break-glass exists **outside** the `awsctl` control plane. This ensures:
-1. **Redundancy:** If `awsctl` fails, recovery is still possible.
+Break-glass exists **outside** the `cloudctl` control plane. This ensures:
+1. **Redundancy:** If `cloudctl` fails, recovery is still possible.
 2. **Independence:** Emergency paths do not rely on the tool they are meant to bypass.
-3. **Non-Authority:** `awsctl` remains a broker, never the ultimate root of trust.
+3. **Non-Authority:** `cloudctl` remains a broker, never the ultimate root of trust.
 
 ---
 
@@ -88,13 +88,13 @@ Every break-glass event is a deviation from standard operating procedure and req
 1. **Session Termination:** Immediately revoke active sessions once remediation is complete.
 2. **Credential Rotation:** Rotate any secrets or keys touched during the incident.
 3. **Written Review:** A post-incident report detailing the timeline, actions performed, and root cause.
-4. **System Fix:** If `awsctl` was the reason for break-glass, a bug report or architecture review must follow.
+4. **System Fix:** If `cloudctl` was the reason for break-glass, a bug report or architecture review must follow.
 
 ---
 
 ## 📝 Summary
 
-Break-glass access is rare, explicit, and human-controlled. `awsctl` deliberately stays out of the way of emergency recovery to ensure that the organization is never "locked out" by its own security tooling.
+Break-glass access is rare, explicit, and human-controlled. `cloudctl` deliberately stays out of the way of emergency recovery to ensure that the organization is never "locked out" by its own security tooling.
 
 > [!IMPORTANT]
 > If you are using break-glass often, fix the system—not the procedure. Frequent break-glass usage is a sign of architectural failure.

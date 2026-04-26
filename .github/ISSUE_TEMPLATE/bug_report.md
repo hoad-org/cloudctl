@@ -6,7 +6,7 @@ labels: bug
 
 ## Environment
 
-- awsctl version (`awsctl --version`):
+- cloudctl version (`cloudctl --version`):
 - OS / shell:
 - Cloud provider affected (AWS / Azure / GCP):
 - Python version:
@@ -30,11 +30,11 @@ labels: bug
 ## Relevant output
 
 ```
-# paste awsctl output or error here (redact credentials and account IDs)
+# paste cloudctl output or error here (redact credentials and account IDs)
 ```
 
 ## Additional context
 
-<!-- Anything else relevant — awsctl doctor output, AWS CLI version, etc. -->
+<!-- Anything else relevant — cloudctl doctor output, AWS CLI version, etc. -->
 
 > **Security issues:** Do NOT file security vulnerabilities here. Email `craighoad+security@hotmail.com` instead.

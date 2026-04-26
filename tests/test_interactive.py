@@ -1,12 +1,12 @@
 # file: tests/test_interactive.py
 """
-Tests for awsctl.interactive UI logic.
+Tests for cloudctl.interactive UI logic.
 """
 
 from unittest.mock import MagicMock
 
 import pytest
-from awsctl import accounts, interactive
+from cloudctl import accounts, interactive
 
 
 @pytest.fixture()
@@ -18,8 +18,8 @@ def mock_inquirer(monkeypatch):
 
     # [FIX] Implementation likely uses inquirer.fuzzy or inquirer.select
     # Patch the specific module used by interactive.py
-    monkeypatch.setattr("awsctl.interactive.inquirer.fuzzy", lambda **k: dummy)
-    monkeypatch.setattr("awsctl.interactive.inquirer.select", lambda **k: dummy)
+    monkeypatch.setattr("cloudctl.interactive.inquirer.fuzzy", lambda **k: dummy)
+    monkeypatch.setattr("cloudctl.interactive.inquirer.select", lambda **k: dummy)
     return dummy
 
 
@@ -79,19 +79,19 @@ def test_run_interactive_use_success(monkeypatch, mock_rich_console, mock_inquir
     """Verify the full interactive flow: Account -> Role -> Region."""
     # 1. Mock Config
     monkeypatch.setattr(
-        "awsctl.core.load_orgs_config",
+        "cloudctl.core.load_orgs_config",
         lambda: {"orgs": [{"name": "btavm", "sso_start_url": "u", "sso_region": "r"}]},
     )
 
     # 2. [FIX] Mock function calls as they appear in the interactive module
     # These functions are often imported into the namespace
     monkeypatch.setattr(
-        "awsctl.interactive.list_accounts",
+        "cloudctl.interactive.list_accounts",
         lambda token: [accounts.Account("1", "n", "e")],
     )
-    monkeypatch.setattr("awsctl.interactive.list_roles", lambda token, acct: ["Admin"])
-    monkeypatch.setattr("awsctl.guardrails.sort_roles", lambda o, r: r)
-    monkeypatch.setattr("awsctl.interactive.load_active_sso_token", lambda o: "token")
+    monkeypatch.setattr("cloudctl.interactive.list_roles", lambda token, acct: ["Admin"])
+    monkeypatch.setattr("cloudctl.guardrails.sort_roles", lambda o, r: r)
+    monkeypatch.setattr("cloudctl.interactive.load_active_sso_token", lambda o: "token")
 
     # 3. Simulate sequential user inputs
     mock_inquirer.execute.side_effect = ["1", "Admin", "us-east-1"]
@@ -106,12 +106,12 @@ def test_run_interactive_use_success(monkeypatch, mock_rich_console, mock_inquir
 def test_run_interactive_use_no_accounts(monkeypatch, mock_rich_console):
     """Ensure specific RuntimeError is raised when account list is empty."""
     monkeypatch.setattr(
-        "awsctl.core.load_orgs_config",
+        "cloudctl.core.load_orgs_config",
         lambda: {"orgs": [{"name": "btavm", "sso_start_url": "u", "sso_region": "r"}]},
     )
-    monkeypatch.setattr("awsctl.interactive.load_active_sso_token", lambda o: "token")
+    monkeypatch.setattr("cloudctl.interactive.load_active_sso_token", lambda o: "token")
     # [FIX] Patch interactive local reference
-    monkeypatch.setattr("awsctl.interactive.list_accounts", lambda token: [])
+    monkeypatch.setattr("cloudctl.interactive.list_accounts", lambda token: [])
 
     with pytest.raises(RuntimeError) as e:
         interactive.run_interactive_use("btavm")
@@ -121,14 +121,14 @@ def test_run_interactive_use_no_accounts(monkeypatch, mock_rich_console):
 def test_run_interactive_use_api_error(monkeypatch, mock_rich_console):
     """Ensure API exceptions are wrapped in RuntimeError."""
     monkeypatch.setattr(
-        "awsctl.core.load_orgs_config",
+        "cloudctl.core.load_orgs_config",
         lambda: {"orgs": [{"name": "btavm", "sso_start_url": "u", "sso_region": "r"}]},
     )
-    monkeypatch.setattr("awsctl.interactive.load_active_sso_token", lambda o: "token")
+    monkeypatch.setattr("cloudctl.interactive.load_active_sso_token", lambda o: "token")
 
     # [FIX] Trigger Exception
     monkeypatch.setattr(
-        "awsctl.interactive.list_accounts", MagicMock(side_effect=Exception("API Fail"))
+        "cloudctl.interactive.list_accounts", MagicMock(side_effect=Exception("API Fail"))
     )
 
     with pytest.raises(RuntimeError) as e:

@@ -1,8 +1,8 @@
 # =============================================================================
-# Release — Build and publish awsctl wheel to GitHub Releases
+# Release — Build and publish cloudctl wheel to GitHub Releases
 # Purpose : On tag push, build wheel + sdist, verify with twine, create a
 #           GitHub Release with the dist/ assets attached for install.sh /
-#           install.ps1 / awsctl upgrade to consume.
+#           install.ps1 / cloudctl upgrade to consume.
 # SP800-53: CM-2, CM-3, SA-12
 # FedRAMP : Moderate / High baseline
 # =============================================================================
@@ -64,4 +64,4 @@ jobs:
 
       # Note: GitHub Packages does not support a PyPI registry.
       # Wheels are distributed via GitHub Release assets and installed using the
-      # GitHub Releases API + direct download (see install.sh, install.ps1, awsctl upgrade).
+      # GitHub Releases API + direct download (see install.sh, install.ps1, cloudctl upgrade).

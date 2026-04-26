@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from awsctl import core
+from cloudctl import core
 
 
 def test_config_sync_direct(monkeypatch):
@@ -25,13 +25,13 @@ def test_config_sync_direct(monkeypatch):
     }
 
     # [FIX] Patch the load_orgs_config used inside the core module
-    monkeypatch.setattr("awsctl.core.load_orgs_config", lambda: mock_config)
+    monkeypatch.setattr("cloudctl.core.load_orgs_config", lambda: mock_config)
 
     # 2. Mock the profile initialization
     # [FIX] Implementation in core.py likely imports this from aws.py.
     # We patch it at the source to ensure the call is intercepted.
     ensure_mock = MagicMock()
-    monkeypatch.setattr("awsctl.aws.ensure_sso_base_profile", ensure_mock)
+    monkeypatch.setattr("cloudctl.aws.ensure_sso_base_profile", ensure_mock)
 
     # 3. Execute
     rc = core.cmd_config_sync()
@@ -44,10 +44,10 @@ def test_config_sync_direct(monkeypatch):
 
 def test_config_sync_empty_orgs(monkeypatch):
     """Verify that sync handles empty configurations without error."""
-    monkeypatch.setattr("awsctl.core.load_orgs_config", lambda: {"orgs": []})
+    monkeypatch.setattr("cloudctl.core.load_orgs_config", lambda: {"orgs": []})
 
     ensure_mock = MagicMock()
-    monkeypatch.setattr("awsctl.aws.ensure_sso_base_profile", ensure_mock)
+    monkeypatch.setattr("cloudctl.aws.ensure_sso_base_profile", ensure_mock)
 
     rc = core.cmd_config_sync()
 

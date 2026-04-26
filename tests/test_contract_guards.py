@@ -1,7 +1,7 @@
-import awsctl.aws as aws
-import awsctl.core as core
-import awsctl.sso_cache as sso_cache
-import awsctl.utils as utils
+import cloudctl.aws as aws
+import cloudctl.core as core
+import cloudctl.sso_cache as sso_cache
+import cloudctl.utils as utils
 
 
 def test_aws_internal_contract():

@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-from awsctl import aws, core, sso_cache, utils
+from cloudctl import aws, core, sso_cache, utils
 
 
 def test_sso_token_validation_branches(tmp_path, monkeypatch):
@@ -53,15 +53,15 @@ def test_utils_run_no_check():
 def test_core_login_subprocess_error(mock_rich_console, monkeypatch):
     """Verify error reporting when the underlying AWS SSO process fails."""
     monkeypatch.setattr(
-        "awsctl.config.get_org",
+        "cloudctl.config.get_org",
         lambda x: {"name": "o", "sso_start_url": "u", "sso_region": "r"},
     )
-    monkeypatch.setattr("awsctl.aws.ensure_sso_base_profile", lambda x: "prof")
-    monkeypatch.setattr("awsctl.core.load_active_sso_token", lambda *a, **k: None)
+    monkeypatch.setattr("cloudctl.aws.ensure_sso_base_profile", lambda x: "prof")
+    monkeypatch.setattr("cloudctl.core.load_active_sso_token", lambda *a, **k: None)
 
     # Simulate a generic failure in the run utility
     monkeypatch.setattr(
-        "awsctl.utils.run", MagicMock(side_effect=Exception("Subprocess Fail"))
+        "cloudctl.utils.run", MagicMock(side_effect=Exception("Subprocess Fail"))
     )
 
     assert core.cmd_login("o") == 1
@@ -72,20 +72,20 @@ def test_core_login_subprocess_error(mock_rich_console, monkeypatch):
 def test_cmd_exec_missing_creds(mock_rich_console, monkeypatch):
     """Test exec behavior when AWS returns empty or malformed credentials."""
     monkeypatch.setattr(
-        "awsctl.context_manager.load_context",
+        "cloudctl.context_manager.load_context",
         lambda: {"current_org": "o", "account": "1", "role": "r", "region": "r"},
     )
     monkeypatch.setattr(
-        "awsctl.config.get_org",
+        "cloudctl.config.get_org",
         lambda x: {"name": "o", "sso_start_url": "u", "sso_region": "r"},
     )
     token = sso_cache.SsoToken("t", "u", "r", datetime.now(timezone.utc), {})
 
     # [FIX] core module now re-exports load_active_sso_token from sso_cache
-    monkeypatch.setattr("awsctl.core.load_active_sso_token", lambda *a, **k: token)
+    monkeypatch.setattr("cloudctl.core.load_active_sso_token", lambda *a, **k: token)
 
     # Simulate AWS CLI returning empty JSON/dict
-    monkeypatch.setattr("awsctl.use_exports._aws_json", lambda cmd: {})
+    monkeypatch.setattr("cloudctl.use_exports._aws_json", lambda cmd: {})
 
     assert core.cmd_exec("1", "r", "r", ["ls"]) == 1
     assert "Failed to get credentials" in "".join(mock_rich_console.captured)
@@ -94,15 +94,15 @@ def test_cmd_exec_missing_creds(mock_rich_console, monkeypatch):
 def test_cmd_exec_subprocess_fail(mock_rich_console, monkeypatch):
     """Test standard error trapping when os.execvpe fails to find the command."""
     monkeypatch.setattr(
-        "awsctl.context_manager.load_context",
+        "cloudctl.context_manager.load_context",
         lambda: {"current_org": "o", "account": "1", "role": "r", "region": "r"},
     )
     monkeypatch.setattr(
-        "awsctl.config.get_org",
+        "cloudctl.config.get_org",
         lambda x: {"name": "o", "sso_start_url": "u", "sso_region": "r"},
     )
     token = sso_cache.SsoToken("t", "u", "r", datetime.now(timezone.utc), {})
-    monkeypatch.setattr("awsctl.core.load_active_sso_token", lambda *a, **k: token)
+    monkeypatch.setattr("cloudctl.core.load_active_sso_token", lambda *a, **k: token)
 
     creds = {
         "roleCredentials": {
@@ -111,7 +111,7 @@ def test_cmd_exec_subprocess_fail(mock_rich_console, monkeypatch):
             "sessionToken": "ST",
         }
     }
-    monkeypatch.setattr("awsctl.use_exports._aws_json", lambda cmd: creds)
+    monkeypatch.setattr("cloudctl.use_exports._aws_json", lambda cmd: creds)
 
     # Fail execution with FileNotFoundError (Standard code 127)
     with patch("os.execvpe", side_effect=FileNotFoundError):

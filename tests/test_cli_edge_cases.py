@@ -8,7 +8,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from awsctl import cli
+from cloudctl import cli
 
 
 def test_whoami_error(monkeypatch: pytest.MonkeyPatch, mock_rich_console: Any) -> None:
@@ -19,7 +19,7 @@ def test_whoami_error(monkeypatch: pytest.MonkeyPatch, mock_rich_console: Any) -
     )
 
     # [FIX] Dispatcher calls aws.run_aws or core.run_aws. Patch at the utility level.
-    monkeypatch.setattr("awsctl.aws.run_aws", mock_run)
+    monkeypatch.setattr("cloudctl.aws.run_aws", mock_run)
 
     assert cli.cmd_whoami() == 1
     # Check unified console capture
@@ -31,7 +31,7 @@ def test_whoami_exception(
     monkeypatch: pytest.MonkeyPatch, mock_rich_console: Any
 ) -> None:
     """Verify whoami handles unexpected python exceptions during execution."""
-    monkeypatch.setattr("awsctl.aws.run_aws", MagicMock(side_effect=Exception("Boom")))
+    monkeypatch.setattr("cloudctl.aws.run_aws", MagicMock(side_effect=Exception("Boom")))
 
     assert cli.cmd_whoami() == 1
     output = "".join(mock_rich_console.captured)
@@ -42,10 +42,10 @@ def test_open_exception(
     monkeypatch: pytest.MonkeyPatch, mock_rich_console: Any
 ) -> None:
     """Verify the console opener reports configuration errors."""
-    monkeypatch.setattr("awsctl.cli.load_context", lambda: {"current_org": "btavm"})
+    monkeypatch.setattr("cloudctl.cli.load_context", lambda: {"current_org": "btavm"})
     # Fail during org loading
     monkeypatch.setattr(
-        "awsctl.core.get_org", MagicMock(side_effect=Exception("ConfigFail"))
+        "cloudctl.core.get_org", MagicMock(side_effect=Exception("ConfigFail"))
     )
 
     # cmd_open handles console URL generation; exceptions should be trapped.
@@ -56,24 +56,24 @@ def test_open_exception(
 def test_cmd_login_chaining_exceptions(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify that login chaining (login -> switch) works even if resolution logic is complex."""
     # 1. Mock base login success
-    monkeypatch.setattr("awsctl.core.cmd_login", lambda o, **k: 0)
-    monkeypatch.setattr("awsctl.cli.load_context", lambda: {"current_org": "btavm"})
+    monkeypatch.setattr("cloudctl.core.cmd_login", lambda o, **k: 0)
+    monkeypatch.setattr("cloudctl.cli.load_context", lambda: {"current_org": "btavm"})
     monkeypatch.setattr(
-        "awsctl.core.load_orgs_config", lambda: {"orgs": [{"name": "btavm"}]}
+        "cloudctl.core.load_orgs_config", lambda: {"orgs": [{"name": "btavm"}]}
     )
 
     # 2. Mock the org ref used for the switch bridge
-    monkeypatch.setattr("awsctl.cli._get_org_ref", lambda n: MagicMock())
+    monkeypatch.setattr("cloudctl.cli._get_org_ref", lambda n: MagicMock())
 
     # 3. Simulate a failure in account resolution during chaining
     monkeypatch.setattr(
-        "awsctl.cli._resolve_account_id",
+        "cloudctl.cli._resolve_account_id",
         MagicMock(side_effect=Exception("ResolveFail")),
     )
 
     # 4. Mock switch to verify it IS still attempted or handled
     mock_switch = MagicMock(return_value=0)
-    monkeypatch.setattr("awsctl.cli.cmd_switch", mock_switch)
+    monkeypatch.setattr("cloudctl.cli.cmd_switch", mock_switch)
 
     # Provide full attribute set expected by argparse/dispatch
     args = type(
@@ -97,9 +97,9 @@ def test_cmd_switch_keyboard_interrupt(
     monkeypatch: pytest.MonkeyPatch, mock_rich_console: Any
 ) -> None:
     """Verify that Ctrl+C in interactive mode returns a clean error."""
-    monkeypatch.setattr("awsctl.cli.load_context", lambda: {})
+    monkeypatch.setattr("cloudctl.cli.load_context", lambda: {})
     monkeypatch.setattr(
-        "awsctl.interactive.run_interactive_use",
+        "cloudctl.interactive.run_interactive_use",
         MagicMock(side_effect=KeyboardInterrupt),
     )
 
@@ -118,9 +118,9 @@ def test_cmd_switch_generic_exception(
     monkeypatch: pytest.MonkeyPatch, mock_rich_console: Any
 ) -> None:
     """Verify that unexpected failures in the switch logic are caught."""
-    monkeypatch.setattr("awsctl.cli.load_context", lambda: {})
+    monkeypatch.setattr("cloudctl.cli.load_context", lambda: {})
     monkeypatch.setattr(
-        "awsctl.interactive.run_interactive_use",
+        "cloudctl.interactive.run_interactive_use",
         MagicMock(side_effect=Exception("RandomFail")),
     )
 
@@ -138,7 +138,7 @@ def test_cmd_list_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify the high-level 'list' command correctly dispatches to resource subcommands."""
     mock_orgs = MagicMock(return_value=0)
     # [FIX] Ensure we patch the location the dispatcher actually calls
-    monkeypatch.setattr("awsctl.cli.cmd_orgs", mock_orgs)
+    monkeypatch.setattr("cloudctl.cli.cmd_orgs", mock_orgs)
 
     # Mocking 'list orgs'
     args = type("Args", (), {"resource": "orgs", "json": False})

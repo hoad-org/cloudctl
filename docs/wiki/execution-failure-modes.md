@@ -2,7 +2,7 @@
 
 # ⚠️ Failure Modes and Mitigation
 
-This document defines the **expected failure modes** of `awsctl` and how they are **intentionally handled**. In `awsctl`, failure is often the correct behavior; many failures are deliberate safety outcomes designed to prevent undefined or insecure states.
+This document defines the **expected failure modes** of `cloudctl` and how they are **intentionally handled**. In `cloudctl`, failure is often the correct behavior; many failures are deliberate safety outcomes designed to prevent undefined or insecure states.
 
 This document is authoritative.
 
@@ -10,9 +10,9 @@ This document is authoritative.
 
 ## 🏛️ Core Principle
 
-> **In `awsctl`, failure is often the correct behavior.**
+> **In `cloudctl`, failure is often the correct behavior.**
 
-`awsctl` is engineered to fail early, loudly, and safely, leaving absolutely no partial state. Silent success is considered more dangerous than an explicit failure.
+`cloudctl` is engineered to fail early, loudly, and safely, leaving absolutely no partial state. Silent success is considered more dangerous than an explicit failure.
 
 ---
 
@@ -23,7 +23,7 @@ This document is authoritative.
 ### 1. Identity Failures
 * **Examples:** User not authenticated with IdP, MFA not completed, expired SSO session.
 * **Mitigation:** Execution aborts immediately. No credentials are issued.
-* **Rationale:** `awsctl` never attempts to "recover" identity; authentication is strictly external.
+* **Rationale:** `cloudctl` never attempts to "recover" identity; authentication is strictly external.
 
 ### 2. Policy Failures (Registry / Guardrails)
 * **Examples:** Account not allowlisted, role not permitted, region not allowed, invalid registry schema.
@@ -32,8 +32,8 @@ This document is authoritative.
 
 ### 3. Environment Failures
 * **Examples:** Unsupported shell, broken shell integration, invalid environment variables.
-* **Mitigation:** Abort without modifying the environment. Diagnostic guidance provided via `awsctl doctor`.
-* **Rationale:** Environment ambiguity creates security risk. `awsctl` refuses to guess.
+* **Mitigation:** Abort without modifying the environment. Diagnostic guidance provided via `cloudctl doctor`.
+* **Rationale:** Environment ambiguity creates security risk. `cloudctl` refuses to guess.
 
 ### 4. Execution Failures (AWS)
 * **Examples:** `STS AssumeRole` denied, permission boundary violation, service unavailable.
@@ -51,7 +51,7 @@ This document is authoritative.
 
 ```mermaid
 flowchart TD
-    Start[awsctl Invocation]
+    Start[cloudctl Invocation]
     Validate[Validate Identity & Policy]
     Execute[Execute Action]
     Abort[Abort Safely]
@@ -68,7 +68,7 @@ flowchart TD
 
 ## 🛡️ Abort Semantics & Safety
 
-When `awsctl` aborts, it guarantees a clean exit:
+When `cloudctl` aborts, it guarantees a clean exit:
 * **No environment mutation:** Environment variables remain untouched.
 * **No credential caching:** No session tokens are saved to disk.
 * **No background residue:** No processes or daemons remain active.
@@ -76,7 +76,7 @@ When `awsctl` aborts, it guarantees a clean exit:
 
 
 ### 🚫 No Silent Fallbacks
-`awsctl` explicitly forbids falling back to default AWS credentials, weaker policies, or skipping guardrails. Any fallback would create a "half-trusted" execution state, which is a security regression.
+`cloudctl` explicitly forbids falling back to default AWS credentials, weaker policies, or skipping guardrails. Any fallback would create a "half-trusted" execution state, which is a security regression.
 
 ---
 
@@ -95,7 +95,7 @@ The following anti-patterns are strictly forbidden:
 * **Masking AWS denials:** Authorization errors must always be surfaced.
 
 > [!IMPORTANT]
-> `awsctl` treats failure as a first-class outcome. If `awsctl` ever succeeds by ignoring a failure, it has violated its design.
+> `cloudctl` treats failure as a first-class outcome. If `cloudctl` ever succeeds by ignoring a failure, it has violated its design.
 
 ---
 

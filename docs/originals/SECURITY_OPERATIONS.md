@@ -1,5 +1,5 @@
 # file: docs/SECURITY_OPERATIONS.md
-# awsctl Security Operations Manual (v2.8.1)
+# cloudctl Security Operations Manual (v2.8.1)
 
 **Audience:** Cloud Security, SecOps, and Compliance Teams.
 
@@ -7,7 +7,7 @@
 
 ## 1. Overview
 
-awsctl enforces enterprise access controls and provides audit mechanisms for AWS identity workflows.
+cloudctl enforces enterprise access controls and provides audit mechanisms for AWS identity workflows.
 It operates on a **Shared Responsibility Model**:
 
 - **Tool:** Enforces ephemeral credentials and guardrails.
@@ -17,7 +17,7 @@ It operates on a **Shared Responsibility Model**:
 
 ### Manual Configuration (Pilot Phase)
 
-During the pilot, `awsctl` guardrails and settings are defined locally in `~/.awsctl/orgs.yaml`.
+During the pilot, `cloudctl` guardrails and settings are defined locally in `~/.cloudctl/orgs.yaml`.
 
 - **Source of Truth:** Internal Confluence Documentation.
 - **Integrity:** Relies on users correctly copying the approved configuration.
@@ -39,12 +39,12 @@ The target architecture allows dynamic policy updates without client upgrades.
 Accessing a role tagged as `sensitive_roles` triggers:
 
 1.  **Interactive Prompt:** User must provide a text justification.
-2.  **Local Audit:** Logged to `~/.awsctl/audit.log`.
+2.  **Local Audit:** Logged to `~/.cloudctl/audit.log`.
     - *Format:* `ISO8601 | ORG | ROLE | REASON`
 
 **Emergency Procedure:**
 
-If `awsctl` fails, SecOps must authorize users to fallback to raw `aws sso login`.
+If `cloudctl` fails, SecOps must authorize users to fallback to raw `aws sso login`.
 
 - *Risk:* Guardrails (Region locking) are lost during fallback.
 - *Mitigation:* Increase CloudTrail alerting for `us-east-1` (or other non-sovereign regions).
@@ -54,7 +54,7 @@ If `awsctl` fails, SecOps must authorize users to fallback to raw `aws sso login
 Correlate **Endpoint Telemetry** with **CloudTrail**.
 
 - **Valid Pattern:** Process `python` (child of `bash`) calls `aws sso get-role-credentials`.
-- **Bypass Pattern:** Direct execution of `aws` without `awsctl` parent.
+- **Bypass Pattern:** Direct execution of `aws` without `cloudctl` parent.
 
 ## 5. Exit Codes
 
@@ -63,5 +63,5 @@ Correlate **Endpoint Telemetry** with **CloudTrail**.
 | **0** | Success | Normal operation. |
 | **1** | Generic Error | Check stderr (Config/Network). |
 | **126** | Permission Denied | Wrapper failed to execute binary. |
-| **127** | Command Not Found | `_awsctl_bin` missing from PATH. |
+| **127** | Command Not Found | `_cloudctl_bin` missing from PATH. |
 | **130** | Interrupted | User Ctrl+C during prompt. |

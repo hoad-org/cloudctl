@@ -1,12 +1,12 @@
 # file: tests/test_plugins.py
-"""Tests for awsctl plugins."""
+"""Tests for cloudctl plugins."""
 
 from concurrent.futures import TimeoutError
 from unittest.mock import MagicMock, patch
 
 import pytest
-from awsctl import plugins
-from awsctl.plugins import okta
+from cloudctl import plugins
+from cloudctl.plugins import okta
 
 
 # [FIX] Ensure plugin logic actually runs by disabling test mode

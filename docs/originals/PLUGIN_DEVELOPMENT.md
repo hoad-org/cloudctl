@@ -1,5 +1,5 @@
 # file: docs/PLUGIN_DEVELOPMENT.md
-# Plugin Framework — awsctl v2.8.1
+# Plugin Framework — cloudctl v2.8.1
 
 Plugins allow enforcement of corporate posture (e.g., VPN check, device compliance) before login.
 
@@ -9,7 +9,7 @@ Plugins allow enforcement of corporate posture (e.g., VPN check, device complian
 
 For security, plugins must be importable via the protected namespace:
 
-> awsctl.plugins.<name>
+> cloudctl.plugins.<name>
 
 ### 1.2 Exposed Function
 

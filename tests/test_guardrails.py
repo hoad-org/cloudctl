@@ -4,7 +4,7 @@
 from unittest.mock import MagicMock
 
 import pytest
-from awsctl import guardrails
+from cloudctl import guardrails
 
 
 def test_validate_region_allowed():
@@ -55,7 +55,7 @@ def test_sort_roles_missing_preferred():
 
 def test_check_min_version_pass(monkeypatch):
     """Verify that client passes when version is >= required."""
-    monkeypatch.setattr("awsctl.guardrails.__version__", "2.0.0")
+    monkeypatch.setattr("cloudctl.guardrails.__version__", "2.0.0")
     # Config requires 1.0.0, current is 2.0.0 -> Pass
     guardrails.check_min_version({"min_client_version": "1.0.0"})
 
@@ -63,7 +63,7 @@ def test_check_min_version_pass(monkeypatch):
 def test_check_min_version_fail(monkeypatch, mock_rich_console):
     """Verify that an outdated client triggers a SystemExit and an update notice."""
     mock_rich_console.clear()
-    monkeypatch.setattr("awsctl.guardrails.__version__", "1.0.0")
+    monkeypatch.setattr("cloudctl.guardrails.__version__", "1.0.0")
 
     # Config requires 2.0.0, current is 1.0.0 -> Fail
     with pytest.raises(SystemExit):
@@ -85,7 +85,7 @@ def test_check_break_glass_prompt(monkeypatch, mock_rich_console, tmp_path):
     # Mock Inquirer to return a reason string
     mock_prompt = MagicMock()
     mock_prompt.execute.return_value = "Fixing DB"
-    monkeypatch.setattr("awsctl.guardrails.inquirer.text", lambda **k: mock_prompt)
+    monkeypatch.setattr("cloudctl.guardrails.inquirer.text", lambda **k: mock_prompt)
 
     guardrails.check_break_glass(cfg, "Admin")
 
@@ -117,7 +117,7 @@ def test_check_break_glass_abort(monkeypatch, mock_rich_console):
     mock_prompt = MagicMock()
     # Simulate user pressing Ctrl+C
     mock_prompt.execute.side_effect = KeyboardInterrupt
-    monkeypatch.setattr("awsctl.guardrails.inquirer.text", lambda **k: mock_prompt)
+    monkeypatch.setattr("cloudctl.guardrails.inquirer.text", lambda **k: mock_prompt)
 
     with pytest.raises(SystemExit):
         guardrails.check_break_glass(cfg, "Admin")

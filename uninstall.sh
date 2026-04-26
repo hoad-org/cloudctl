@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# uninstall.sh — awsctl clean uninstaller for macOS, Linux, and WSL
+# uninstall.sh — cloudctl clean uninstaller for macOS, Linux, and WSL
 # For Windows PowerShell, run uninstall.ps1 instead.
 set -euo pipefail
 
-echo "🗑️  Starting awsctl uninstallation..."
+echo "🗑️  Starting cloudctl uninstallation..."
 
 # ---------------------------------------------------------------------------
 # 1. Remove shell wrapper from all profiles that contain it
@@ -16,7 +16,7 @@ import re
 from pathlib import Path
 
 try:
-    from awsctl import shell as _shell
+    from cloudctl import shell as _shell
     _remove_shell  = _shell.remove_shell_function
     _remove_fish   = _shell.remove_fish_function
     _remove_ps     = _shell.remove_powershell_function
@@ -24,7 +24,7 @@ try:
     _detect_ps     = _shell.detect_powershell_profile
 except Exception:
     _remove_shell = _remove_fish = _remove_ps = lambda *a: False
-    _detect_fish  = lambda: Path.home() / ".config/fish/functions/awsctl.fish"
+    _detect_fish  = lambda: Path.home() / ".config/fish/functions/cloudctl.fish"
     _detect_ps    = lambda: Path.home() / "Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
 
 # -----------------------------------------------------------------------
@@ -34,11 +34,11 @@ except Exception:
 # -----------------------------------------------------------------------
 _LEGACY_PATTERNS = [
     # v2.x "SECURE" variants
-    r"# AWSCTL SHELL INTEGRATION \(v[\d.]+-[A-Z]+\)\nawsctl\(\) \{.*?\n\}",
+    r"# AWSCTL SHELL INTEGRATION \(v[\d.]+-[A-Z]+\)\ncloudctl\(\) \{.*?\n\}",
     # Any remaining "# AWSCTL SHELL INTEGRATION" block (catches future drift)
-    r"# AWSCTL SHELL INTEGRATION[^\n]*\nawsctl\(\) \{.*?\n\}",
-    # Old venv PATH lines that awsctl installers used to inject
-    r"export PATH=\"\$HOME/repos/AWS/awsctl/\.venv_awsctl/bin[^\n]*\n?",
+    r"# AWSCTL SHELL INTEGRATION[^\n]*\ncloudctl\(\) \{.*?\n\}",
+    # Old venv PATH lines that cloudctl installers used to inject
+    r"export PATH=\"\$HOME/repos/AWS/cloudctl/\.venv_cloudctl/bin[^\n]*\n?",
 ]
 
 def _remove_legacy(path: Path) -> bool:
@@ -92,7 +92,7 @@ else:
 PYEOF
 
 # ---------------------------------------------------------------------------
-# 2. Remove awsctl-managed [sso-session] blocks from ~/.aws/config
+# 2. Remove cloudctl-managed [sso-session] blocks from ~/.aws/config
 # ---------------------------------------------------------------------------
 echo "🔑 Cleaning ~/.aws/config SSO sessions..."
 
@@ -101,7 +101,7 @@ import configparser
 import pathlib
 import yaml
 
-orgs_file = pathlib.Path.home() / ".config" / "awsctl" / "orgs.yaml"
+orgs_file = pathlib.Path.home() / ".config" / "cloudctl" / "orgs.yaml"
 aws_config = pathlib.Path.home() / ".aws" / "config"
 
 if not orgs_file.exists() or not aws_config.exists():
@@ -136,22 +136,22 @@ if removed:
     for s in removed:
         print(f"  ✓ Removed [{s}] from ~/.aws/config")
 else:
-    print("  ℹ️  No awsctl SSO sessions found in ~/.aws/config")
+    print("  ℹ️  No cloudctl SSO sessions found in ~/.aws/config")
 PYEOF
 
 # ---------------------------------------------------------------------------
 # 4. Uninstall the Python package
 # ---------------------------------------------------------------------------
 echo "📦 Uninstalling package..."
-pip3 uninstall -y awsctl 2>/dev/null || pip3 uninstall -y awsctl || true
+pip3 uninstall -y cloudctl 2>/dev/null || pip3 uninstall -y cloudctl || true
 
 # ---------------------------------------------------------------------------
 # 5. Remove local state (context, audit log, config)
 # ---------------------------------------------------------------------------
 echo "🗂️  Removing local state..."
 
-rm -rf "${HOME}/.awsctl"
-rm -f "${HOME}/.config/awsctl/current_context.json"
+rm -rf "${HOME}/.cloudctl"
+rm -f "${HOME}/.config/cloudctl/current_context.json"
 
 echo ""
 echo "✅ Uninstallation complete. Please restart your terminal."

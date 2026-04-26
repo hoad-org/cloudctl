@@ -1,7 +1,7 @@
 # file: tests/test_audit_logging.py
 from unittest.mock import patch
 
-from awsctl import guardrails, utils
+from cloudctl import guardrails, utils
 
 
 def test_audit_log_rotation_fail(monkeypatch, tmp_path):

@@ -5,8 +5,8 @@ import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
-from awsctl import shell, utils, wizard
-from awsctl.wizard import inquirer
+from cloudctl import shell, utils, wizard
+from cloudctl.wizard import inquirer
 
 
 def _seq_mock(values):
@@ -48,7 +48,7 @@ def test_wizard_write_fail(monkeypatch, tmp_path, mock_rich_console):
     """Wizard returns False and reports error when mkstemp fails."""
     mock_org = {"name": "org", "provider": "aws"}
     monkeypatch.setattr(
-        "awsctl.wizard._load_registry_choices",
+        "cloudctl.wizard._load_registry_choices",
         lambda: [{"name": "Org", "value": mock_org}],
     )
 
@@ -57,7 +57,7 @@ def test_wizard_write_fail(monkeypatch, tmp_path, mock_rich_console):
     # confirm: no manual, yes save
     monkeypatch.setattr(inquirer, "confirm", _seq_mock([False, True]))
 
-    from awsctl import core
+    from cloudctl import core
     monkeypatch.setattr(core, "get_orgs_path", lambda ensure=True: tmp_path / "orgs.yaml")
 
     with patch("tempfile.mkstemp", side_effect=OSError("Write Fail")):
@@ -77,7 +77,7 @@ def test_wizard_cli_sync_fail(monkeypatch, tmp_path, mock_rich_console):
     """Sync failure is surfaced as a warning; wizard still returns True."""
     mock_org = {"name": "org", "provider": "aws"}
     monkeypatch.setattr(
-        "awsctl.wizard._load_registry_choices",
+        "cloudctl.wizard._load_registry_choices",
         lambda: [{"name": "Org", "value": mock_org}],
     )
 
@@ -86,7 +86,7 @@ def test_wizard_cli_sync_fail(monkeypatch, tmp_path, mock_rich_console):
     # confirm: no manual, yes save, yes shell
     monkeypatch.setattr(inquirer, "confirm", _seq_mock([False, True, True]))
 
-    from awsctl import core
+    from cloudctl import core
     monkeypatch.setattr(core, "get_orgs_path", lambda ensure=True: tmp_path / "orgs.yaml")
     monkeypatch.setattr(core, "cmd_config_sync", MagicMock(return_value=1))
     monkeypatch.setattr(shell, "detect_shell_profile", lambda: tmp_path / "rc")
@@ -97,7 +97,7 @@ def test_wizard_cli_sync_fail(monkeypatch, tmp_path, mock_rich_console):
 
     output = "".join(mock_rich_console.captured)
     # Warning must be surfaced to the user
-    assert "awsctl doctor" in output
+    assert "cloudctl doctor" in output
 
 
 # ---------------------------------------------------------------------------

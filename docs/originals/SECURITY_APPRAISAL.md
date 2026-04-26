@@ -1,7 +1,7 @@
 # file: docs/SECURITY_APPRAISAL.md
 # Security Appraisal & Risk Assessment
 
-**System:** `awsctl` (Workstation CLI)
+**System:** `cloudctl` (Workstation CLI)
 **Version:** 2.8.1 (Enterprise Ready)
 **Date:** 2025-12-10
 **Classification:** Public / Open Source
@@ -11,7 +11,7 @@
 
 # 1. Executive Summary
 
-`awsctl` is a high-assurance command-line interface designed to broker access to AWS IAM Identity Center (SSO).
+`cloudctl` is a high-assurance command-line interface designed to broker access to AWS IAM Identity Center (SSO).
 It operates under a **Zero Trust** philosophy, assuming the developer workstation is a potentially hostile environment.
 This appraisal validates the tool's transition to a **"Secure by Default"** architecture (Phase 2).
 
@@ -44,7 +44,7 @@ This appraisal validates the tool's transition to a **"Secure by Default"** arch
 
 * **Shell Execution:** The wrapper is the primary boundary. It must resist manipulation and fail closed.
 * **Registry Loading:** Vulnerable to SSRF or "Zip Bombs" if unchecked. Mitigated by strict size limits and HTTPS enforcement.
-* **Plugins:** Arbitrary Code Execution risk. Mitigated by strict namespace allowlisting (`awsctl.plugins.*`) and thread isolation.
+* **Plugins:** Arbitrary Code Execution risk. Mitigated by strict namespace allowlisting (`cloudctl.plugins.*`) and thread isolation.
 * **SSO Token Cache:** Risk of token reuse. Mitigated by expiry validation and file permission checks.
 
 ---
@@ -71,7 +71,7 @@ This appraisal validates the tool's transition to a **"Secure by Default"** arch
 * **Status:** Verified.
 
 ### Vector: TTY Exposure
-* **Threat:** Running the binary directly (`_awsctl_bin`) dumps credentials to history.
+* **Threat:** Running the binary directly (`_cloudctl_bin`) dumps credentials to history.
 * **Mitigation:** **TTY Guard**. The binary detects interactive usage and refuses to print secrets.
 * **Status:** Verified.
 
@@ -89,15 +89,15 @@ This appraisal validates the tool's transition to a **"Secure by Default"** arch
 # 4. Operational Security
 
 ## 4.1 Deployment Governance
-* **Distribution:** `awsctl` is distributed via tagged `git` releases installed via `pipx`.
+* **Distribution:** `cloudctl` is distributed via tagged `git` releases installed via `pipx`.
 * **Updates:** The `min_client_version` registry field forces client upgrades.
 
 ## 4.2 Logging & Audit
-* **Local:** "Break Glass" events are logged to `~/.awsctl/audit.log`.
+* **Local:** "Break Glass" events are logged to `~/.cloudctl/audit.log`.
 * **Remote:** AWS CloudTrail captures all `AssumeRole` events.
 
 ---
 
 # 5. Conclusion
 
-`awsctl` v2.8.1 demonstrates a mature security posture. By systematically addressing injection, leakage, and integrity risks, it exceeds the baseline requirements for a privileged developer utility.
+`cloudctl` v2.8.1 demonstrates a mature security posture. By systematically addressing injection, leakage, and integrity risks, it exceeds the baseline requirements for a privileged developer utility.

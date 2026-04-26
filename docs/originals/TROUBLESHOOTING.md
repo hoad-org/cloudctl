@@ -1,13 +1,13 @@
 # file: docs/TROUBLESHOOTING.md
-# Troubleshooting — awsctl v2.8.1
+# Troubleshooting — cloudctl v2.8.1
 
 ## 1. Common Issues
 
 ### 1.1 Shell wrapper not loaded
-**Symptom:** `awsctl switch` runs but env vars don't change.
-**Check:** Run `type awsctl`.
-* *Good:* `awsctl is a function`
-* *Bad:* `awsctl is /usr/local/bin/awsctl`
+**Symptom:** `cloudctl switch` runs but env vars don't change.
+**Check:** Run `type cloudctl`.
+* *Good:* `cloudctl is a function`
+* *Bad:* `cloudctl is /usr/local/bin/cloudctl`
 
 **Fix:**
 
@@ -19,15 +19,15 @@
 **Symptom:** `setup` says "Wrapper already present" but it doesn't work.
 **Cause:** You manually edited the wrapper comment block.
 
-**Fix:** Manually delete the `awsctl() { ... }` block from your rc file and re-run `awsctl setup`.
+**Fix:** Manually delete the `cloudctl() { ... }` block from your rc file and re-run `cloudctl setup`.
 
 ### 1.3 SSO cache invalid
 **Symptom:** "Token does not exist" loops.
 
 **Fix:**
 
-> awsctl cache-clear
-> awsctl login --org btavm
+> cloudctl cache-clear
+> cloudctl login --org btavm
 
 ### 1.4 Fish shell issues
 **Cause:** `setup` does not support Fish automatic injection.
@@ -80,16 +80,16 @@ Then reload:
 
 ## 4. Diagnostic Tools
 
-### 4.1 `awsctl doctor`
+### 4.1 `cloudctl doctor`
 **Purpose:** Validates config, permissions, and dependencies.
 
 **Usage:**
 
-> awsctl doctor
+> cloudctl doctor
 
-### 4.2 `awsctl status`
+### 4.2 `cloudctl status`
 **Purpose:** Shows current in-memory context.
 
 **Usage:**
 
-> awsctl status
+> cloudctl status

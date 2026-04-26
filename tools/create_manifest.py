@@ -20,7 +20,7 @@ from typing import Any, Final
 # ==============================================================================
 
 OUTPUT_DIR_NAME: Final[str] = "output"
-MANIFEST_PREFIX: Final[str] = "awsctl_manifest"
+MANIFEST_PREFIX: Final[str] = "cloudctl_manifest"
 TIMESTAMP: Final[str] = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 OUTPUT_FILENAME: Final[str] = f"{MANIFEST_PREFIX}_{TIMESTAMP}.txt"
 
@@ -103,7 +103,7 @@ def create_manifest() -> None:
 
     # 🧹 Cleanup
     for old in repo_root.rglob("*.txt"):
-        if MANIFEST_PREFIX in old.name or "awsctl_manifest" in old.name:
+        if MANIFEST_PREFIX in old.name or "cloudctl_manifest" in old.name:
             try:
                 old.unlink()
             except OSError:
@@ -123,7 +123,7 @@ def create_manifest() -> None:
 
         for file in sorted(files):
             total_files_discovered += 1
-            if MANIFEST_PREFIX in file or "awsctl_manifest" in file:
+            if MANIFEST_PREFIX in file or "cloudctl_manifest" in file:
                 continue
 
             file_path: Path = Path(root_path) / file

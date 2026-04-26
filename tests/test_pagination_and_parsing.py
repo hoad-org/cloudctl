@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
-from awsctl import aws, core, sso_cache, use_exports
+from cloudctl import aws, core, sso_cache, use_exports
 
 # --- USE_EXPORTS (Security & Parsing) ---
 
@@ -85,22 +85,22 @@ def test_cmd_exec_token_expiry(monkeypatch, mock_rich_console):
     """Test session expiry handling during command execution."""
     # 1. Setup Active Context
     monkeypatch.setattr(
-        "awsctl.context_manager.load_context",
+        "cloudctl.context_manager.load_context",
         lambda: {"current_org": "o", "account": "1", "role": "r", "region": "r"},
     )
     monkeypatch.setattr(
-        "awsctl.config.get_org",
+        "cloudctl.config.get_org",
         lambda x: {"name": "o", "sso_start_url": "u", "sso_region": "r"},
     )
 
     # 2. Setup Valid Token
     token = sso_cache.SsoToken("t", "u", "r", datetime.now(timezone.utc), {})
-    monkeypatch.setattr("awsctl.core.load_active_sso_token", lambda *a: token)
+    monkeypatch.setattr("cloudctl.core.load_active_sso_token", lambda *a: token)
 
     # 3. Mock AWS CLI returning ExpiredToken exception
     # [FIX] core.cmd_exec catches SystemExit and looks for the message in e.code or stderr
     monkeypatch.setattr(
-        "awsctl.use_exports.emit_exports",
+        "cloudctl.use_exports.emit_exports",
         MagicMock(side_effect=SystemExit("ExpiredToken")),
     )
 

@@ -1,5 +1,5 @@
 """
-tests/test_upgrade.py — Unit tests for `awsctl upgrade`.
+tests/test_upgrade.py — Unit tests for `cloudctl upgrade`.
 
 cmd_upgrade flow:
   1. Requires GITHUB_TOKEN — returns 1 without it
@@ -16,7 +16,7 @@ import sys
 from unittest.mock import MagicMock, patch
 
 
-import awsctl.cli as cli
+import cloudctl.cli as cli
 
 # ---------------------------------------------------------------------------
 # Shared fixtures / helpers
@@ -26,11 +26,11 @@ FAKE_RELEASE = {
     "tag_name": "v3.1.0",
     "assets": [
         {
-            "name": "awsctl-3.1.0-py3-none-any.whl",
+            "name": "cloudctl-3.1.0-py3-none-any.whl",
             "url": "https://api.github.com/repos/ORG/REPO/releases/assets/12345",
         },
         {
-            "name": "awsctl-3.1.0.tar.gz",
+            "name": "cloudctl-3.1.0.tar.gz",
             "url": "https://api.github.com/repos/ORG/REPO/releases/assets/12346",
         },
     ],
@@ -196,7 +196,7 @@ class TestCmdUpgradeErrors:
         """If the release has no .whl asset, cmd_upgrade reports error and returns 1."""
         release_no_whl = {
             "tag_name": "v3.1.0",
-            "assets": [{"name": "awsctl-3.1.0.tar.gz", "url": "..."}],
+            "assets": [{"name": "cloudctl-3.1.0.tar.gz", "url": "..."}],
         }
         fake_urlopen = _make_urlopen_mock(release_no_whl, b"")
 

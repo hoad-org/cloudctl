@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import yaml
-from awsctl import config
+from cloudctl import config
 
 
 def test_config_hydrate_missing_org(monkeypatch, mock_rich_console):
@@ -14,7 +14,7 @@ def test_config_hydrate_missing_org(monkeypatch, mock_rich_console):
     mock_rich_console.clear()
 
     # [FIX] Patch the registry lookup which _hydrate_orgs now depends on
-    monkeypatch.setattr("awsctl.registry.get_registry", lambda: [])
+    monkeypatch.setattr("cloudctl.registry.get_registry", lambda: [])
 
     enabled_names = ["missing"]
     # We call the public load logic or internal hydrate logic
@@ -31,7 +31,7 @@ def test_load_raw_config_missing_file(monkeypatch):
     mock_path = MagicMock(spec=Path)
     mock_path.exists.return_value = False
 
-    monkeypatch.setattr("awsctl.config.get_orgs_path", lambda ensure=False: mock_path)
+    monkeypatch.setattr("cloudctl.config.get_orgs_path", lambda ensure=False: mock_path)
 
     # Logic should return empty dict safely
     assert config.load_raw_config() == {}
@@ -42,7 +42,7 @@ def test_load_raw_config_bad_yaml(monkeypatch, tmp_path):
     f = tmp_path / "bad.yaml"
     f.write_text("{", encoding="utf-8")
 
-    monkeypatch.setattr("awsctl.config.get_orgs_path", lambda ensure=False: f)
+    monkeypatch.setattr("cloudctl.config.get_orgs_path", lambda ensure=False: f)
 
     # [FIX] If the implementation wraps YAML errors to prevent CLI crashes,
     # we assert the result is an empty dict. If it allows bubble-up, we assert raise.

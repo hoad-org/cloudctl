@@ -2,7 +2,7 @@
 
 # Concepts and Terminology
 
-This document defines the **authoritative vocabulary** used by awsctl.
+This document defines the **authoritative vocabulary** used by cloudctl.
 
 All other documentation, code, reviews, and discussions are expected to use
 these terms consistently.
@@ -14,7 +14,7 @@ This document exists to prevent that.
 
 ## Why This Document Exists
 
-awsctl operates at the intersection of:
+cloudctl operates at the intersection of:
 
 - Human identity
 - Organizational policy
@@ -31,7 +31,7 @@ This document resolves those ambiguities.
 
 ## Core Concepts
 
-### awsctl
+### cloudctl
 
 **Definition:**  
 A client-side identity broker and execution control tool for AWS.
@@ -42,7 +42,7 @@ A client-side identity broker and execution control tool for AWS.
 - An IAM replacement
 - An automation engine
 
-awsctl mediates *intent* between humans and AWS.
+cloudctl mediates *intent* between humans and AWS.
 
 ---
 
@@ -53,8 +53,8 @@ The external system that authenticates a human user
 (e.g. AWS IAM Identity Center, Okta, Azure AD).
 
 **Key Properties:**
-- awsctl does not authenticate users
-- awsctl trusts IdP assertions
+- cloudctl does not authenticate users
+- cloudctl trusts IdP assertions
 - IdP is authoritative for identity
 
 ---
@@ -67,7 +67,7 @@ The act of proving who a user is.
 **Important:**  
 Authentication does **not** imply authorization.
 
-awsctl never performs authentication.
+cloudctl never performs authentication.
 
 ---
 
@@ -76,7 +76,7 @@ awsctl never performs authentication.
 **Definition:**  
 The act of determining what a user is allowed to do.
 
-In awsctl, authorization is enforced by:
+In cloudctl, authorization is enforced by:
 - Configuration
 - Registry policy
 - AWS IAM
@@ -92,7 +92,7 @@ Authorization failures are explicit and terminal.
 A short-lived proof of authenticated identity issued by the IdP
 and consumed by AWS STS.
 
-awsctl does not generate assertions.
+cloudctl does not generate assertions.
 It only brokers their use.
 
 ---
@@ -102,7 +102,7 @@ It only brokers their use.
 **Definition:**  
 AWS service that issues short-lived credentials based on trust policies.
 
-awsctl uses STS to:
+cloudctl uses STS to:
 - Assume roles
 - Obtain temporary credentials
 
@@ -175,7 +175,7 @@ Sensitivity is a policy decision, not an AWS concept.
 ### Execution
 
 **Definition:**  
-A single invocation of awsctl resulting in zero or more AWS API calls.
+A single invocation of cloudctl resulting in zero or more AWS API calls.
 
 Executions are:
 - Stateless
@@ -189,7 +189,7 @@ There is no background execution.
 ### Failure
 
 **Definition:**  
-A terminal condition where awsctl refuses to proceed.
+A terminal condition where cloudctl refuses to proceed.
 
 Failure is often intentional and protective.
 
@@ -213,7 +213,7 @@ User-initiated aborts are not errors.
 ### Determinism
 
 **Definition:**  
-Given the same inputs, awsctl produces the same behavior.
+Given the same inputs, cloudctl produces the same behavior.
 
 Determinism is required for:
 - Safety
@@ -235,7 +235,7 @@ Context exists only:
 - In memory
 - In the user’s shell (if explicitly exported)
 
-Context is not persisted by awsctl.
+Context is not persisted by cloudctl.
 
 ---
 
@@ -249,14 +249,14 @@ Shell integration:
 - Is explicit
 - Is reversible
 
-awsctl never modifies shell startup files automatically.
+cloudctl never modifies shell startup files automatically.
 
 ---
 
 ### Interactive Mode
 
 **Definition:**  
-A mode where awsctl prompts the user for confirmation or selection.
+A mode where cloudctl prompts the user for confirmation or selection.
 
 Interactivity is a safety feature, not a convenience feature.
 
@@ -280,7 +280,7 @@ Plugins:
 ### Plugin Boundary
 
 **Definition:**  
-The isolation boundary between core awsctl logic and plugin code.
+The isolation boundary between core cloudctl logic and plugin code.
 
 Crossing this boundary requires explicit contracts.
 
@@ -293,9 +293,9 @@ Crossing this boundary requires explicit contracts.
 **Definition:**  
 A point where control, authority, or responsibility changes.
 
-Key trust boundaries in awsctl:
+Key trust boundaries in cloudctl:
 - User ↔ IdP
-- awsctl ↔ AWS
+- cloudctl ↔ AWS
 - Core ↔ Plugins
 - Configuration ↔ Execution
 
@@ -306,9 +306,9 @@ Trust boundaries are explicit and documented.
 ### Root of Trust
 
 **Definition:**  
-The minimal set of assumptions awsctl relies on.
+The minimal set of assumptions cloudctl relies on.
 
-For awsctl:
+For cloudctl:
 - Identity Provider authentication
 - AWS STS enforcement
 - Declarative configuration validity
@@ -322,7 +322,7 @@ Nothing else is trusted implicitly.
 **Definition:**  
 Granting only the minimum permissions required.
 
-awsctl enforces least privilege by:
+cloudctl enforces least privilege by:
 - Hiding unapproved roles
 - Refusing implicit access
 - Surfacing scope clearly
@@ -356,7 +356,7 @@ Terminology defined here is binding across all of them.
 
 ## Summary
 
-awsctl is intentionally explicit.
+cloudctl is intentionally explicit.
 
 Clear language enables:
 - Correct usage
@@ -366,4 +366,4 @@ Clear language enables:
 
 If a term is unclear, update this document first.
 
-This is the vocabulary contract for awsctl.
+This is the vocabulary contract for cloudctl.

@@ -3,9 +3,9 @@
 
 ## 1. Overview
 
-`awsctl` uses a shell function wrapper to safely:
+`cloudctl` uses a shell function wrapper to safely:
 
-1.  Invoke the internal binary (`_awsctl_bin`)
+1.  Invoke the internal binary (`_cloudctl_bin`)
 2.  Determine the execution strategy (`EXEC` vs `EVAL`)
 3.  Modify the environment **only** when safe
 
@@ -21,16 +21,16 @@ If any check fails, the wrapper exits with an error and **does not** evaluate ou
 
 ## 3. The Wrapper Code (Bash/Zsh)
 
-If `awsctl setup` cannot modify your rc file, copy this function manually:
+If `cloudctl setup` cannot modify your rc file, copy this function manually:
 
-> awsctl() {
->     if ! command -v _awsctl_bin >/dev/null 2>&1; then
->         echo "Error: _awsctl_bin not found." >&2
+> cloudctl() {
+>     if ! command -v _cloudctl_bin >/dev/null 2>&1; then
+>         echo "Error: _cloudctl_bin not found." >&2
 >         return 1
 >     fi
 >
 >     local raw_output
->     raw_output=$(_awsctl_bin --check-strategy "$@")
+>     raw_output=$(_cloudctl_bin --check-strategy "$@")
 >     local check_rc=$?
 >
 >     if [[ $check_rc -ne 0 ]] || [[ -z "$raw_output" ]]; then
@@ -42,13 +42,13 @@ If `awsctl setup` cannot modify your rc file, copy this function manually:
 >     strategy=$(echo "$raw_output" | tail -n1)
 >
 >     if [[ "$strategy" == "EXEC" ]]; then
->         _awsctl_bin "$@"
+>         _cloudctl_bin "$@"
 >         return $?
 >     fi
 >
 >     if [[ "$strategy" == "EVAL" ]]; then
 >         local output
->         output=$(_awsctl_bin "$@")
+>         output=$(_cloudctl_bin "$@")
 >         local rc=$?
 >         if [[ $rc -eq 0 ]]; then
 >             eval "$output"
@@ -66,11 +66,11 @@ If `awsctl setup` cannot modify your rc file, copy this function manually:
 
 **Status:** Manual Setup Required.
 
-`awsctl setup` will **abort** if it detects Fish shell to prevent corrupting `~/.bashrc`.
-Fish users must manually create `~/.config/fish/functions/awsctl.fish`:
+`cloudctl setup` will **abort** if it detects Fish shell to prevent corrupting `~/.bashrc`.
+Fish users must manually create `~/.config/fish/functions/cloudctl.fish`:
 
-> function awsctl
->     set -l outcome (_awsctl_bin --check-strategy $argv)
+> function cloudctl
+>     set -l outcome (_cloudctl_bin --check-strategy $argv)
 >     if test $status -ne 0
 >         echo "Error: Strategy check failed."
 >         return 1
@@ -79,9 +79,9 @@ Fish users must manually create `~/.config/fish/functions/awsctl.fish`:
 >     set -l strategy (echo $outcome | tail -n1)
 >
 >     if test "$strategy" = "EXEC"
->         _awsctl_bin $argv
+>         _cloudctl_bin $argv
 >     else if test "$strategy" = "EVAL"
->         set -l output (_awsctl_bin $argv)
+>         set -l output (_cloudctl_bin $argv)
 >         if test $status -eq 0
 >             for line in $output
 >                 set -l kv (string split -m1 = (string replace "export " "" $line))
@@ -91,7 +91,7 @@ Fish users must manually create `~/.config/fish/functions/awsctl.fish`:
 >             echo $output
 >         end
 >     else
->         _awsctl_bin $argv
+>         _cloudctl_bin $argv
 >     end
 > end
 
@@ -99,4 +99,4 @@ Fish users must manually create `~/.config/fish/functions/awsctl.fish`:
 
 **Status:** Not Supported.
 
-Users on Windows **must** use WSL2 (Ubuntu/Debian) to run `awsctl`.
+Users on Windows **must** use WSL2 (Ubuntu/Debian) to run `cloudctl`.

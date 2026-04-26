@@ -16,7 +16,7 @@ def mock_home(tmp_path, monkeypatch):
     monkeypatch.setenv("USERPROFILE", str(home))  # For Windows parity
 
     # Pre-create required directory structures
-    (home / ".awsctl").mkdir(exist_ok=True)
+    (home / ".cloudctl").mkdir(exist_ok=True)
     (home / ".aws" / "sso" / "cache").mkdir(parents=True, exist_ok=True)
 
     # Global browser mock to prevent tests from launching real windows
@@ -60,12 +60,12 @@ def mock_rich_console(monkeypatch):
     cap = CapturedConsole()
 
     # We must patch the utils module where the consoles are defined
-    import awsctl.utils
+    import cloudctl.utils
 
     # Replace the Rich Console instances with our capture object
     # Note: We patch the attributes that the code actually calls
-    monkeypatch.setattr(awsctl.utils, "console", cap.console)
-    monkeypatch.setattr(awsctl.utils, "stdout_console", cap.console)
+    monkeypatch.setattr(cloudctl.utils, "console", cap.console)
+    monkeypatch.setattr(cloudctl.utils, "stdout_console", cap.console)
 
     # We return the 'cap' wrapper so tests can call .clear() or check .captured
     return cap

@@ -2,15 +2,15 @@
 
 # 🏛️ Architecture — Configuration Model
 
-This document defines the **architectural role of configuration** in `awsctl`. It explains why configuration exists, how it is evaluated, and where its authority begins and ends within the system's trust boundaries.
+This document defines the **architectural role of configuration** in `cloudctl`. It explains why configuration exists, how it is evaluated, and where its authority begins and ends within the system's trust boundaries.
 
 This document is authoritative.
 
 ---
 
-## 🏗️ Purpose of Configuration in awsctl
+## 🏗️ Purpose of Configuration in cloudctl
 
-In `awsctl`, configuration is **policy**, not preference. It exists to **constrain human intent before execution**.
+In `cloudctl`, configuration is **policy**, not preference. It exists to **constrain human intent before execution**.
 
 
 
@@ -24,7 +24,7 @@ In `awsctl`, configuration is **policy**, not preference. It exists to **constra
 
 ## 🛰️ Configuration as a Control Plane
 
-`awsctl` configuration functions as a **client-side control plane**. It is evaluated at the very beginning of the lifecycle:
+`cloudctl` configuration functions as a **client-side control plane**. It is evaluated at the very beginning of the lifecycle:
 1. Before any AWS API calls are made.
 2. Before any credentials (STS) are issued.
 3. Before any local environment changes occur.
@@ -81,7 +81,7 @@ Once validated, the configuration is transformed into an **in-memory registry**.
 
 ## 🚫 No Implicit Defaults
 
-`awsctl` deliberately avoids "smart" behavior that creates ambiguity.
+`cloudctl` deliberately avoids "smart" behavior that creates ambiguity.
 * **Forbidden:** Auto-discovering accounts, assuming a "current" profile, or guessing regions.
 * **Principle:** If the configuration does not explicitly allow a resource or action, **it does not exist** to the tool.
 
@@ -114,7 +114,7 @@ Policy flows in one direction: **Configuration → Execution**.
 
 ## 📝 Summary
 
-In `awsctl`, configuration is policy encoded as data. It is evaluated early, enforced strictly, and is central to the safety of the identity brokerage layer. If configuration is ambiguous, execution does not proceed.
+In `cloudctl`, configuration is policy encoded as data. It is evaluated early, enforced strictly, and is central to the safety of the identity brokerage layer. If configuration is ambiguous, execution does not proceed.
 
 > [!IMPORTANT]
 > This document defines the architectural behavior of configuration. For specific field definitions, refer to the [[Configuration Schema|Configuration-Schema]].

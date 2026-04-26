@@ -72,13 +72,13 @@ trap 'if [ $? -ne 0 ]; then echo -e "\n\033[0;31m💥 SCRIPT CRASHED. TAIL OF LO
 
   run_python() {
       if [ "$IS_WINDOWS" -eq 1 ]; then
-          env HOME="$PYTHON_HOME" USERPROFILE="$PYTHON_HOME" "${PYTHON_BIN}" -m awsctl "$@"
+          env HOME="$PYTHON_HOME" USERPROFILE="$PYTHON_HOME" "${PYTHON_BIN}" -m cloudctl "$@"
       else
-          "${PYTHON_BIN}" -m awsctl "$@"
+          "${PYTHON_BIN}" -m cloudctl "$@"
       fi
   }
 
-  awsctl() {
+  cloudctl() {
       local strategy_out
       strategy_out=$(run_python --check-strategy "$@" 2>/dev/null)
       local strategy
@@ -148,7 +148,7 @@ trap 'if [ $? -ne 0 ]; then echo -e "\n\033[0;31m💥 SCRIPT CRASHED. TAIL OF LO
 
   export SHELL="${TEST_SHELL:-/bin/bash}"
 
-  mkdir -p "${HOME}/.aws" "${HOME}/.awsctl"
+  mkdir -p "${HOME}/.aws" "${HOME}/.cloudctl"
 
   if [ ! -d "${VENV_DIR}" ]; then
     printf "  Creating virtualenv...\n" >&3
@@ -186,7 +186,7 @@ trap 'if [ $? -ne 0 ]; then echo -e "\n\033[0;31m💥 SCRIPT CRASHED. TAIL OF LO
   # We don't enforce expect_rc 0 here.
 
   # [VANILLA] Inject the Manual Config. This simulates the user copying from Confluence.
-  cat <<EOF > "${HOME}/.awsctl/orgs.yaml"
+  cat <<EOF > "${HOME}/.cloudctl/orgs.yaml"
 enabled_orgs:
   - ${MOCK_ORG_NAME}
 orgs:
@@ -339,14 +339,14 @@ EOF
   # -------------------------
   h "6. Core Features (Happy Path)"
 
-  rc=$(run_and_capture "version" -- awsctl --version)
+  rc=$(run_and_capture "version" -- cloudctl --version)
   expect_rc "version" "${rc}" 0
 
-  rc=$(run_and_capture "doctor" -- awsctl doctor)
+  rc=$(run_and_capture "doctor" -- cloudctl doctor)
   expect_grep "doctor" "${rc}" "Everything looks good"
 
   # Login using generic mock org
-  rc=$(run_and_capture "login" -- awsctl login --org "${MOCK_ORG_NAME}" --force)
+  rc=$(run_and_capture "login" -- cloudctl login --org "${MOCK_ORG_NAME}" --force)
   expect_rc "login" "${rc}" 0
   expect_grep "login" "${rc}" "Login Successful"
 
@@ -357,12 +357,12 @@ EOF
 
   # [FIX] Step 1: Switch to "PreviousAccount" (235494790978) to seed history.
   set +e
-  awsctl switch 235494790978 --role SecurityAuditor --region us-east-1 > /dev/null 2>&1
+  cloudctl switch 235494790978 --role SecurityAuditor --region us-east-1 > /dev/null 2>&1
   set -e
 
   # [FIX] Step 2: Switch to "PrimaryAccount" (338630860507).
   set +e
-  awsctl switch 338630860507 --role SecurityAuditor --region us-east-1 \
+  cloudctl switch 338630860507 --role SecurityAuditor --region us-east-1 \
       > "${SHELL_ART_DIR}/switch.out" 2>&1
   switch_rc=$?
   set -e
@@ -376,13 +376,13 @@ EOF
   fi
 
   # [FIX] Move 'list roles' check here, AFTER we have an active context.
-  # 'awsctl list roles' requires an active account to function.
+  # 'cloudctl list roles' requires an active account to function.
   rc=$(run_and_capture "list-roles" -- run_python list roles)
   expect_grep "list-roles" "${rc}" "SecurityAuditor"
 
   # Toggle Back (-)
   set +e
-  awsctl switch - > "${SHELL_ART_DIR}/toggle.out" 2>&1
+  cloudctl switch - > "${SHELL_ART_DIR}/toggle.out" 2>&1
   toggle_rc=$?
   set -e
 
@@ -400,10 +400,10 @@ EOF
   # -------------------------
   h "10. Cleanup"
 
-  rc=$(run_and_capture "cache-clear" -- awsctl cache-clear)
+  rc=$(run_and_capture "cache-clear" -- cloudctl cache-clear)
   expect_grep "cache-clear" "${rc}" "Cache cleared"
 
-  awsctl logout
+  cloudctl logout
 
   if [[ -z "${AWS_ACCESS_KEY_ID:-}" ]]; then
      record "logout-unset" 0 "Variables cleared"

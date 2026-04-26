@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
-from awsctl import accounts, aws, config, registry, registry_loader
+from cloudctl import accounts, aws, config, registry, registry_loader
 
 # --- THE GOD MOCK ---
 # This JSON satisfies token loading, account listing, and role parsing logic simultaneously.
@@ -49,17 +49,17 @@ def god_mode(monkeypatch, tmp_path):
 
     # 2. Recreate directory structure
     mock_aws = mock_home / ".aws"
-    mock_awsctl = mock_home / ".awsctl"
+    mock_cloudctl = mock_home / ".cloudctl"
     mock_aws.mkdir(exist_ok=True)
-    mock_awsctl.mkdir(exist_ok=True)
+    mock_cloudctl.mkdir(exist_ok=True)
 
     # 3. Populate State Files
     token_cache = mock_aws / "sso" / "cache"
     token_cache.mkdir(parents=True, exist_ok=True)
     (token_cache / "token.json").write_text(MAGIC_JSON)
 
-    (mock_awsctl / "orgs.yaml").write_text("enabled_orgs:\n- btavm\n")
-    (mock_aws / "awsctl-context.json").write_text(
+    (mock_cloudctl / "orgs.yaml").write_text("enabled_orgs:\n- btavm\n")
+    (mock_aws / "cloudctl-context.json").write_text(
         '{"current_org": "btavm", "account": "1", "role": "r", "region": "us-east-1"}'
     )
 
@@ -77,15 +77,15 @@ def god_mode(monkeypatch, tmp_path):
             }
         ],
     )
-    monkeypatch.setattr(config, "ORGS_USER", mock_awsctl / "orgs.yaml")
+    monkeypatch.setattr(config, "ORGS_USER", mock_cloudctl / "orgs.yaml")
 
     # 5. Global Command Mocks
     # We return a dict because that is what aws.run_aws implementation expects
     mock_response = {"returncode": 0, "stdout": MAGIC_JSON, "stderr": ""}
     monkeypatch.setattr(aws, "run_aws", lambda *a, **k: mock_response)
-    monkeypatch.setattr("awsctl.utils.open_browser", MagicMock())
+    monkeypatch.setattr("cloudctl.utils.open_browser", MagicMock())
     monkeypatch.setattr(
-        "awsctl.shell.detect_shell_profile", lambda: mock_home / ".bashrc"
+        "cloudctl.shell.detect_shell_profile", lambda: mock_home / ".bashrc"
     )
     monkeypatch.setattr(os, "execvpe", MagicMock())
 
@@ -93,12 +93,12 @@ def god_mode(monkeypatch, tmp_path):
     monkeypatch.setattr(
         accounts, "list_accounts", lambda *a: [{"id": "1", "name": "d"}]
     )
-    monkeypatch.setattr("awsctl.accounts.load_active_sso_token", lambda *a: MagicMock())
+    monkeypatch.setattr("cloudctl.accounts.load_active_sso_token", lambda *a: MagicMock())
 
 
 def test_cli_dispatch_full(monkeypatch):
     """Stress test every registered CLI command pathway."""
-    import awsctl.cli as cli
+    import cloudctl.cli as cli
 
     def run(args):
         try:
@@ -117,7 +117,7 @@ def test_cli_dispatch_full(monkeypatch):
     run(["status"])
 
     # Shell Integration
-    monkeypatch.setattr("awsctl.core.cmd_logout_str", lambda: "unset AWS_PROFILE")
+    monkeypatch.setattr("cloudctl.core.cmd_logout_str", lambda: "unset AWS_PROFILE")
     run(["logout"])
     run(["cache-clear"])
     run(["refresh"])
@@ -130,7 +130,7 @@ def test_cli_dispatch_full(monkeypatch):
 
     # Interaction & Switching
     monkeypatch.setattr(
-        "awsctl.interactive.run_interactive_use", lambda o, **k: ("1", "r", "us-east-1")
+        "cloudctl.interactive.run_interactive_use", lambda o, **k: ("1", "r", "us-east-1")
     )
     run(["switch"])
     run(["switch", "-"])
@@ -143,10 +143,10 @@ def test_cli_dispatch_full(monkeypatch):
 
 def test_cli_errors(monkeypatch, mock_rich_console):
     """Test standard error trapping in CLI entry points."""
-    import awsctl.cli as cli
+    import cloudctl.cli as cli
 
     # 1. Login Logic Error (Missing Org)
-    monkeypatch.setattr("awsctl.core.load_orgs_config", lambda: {"orgs": []})
+    monkeypatch.setattr("cloudctl.core.load_orgs_config", lambda: {"orgs": []})
     cli.cmd_login(type("A", (), {"org": "missing"}))
     assert "Error" in "".join(mock_rich_console.captured)
 
@@ -175,7 +175,7 @@ def test_registry_loader_zip_bomb(mock_rich_console):
     mock_resp.raw.read.return_value = compressed_data
 
     # Set tiny limit to trigger failure
-    with patch("awsctl.registry_loader.MAX_REGISTRY_SIZE", 10):
+    with patch("cloudctl.registry_loader.MAX_REGISTRY_SIZE", 10):
         with patch("requests.get", return_value=mock_resp):
             with pytest.raises(SystemExit):
                 registry_loader.fetch_remote_registry("https://example.com/reg.json")
@@ -185,7 +185,7 @@ def test_registry_loader_zip_bomb(mock_rich_console):
 
 def test_config_hydrate_missing_org(monkeypatch, mock_rich_console):
     """Verify warnings are issued when config references non-existent orgs."""
-    monkeypatch.setattr("awsctl.registry.KNOWN_ORGS", [])
+    monkeypatch.setattr("cloudctl.registry.KNOWN_ORGS", [])
     config._hydrate_orgs({"missing_org_name"})
     assert "Warning" in "".join(mock_rich_console.captured)
     assert "missing_org_name" in "".join(mock_rich_console.captured)
@@ -195,13 +195,13 @@ def test_load_raw_config_errors(monkeypatch, tmp_path):
     """Verify robust handling of missing or malformed YAML."""
     # Test Missing File
     monkeypatch.setattr(
-        "awsctl.config.get_orgs_path", lambda **k: tmp_path / "void.yaml"
+        "cloudctl.config.get_orgs_path", lambda **k: tmp_path / "void.yaml"
     )
     assert config.load_raw_config() == {}
 
     # Test Corrupt File
     bad_yaml = tmp_path / "corrupt.yaml"
     bad_yaml.write_text("!!binary | invalid")
-    monkeypatch.setattr("awsctl.config.get_orgs_path", lambda **k: bad_yaml)
+    monkeypatch.setattr("cloudctl.config.get_orgs_path", lambda **k: bad_yaml)
     with pytest.raises(yaml.YAMLError):
         config.load_raw_config()

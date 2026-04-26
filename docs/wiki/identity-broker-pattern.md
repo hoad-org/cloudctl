@@ -2,7 +2,7 @@
 
 # 🆔 Identity Broker Pattern
 
-This document defines the **Identity Broker Pattern** as implemented by `awsctl`. It explains what an identity broker is, what `awsctl` brokers, why this pattern is safer than alternatives, and how it scales in large organizations.
+This document defines the **Identity Broker Pattern** as implemented by `cloudctl`. It explains what an identity broker is, what `cloudctl` brokers, why this pattern is safer than alternatives, and how it scales in large organizations.
 
 This document is authoritative.
 
@@ -19,7 +19,7 @@ An **identity broker** is a system that connects proven identity to existing aut
 * Does **not** store credentials.
 * **Does not** grant permissions or own authority.
 
-`awsctl` is an identity broker.
+`cloudctl` is an identity broker.
 
 ---
 
@@ -27,13 +27,13 @@ An **identity broker** is a system that connects proven identity to existing aut
 
 In large AWS organizations, the challenge is not authentication, but **translation**. Organizations struggle to safely translate authenticated humans into *intended* AWS actions without falling into risks like static credentials or unreviewed privilege escalation.
 
-`awsctl` solves **translation**, not authentication. It ensures that when a human attempts to use their identity, the resulting AWS session is scoped, guarded, and intended.
+`cloudctl` solves **translation**, not authentication. It ensures that when a human attempts to use their identity, the resulting AWS session is scoped, guarded, and intended.
 
 ---
 
-## 🔍 What awsctl Brokers (and Does Not Broker)
+## 🔍 What cloudctl Brokers (and Does Not Broker)
 
-| awsctl Brokers (Context) | awsctl DOES NOT Broker (Authority) |
+| cloudctl Brokers (Context) | cloudctl DOES NOT Broker (Authority) |
 | :--- | :--- |
 | **Proven Identity** (Who the human is) | **Authentication** (Passwords/MFA) |
 | **Allowed Roles** (Registry constraints) | **Authorization** (IAM Policy definitions) |
@@ -44,7 +44,7 @@ In large AWS organizations, the challenge is not authentication, but **translati
 
 ## 🔄 High-Level Identity Flow
 
-`awsctl` sits between proof and power, ensuring the handshake between the Identity Provider (IdP) and AWS STS is governed by organizational policy.
+`cloudctl` sits between proof and power, ensuring the handshake between the Identity Provider (IdP) and AWS STS is governed by organizational policy.
 
 
 
@@ -54,14 +54,14 @@ In large AWS organizations, the challenge is not authentication, but **translati
 sequenceDiagram
     participant Human
     participant IdP
-    participant awsctl
+    participant cloudctl
     participant AWS
 
     Human->>IdP: Authenticate (MFA)
-    IdP-->>awsctl: Proof of Identity
-    awsctl->>awsctl: Validate intent & policy
-    awsctl->>AWS: AssumeRole (STS)
-    AWS-->>awsctl: Temporary credentials
+    IdP-->>cloudctl: Proof of Identity
+    cloudctl->>cloudctl: Validate intent & policy
+    cloudctl->>AWS: AssumeRole (STS)
+    AWS-->>cloudctl: Temporary credentials
 ```
 
 ---
@@ -76,13 +76,13 @@ sequenceDiagram
 
 ## 🌓 Identity vs. Authority Separation
 
-`awsctl` enforces a strict separation of concerns. Breaking this separation creates systemic risk.
+`cloudctl` enforces a strict separation of concerns. Breaking this separation creates systemic risk.
 
 | Concern | Owner |
 | :--- | :--- |
 | **Authentication** | Identity Provider (IdP) |
 | **Authorization** | AWS IAM |
-| **Intent Validation** | `awsctl` |
+| **Intent Validation** | `cloudctl` |
 | **Execution** | AWS STS |
 
 
@@ -92,7 +92,7 @@ sequenceDiagram
 ```mermaid
 graph LR
     IdP[Identity Provider]
-    Broker[awsctl Identity Broker]
+    Broker[cloudctl Identity Broker]
     STS[AWS STS]
     Role[Target IAM Role]
 
@@ -100,7 +100,7 @@ graph LR
     Broker --> STS
     STS --> Role
 ```
-*`awsctl` never becomes a trust anchor; it is a pass-through validator.*
+*`cloudctl` never becomes a trust anchor; it is a pass-through validator.*
 
 ---
 
@@ -111,7 +111,7 @@ To maintain the security posture, an identity broker must:
 2.  **Be ephemeral:** Exists only for the duration of the request.
 3.  **Fail closed:** If brokering fails, no credentials are issued.
 4.  **Leave audit trails intact:** Native AWS and IdP logs must remain the source of truth.
-5.  **Be removable:** Deleting `awsctl` must not break the underlying security model.
+5.  **Be removable:** Deleting `cloudctl` must not break the underlying security model.
 
 ---
 
@@ -127,4 +127,4 @@ This pattern scales horizontally because:
 
 ## ⚖️ Summary
 
-The Identity Broker Pattern is powerful because it is limited. `awsctl` brokers identity just enough to make access safe, and no more. If `awsctl` ever becomes an authentication system or a source of authority, it has violated this pattern.
+The Identity Broker Pattern is powerful because it is limited. `cloudctl` brokers identity just enough to make access safe, and no more. If `cloudctl` ever becomes an authentication system or a source of authority, it has violated this pattern.

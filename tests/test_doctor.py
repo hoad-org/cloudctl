@@ -2,7 +2,7 @@
 from unittest.mock import MagicMock
 
 import pytest
-from awsctl import doctor
+from cloudctl import doctor
 
 
 @pytest.fixture()
@@ -17,22 +17,22 @@ def mock_doctor_deps(monkeypatch):
 
     # Mock config to prevent actual filesystem reads
     monkeypatch.setattr(
-        "awsctl.config.load_orgs_config", lambda: {"orgs": [{"name": "demo"}]}
+        "cloudctl.config.load_orgs_config", lambda: {"orgs": [{"name": "demo"}]}
     )
-    monkeypatch.setattr("awsctl.config.load_raw_config", lambda: {})
+    monkeypatch.setattr("cloudctl.config.load_raw_config", lambda: {})
 
     # Patch directly on the module object to ensure internal calls are intercepted
     monkeypatch.setattr(doctor, "is_wsl", lambda: False)
 
     # All diagnostic checks must return a (bool, str) tuple per the project spec
-    monkeypatch.setattr("awsctl.doctor.check_aws_version", lambda: (True, "v2.0.0"))
+    monkeypatch.setattr("cloudctl.doctor.check_aws_version", lambda: (True, "v2.0.0"))
     monkeypatch.setattr(
-        "awsctl.doctor.check_shell_integration", lambda: (True, "Present")
+        "cloudctl.doctor.check_shell_integration", lambda: (True, "Present")
     )
-    monkeypatch.setattr("awsctl.doctor.check_permissions", lambda: (True, "User owned"))
-    monkeypatch.setattr("awsctl.doctor.check_time_sync", lambda: (True, "Synced"))
-    monkeypatch.setattr("awsctl.doctor.check_network_ssl", lambda: (True, "Reachable"))
-    monkeypatch.setattr("awsctl.doctor.check_wsl_performance", lambda: (True, "N/A"))
+    monkeypatch.setattr("cloudctl.doctor.check_permissions", lambda: (True, "User owned"))
+    monkeypatch.setattr("cloudctl.doctor.check_time_sync", lambda: (True, "Synced"))
+    monkeypatch.setattr("cloudctl.doctor.check_network_ssl", lambda: (True, "Reachable"))
+    monkeypatch.setattr("cloudctl.doctor.check_wsl_performance", lambda: (True, "N/A"))
 
     return mocks
 
@@ -81,7 +81,7 @@ def test_doctor_issues_found(mock_doctor_deps, mock_rich_console, monkeypatch):
     def fail_load():
         raise Exception("Config Bad")
 
-    monkeypatch.setattr("awsctl.config.load_orgs_config", fail_load)
+    monkeypatch.setattr("cloudctl.config.load_orgs_config", fail_load)
 
     rc = doctor.run_diagnostics()
     out = "".join(mock_rich_console.captured)
@@ -139,7 +139,7 @@ def test_run_diagnostics_wsl_warning(mock_doctor_deps, mock_rich_console, monkey
 
     # 2. Force the performance check to return an issue
     monkeypatch.setattr(
-        "awsctl.doctor.check_wsl_performance",
+        "cloudctl.doctor.check_wsl_performance",
         lambda: (False, "using the Windows AWS CLI"),
     )
 

@@ -1,7 +1,7 @@
 # file: tests/test_env_detection.py
 from unittest.mock import MagicMock
 
-from awsctl import shell, utils
+from cloudctl import shell, utils
 
 
 def test_detect_shell_zsh(monkeypatch, tmp_path):

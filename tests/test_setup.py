@@ -1,7 +1,7 @@
 # file: tests/test_setup.py
 from unittest.mock import MagicMock
 
-from awsctl import cli
+from cloudctl import cli
 
 
 def test_cmd_setup_runs(monkeypatch, tmp_path, mock_rich_console):
@@ -14,7 +14,7 @@ def test_cmd_setup_runs(monkeypatch, tmp_path, mock_rich_console):
     orgs.write_text("orgs: []", encoding="utf-8")
 
     # Patch the config path to use our temporary file
-    monkeypatch.setattr("awsctl.core.get_orgs_path", lambda ensure=True: orgs)
+    monkeypatch.setattr("cloudctl.core.get_orgs_path", lambda ensure=True: orgs)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("SHELL", "/bin/zsh")
 
@@ -27,8 +27,8 @@ def test_cmd_setup_runs(monkeypatch, tmp_path, mock_rich_console):
     mock_detect = MagicMock(return_value=tmp_path / ".zshrc")
     mock_inject = MagicMock(return_value=True)
 
-    monkeypatch.setattr("awsctl.shell.detect_shell_profile", mock_detect)
-    monkeypatch.setattr("awsctl.shell.inject_shell_function", mock_inject)
+    monkeypatch.setattr("cloudctl.shell.detect_shell_profile", mock_detect)
+    monkeypatch.setattr("cloudctl.shell.inject_shell_function", mock_inject)
 
     # 4. Mock Core Actions
     # We patch cli.core specifically to ensure the dispatcher uses our mock

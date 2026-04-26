@@ -1,6 +1,6 @@
-"""Tests for awsctl.schema — org config validation and partition support."""
+"""Tests for cloudctl.schema — org config validation and partition support."""
 
-from awsctl import schema
+from cloudctl import schema
 
 
 class TestPartitionFromSsoUrl:

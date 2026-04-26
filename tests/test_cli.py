@@ -1,14 +1,14 @@
 # file: tests/test_cli.py
 # SPDX-License-Identifier: MIT
 """
-Tests for awsctl.cli entrypoint.
+Tests for cloudctl.cli entrypoint.
 """
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from awsctl import cli
+from cloudctl import cli
 
 
 def test_resolved_version_metadata(monkeypatch):
@@ -35,7 +35,7 @@ def test_determine_strategy():
 
 def test_main_version_flag(monkeypatch, mock_rich_console):
     """Verify --version prints to stdout and exits with 0."""
-    monkeypatch.setattr("awsctl.cli._resolved_version", lambda: "9.9.9")
+    monkeypatch.setattr("cloudctl.cli._resolved_version", lambda: "9.9.9")
     # Patch the console used inside main/dispatcher
     monkeypatch.setattr(cli, "stdout_console", mock_rich_console.console)
     assert cli.main(["--version"]) == 0
@@ -46,7 +46,7 @@ def test_main_help_flag(monkeypatch, mock_rich_console):
     """Verify --help prints usage and exits with 0."""
     monkeypatch.setattr(cli, "stdout_console", mock_rich_console.console)
     assert cli.main(["--help"]) == 0
-    assert "awsctl" in "".join(mock_rich_console.captured).lower()
+    assert "cloudctl" in "".join(mock_rich_console.captured).lower()
 
 
 def test_main_check_strategy(capsys):
@@ -59,9 +59,9 @@ def test_main_check_strategy(capsys):
 def test_cmd_login_dispatch(monkeypatch):
     """Verify that cmd_login correctly invokes core logic."""
     mock_core_login = MagicMock(return_value=0)
-    monkeypatch.setattr("awsctl.core.cmd_login", mock_core_login)
-    monkeypatch.setattr("awsctl.cli.load_context", lambda: {})
-    monkeypatch.setattr("awsctl.context_manager.save_context_update", MagicMock())
+    monkeypatch.setattr("cloudctl.core.cmd_login", mock_core_login)
+    monkeypatch.setattr("cloudctl.cli.load_context", lambda: {})
+    monkeypatch.setattr("cloudctl.context_manager.save_context_update", MagicMock())
 
     # [FIX] Added missing account/role/region fields to prevent AttributeError in dispatcher
     args = type(
@@ -75,8 +75,8 @@ def test_cmd_login_dispatch(monkeypatch):
 
 def test_cmd_login_missing_org(monkeypatch, mock_rich_console):
     """Verify error reporting when no org is provided or can be inferred."""
-    monkeypatch.setattr("awsctl.cli.load_context", lambda: {})
-    monkeypatch.setattr("awsctl.core.load_orgs_config", lambda: {"orgs": []})
+    monkeypatch.setattr("cloudctl.cli.load_context", lambda: {})
+    monkeypatch.setattr("cloudctl.core.load_orgs_config", lambda: {"orgs": []})
     monkeypatch.setattr(cli, "console", mock_rich_console.console)
 
     args = type("Args", (), {"org": None})
@@ -88,9 +88,9 @@ def test_cmd_login_missing_org(monkeypatch, mock_rich_console):
 def test_cmd_switch_dispatch_simple(monkeypatch):
     """Verify main entrypoint dispatches to cmd_switch correctly."""
     mock_switch = MagicMock(return_value=0)
-    monkeypatch.setattr("awsctl.cli.cmd_switch", mock_switch)
-    # Simulate: awsctl switch
-    monkeypatch.setattr("sys.argv", ["awsctl", "switch"])
+    monkeypatch.setattr("cloudctl.cli.cmd_switch", mock_switch)
+    # Simulate: cloudctl switch
+    monkeypatch.setattr("sys.argv", ["cloudctl", "switch"])
     assert cli.main() == 0
     assert mock_switch.called
 
@@ -106,13 +106,13 @@ def test_cmd_exec_dispatch(monkeypatch):
         "role": "Admin",
         "region": "us-east-1",
     }
-    import awsctl.commands.exec as _exec_mod
+    import cloudctl.commands.exec as _exec_mod
     monkeypatch.setattr(_exec_mod, "load_context", lambda: ctx)
-    monkeypatch.setattr("awsctl.commands.exec.get_org", lambda n: {"name": n, "provider": "aws"})
+    monkeypatch.setattr("cloudctl.commands.exec.get_org", lambda n: {"name": n, "provider": "aws"})
 
     mock_provider = MagicMock()
     mock_provider.get_credentials.return_value = {"AWS_ACCESS_KEY_ID": "AKID"}
-    monkeypatch.setattr("awsctl.providers.get_provider", lambda _: mock_provider)
+    monkeypatch.setattr("cloudctl.providers.get_provider", lambda _: mock_provider)
 
     mock_result = MagicMock()
     mock_result.returncode = 0
@@ -135,7 +135,7 @@ def test_cmd_exec_dispatch(monkeypatch):
 def test_cmd_doctor_dispatch(monkeypatch):
     """Verify doctor command triggers diagnostics."""
     mock_run = MagicMock(return_value=0)
-    monkeypatch.setattr("awsctl.doctor.run_diagnostics", mock_run)
+    monkeypatch.setattr("cloudctl.doctor.run_diagnostics", mock_run)
     args = type("Args", (), {"fix_path": False})
     assert cli.cmd_doctor(args) == 0
     mock_run.assert_called()
@@ -145,7 +145,7 @@ def test_cmd_status_dispatch(monkeypatch):
     """Verify status command triggers the dashboard view."""
     mock_stat = MagicMock(return_value=0)
     # Patch where the cli module looks for cmd_status
-    monkeypatch.setattr("awsctl.cli.cmd_status", mock_stat)
+    monkeypatch.setattr("cloudctl.cli.cmd_status", mock_stat)
 
     # We test the main entry point to ensure dispatcher works
     cli.main(["status"])

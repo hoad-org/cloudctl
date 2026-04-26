@@ -94,7 +94,7 @@ jobs:
 
       - name: Bandit security scan
         if: matrix.python-version == '3.12'
-        run: poetry run bandit -r src/ -ll --exclude src/awsctl/providers/
+        run: poetry run bandit -r src/ -ll --exclude src/cloudctl/providers/
 
   # ── Dependency CVE audit ───────────────────────────────────────────────────
   dependency-audit:

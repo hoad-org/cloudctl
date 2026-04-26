@@ -2,9 +2,9 @@
 tests/test_completion_and_uninstall.py
 
 Tests for:
-  - awsctl completion  (print snippet / --install)
-  - awsctl uninstall   (dry-run, profile removal, package uninstall)
-  - _remove_awsctl_blocks helper (core removal logic)
+  - cloudctl completion  (print snippet / --install)
+  - cloudctl uninstall   (dry-run, profile removal, package uninstall)
+  - _remove_cloudctl_blocks helper (core removal logic)
 """
 
 import os
@@ -14,18 +14,18 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-import awsctl.cli as cli
-from awsctl.cli import _remove_awsctl_blocks
+import cloudctl.cli as cli
+from cloudctl.cli import _remove_cloudctl_blocks
 
 
 # ===========================================================================
-# _remove_awsctl_blocks — unit tests
+# _remove_cloudctl_blocks — unit tests
 # ===========================================================================
 
-# Full awsctl shell wrapper as it appears after `awsctl init`
+# Full cloudctl shell wrapper as it appears after `cloudctl init`
 _WRAPPER_BLOCK = """\
 # AWSCTL SHELL INTEGRATION
-awsctl() {
+cloudctl() {
     local first="${1:-}" needs_eval=0 arg
     case "$first" in
         switch|use|logout) needs_eval=1 ;;
@@ -33,24 +33,24 @@ awsctl() {
     if [[ $needs_eval -eq 1 ]]; then
         local tmp exit_code
         tmp=$(mktemp)
-        AWSCTL_WRAPPER_ACTIVE=1 command awsctl --eval "$@" > "$tmp"
+        AWSCTL_WRAPPER_ACTIVE=1 command cloudctl --eval "$@" > "$tmp"
         exit_code=$?
         rm -f "$tmp"
         return $exit_code
     else
-        AWSCTL_WRAPPER_ACTIVE=1 command awsctl "$@"
+        AWSCTL_WRAPPER_ACTIVE=1 command cloudctl "$@"
     fi
 }
 """
 
 _COMPLETION_BLOCK = """\
-# awsctl completion
-eval "$(register-python-argcomplete awsctl)"
+# cloudctl completion
+eval "$(register-python-argcomplete cloudctl)"
 """
 
 _FISH_COMPLETION_BLOCK = """\
-# awsctl completion
-register-python-argcomplete --shell fish awsctl | source
+# cloudctl completion
+register-python-argcomplete --shell fish cloudctl | source
 """
 
 _UNRELATED = """\
@@ -60,7 +60,7 @@ alias ll='ls -la'
 
 
 class TestRemoveAwsctlBlocks:
-    MARKERS = ["# AWSCTL SHELL INTEGRATION", "# awsctl completion"]
+    MARKERS = ["# AWSCTL SHELL INTEGRATION", "# cloudctl completion"]
 
     def _lines(self, text):
         return text.splitlines(keepends=True)
@@ -68,9 +68,9 @@ class TestRemoveAwsctlBlocks:
     def test_removes_full_wrapper_function(self):
         profile = _UNRELATED + _WRAPPER_BLOCK + "\n" + _UNRELATED
         lines = self._lines(profile)
-        result = _remove_awsctl_blocks(lines, self.MARKERS)
+        result = _remove_cloudctl_blocks(lines, self.MARKERS)
         joined = "".join(result)
-        assert "awsctl()" not in joined
+        assert "cloudctl()" not in joined
         assert "AWSCTL SHELL INTEGRATION" not in joined
         # Unrelated content preserved
         assert "PATH" in joined
@@ -79,46 +79,46 @@ class TestRemoveAwsctlBlocks:
     def test_removes_completion_eval_line(self):
         profile = _UNRELATED + _COMPLETION_BLOCK + _UNRELATED
         lines = self._lines(profile)
-        result = _remove_awsctl_blocks(lines, self.MARKERS)
+        result = _remove_cloudctl_blocks(lines, self.MARKERS)
         joined = "".join(result)
         assert "register-python-argcomplete" not in joined
-        assert "awsctl completion" not in joined
+        assert "cloudctl completion" not in joined
         assert "PATH" in joined
 
     def test_removes_fish_completion_line(self):
         profile = _UNRELATED + _FISH_COMPLETION_BLOCK + _UNRELATED
         lines = self._lines(profile)
-        result = _remove_awsctl_blocks(lines, self.MARKERS)
+        result = _remove_cloudctl_blocks(lines, self.MARKERS)
         joined = "".join(result)
         assert "register-python-argcomplete" not in joined
 
     def test_removes_both_blocks(self):
         profile = _UNRELATED + _WRAPPER_BLOCK + "\n" + _COMPLETION_BLOCK + _UNRELATED
         lines = self._lines(profile)
-        result = _remove_awsctl_blocks(lines, self.MARKERS)
+        result = _remove_cloudctl_blocks(lines, self.MARKERS)
         joined = "".join(result)
-        assert "awsctl()" not in joined
+        assert "cloudctl()" not in joined
         assert "register-python-argcomplete" not in joined
         assert "PATH" in joined
 
     def test_no_markers_returns_unchanged(self):
         lines = self._lines(_UNRELATED)
-        result = _remove_awsctl_blocks(lines, self.MARKERS)
+        result = _remove_cloudctl_blocks(lines, self.MARKERS)
         assert result == lines
 
     def test_idempotent(self):
         """Removing twice produces the same result as removing once."""
         profile = _UNRELATED + _WRAPPER_BLOCK + _UNRELATED
         lines = self._lines(profile)
-        once = _remove_awsctl_blocks(lines, self.MARKERS)
-        twice = _remove_awsctl_blocks(once, self.MARKERS)
+        once = _remove_cloudctl_blocks(lines, self.MARKERS)
+        twice = _remove_cloudctl_blocks(once, self.MARKERS)
         assert once == twice
 
     def test_dollar_brace_in_function_not_confused_with_block_end(self):
         """${1:-} and similar shell expansions must not terminate block removal early."""
         profile = _UNRELATED + _WRAPPER_BLOCK + _UNRELATED
         lines = self._lines(profile)
-        result = _remove_awsctl_blocks(lines, self.MARKERS)
+        result = _remove_cloudctl_blocks(lines, self.MARKERS)
         joined = "".join(result)
         # Ensure the full function body was removed, not just the header
         assert "needs_eval" not in joined
@@ -185,11 +185,11 @@ class TestCmdCompletion:
         assert rc == 0
         content = profile.read_text()
         assert "register-python-argcomplete" in content
-        assert "# awsctl completion" in content
+        assert "# cloudctl completion" in content
 
     def test_install_is_idempotent(self, tmp_path):
         profile = tmp_path / ".zshrc"
-        profile.write_text("export FOO=bar\n# awsctl completion\neval \"$(register-python-argcomplete awsctl)\"\n")
+        profile.write_text("export FOO=bar\n# cloudctl completion\neval \"$(register-python-argcomplete cloudctl)\"\n")
 
         with patch.dict(os.environ, {"SHELL": "/bin/zsh"}):
             with patch("os.path.expanduser", return_value=str(profile)):
@@ -226,7 +226,7 @@ class TestCmdUninstall:
         assert rc == 0
         # dry_run should NOT modify the file
         content = profile.read_text()
-        assert "awsctl()" in content
+        assert "cloudctl()" in content
 
     def test_removes_wrapper_from_profile(self, tmp_path):
         profile = tmp_path / ".zshrc"
@@ -240,17 +240,17 @@ class TestCmdUninstall:
                         rc = cli.cmd_uninstall(self._make_args())
 
         content = profile.read_text()
-        assert "awsctl()" not in content
+        assert "cloudctl()" not in content
         assert "AWSCTL SHELL INTEGRATION" not in content
         assert "FOO" in content
         assert "BAZ" in content
 
     def test_keep_config_preserves_config_dir(self, tmp_path):
-        config_dir = tmp_path / "awsctl_config"
+        config_dir = tmp_path / "cloudctl_config"
         config_dir.mkdir()
         (config_dir / "context.json").write_text('{"org": "test"}')
 
-        with patch("os.path.expanduser", side_effect=lambda p: str(config_dir) if "config/awsctl" in p else "/nonexistent"):
+        with patch("os.path.expanduser", side_effect=lambda p: str(config_dir) if "config/cloudctl" in p else "/nonexistent"):
             with patch.object(cli, "console", MagicMock()):
                 with patch("subprocess.run", return_value=MagicMock(returncode=0, stdout="")):
                     with patch("InquirerPy.inquirer.confirm") as mock_confirm:
@@ -273,7 +273,7 @@ class TestCmdUninstall:
                         rc = cli.cmd_uninstall(self._make_args(package_only=True))
 
         # Profile should be untouched
-        assert "awsctl()" in profile.read_text()
+        assert "cloudctl()" in profile.read_text()
         # Package uninstall should have been called
         assert any("pip" in str(c) or "pipx" in str(c) for c in run_calls)
 
@@ -286,13 +286,13 @@ class TestCmdUninstall:
         assert rc == 0
 
     def test_dispatch_uninstall_via_main(self):
-        with patch("awsctl.cli.cmd_uninstall", return_value=0) as mock_cmd:
+        with patch("cloudctl.cli.cmd_uninstall", return_value=0) as mock_cmd:
             rc = cli.main(["uninstall", "--dry-run"])
         assert rc == 0
         mock_cmd.assert_called_once()
 
     def test_dispatch_completion_via_main(self):
-        with patch("awsctl.cli.cmd_completion", return_value=0) as mock_cmd:
+        with patch("cloudctl.cli.cmd_completion", return_value=0) as mock_cmd:
             with patch.dict(os.environ, {"SHELL": "/bin/bash"}):
                 rc = cli.main(["completion"])
         assert rc == 0

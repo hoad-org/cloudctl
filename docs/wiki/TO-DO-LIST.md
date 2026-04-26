@@ -10,7 +10,7 @@ tenant-bootstrap_manifest_20260…
 
 Your tooling expects AWS diagrams to be YAML in diagrams-src/, rendered to docs/wiki/images/diag-arch-<yaml-stem>.png, and it enforces YAML↔PNG parity. 
 
-awsctl_manifest_20260209T202245Z
+cloudctl_manifest_20260209T202245Z
 
 Also: docs/wiki/diagrams.md still talks about docs/diagrams/src/*.yaml, which doesn’t match the actual/enforced diagrams-src/ location. 
 
@@ -18,13 +18,13 @@ tenant-bootstrap_manifest_20260…
 
  
 
-awsctl_manifest_20260209T202245Z
+cloudctl_manifest_20260209T202245Z
 
 1) ALL AWSDAC diagrams required + where they should appear (AWS-only)
 
 You already have the right 5 AWS architecture YAMLs in diagrams-src/ (good coverage of the major AWS topology themes). 
 
-awsctl_manifest_20260209T202245Z
+cloudctl_manifest_20260209T202245Z
 
 Here’s the “take every AWS-architecture opportunity” mapping (add the rendered PNGs into these pages):
 
@@ -33,15 +33,15 @@ Core AWS topology (hub / boundaries / trust)
 diagrams-src/aws-identity-hub.yaml → images/diag-arch-aws-identity-hub.png
 Place in: split-plane-architecture.md, security-overview.md, developer-architecture-guide.md
 
-diagrams-src/awsctl-boundary.yaml → images/diag-arch-awsctl-boundary.png
-Place in: split-plane-architecture.md, trust-and-security-boundaries.md, arch-awsctl-mission.md (and/or architecture-mission.md)
+diagrams-src/cloudctl-boundary.yaml → images/diag-arch-cloudctl-boundary.png
+Place in: split-plane-architecture.md, trust-and-security-boundaries.md, arch-cloudctl-mission.md (and/or architecture-mission.md)
 
 diagrams-src/identity-broker-trust.yaml → images/diag-arch-identity-broker-trust.png
 Place in: trust-and-security-boundaries.md, security-trust-model.md, identity-broker-pattern.md
 
 Auth path inside AWS (Identity Center → STS)
 
-diagrams-src/awsctl-oidc-flow.yaml → images/diag-arch-awsctl-oidc-flow.png
+diagrams-src/cloudctl-oidc-flow.yaml → images/diag-arch-cloudctl-oidc-flow.png
 Place in: identity-broker-pattern.md, security-overview.md, getting-started.md (as “AWS-side architecture”; token flow stays Mermaid)
 
 Safety / idempotency as AWS components
@@ -61,7 +61,7 @@ tenant-bootstrap_manifest_20260…
 
 And the linter enforces the exact diag-arch-<yaml-stem>.png naming. 
 
-awsctl_manifest_20260209T202245Z
+cloudctl_manifest_20260209T202245Z
 
 2) Ensure ONLY AWS architecture uses AWSDAC (everything else = Mermaid)
 
@@ -99,7 +99,7 @@ home.md (optional)
 
 (Your linter only requires diagrams on certain prefixes like arch- / security- / lifecycle- / compliance-, but you explicitly asked to take all opportunities. 
 
-awsctl_manifest_20260209T202245Z
+cloudctl_manifest_20260209T202245Z
 
 )
 
@@ -110,7 +110,7 @@ This stays Mermaid because it’s an explanatory flow, not an AWS topology diagr
 sequenceDiagram
     autonumber
     actor User as User (Engineer)
-    participant CLI as awsctl (CLI)
+    participant CLI as cloudctl (CLI)
     participant Cache as AWS SSO Token Cache (local)
     participant AWSCLI as aws cli sso login
     participant Browser as Browser / IdP Login
@@ -118,7 +118,7 @@ sequenceDiagram
     participant STS as AWS STS
     participant Acct as Target AWS Account (Role)
 
-    User->>CLI: awsctl use <context>
+    User->>CLI: cloudctl use <context>
     CLI->>Cache: Check for valid SSO token
     alt Token valid
         Cache-->>CLI: Access token (cached)
@@ -139,7 +139,7 @@ sequenceDiagram
 
 This matches your documented behavior: calling aws sso login (browser-based), then using cached tokens/credentials behind the scenes. 
 
-awsctl_manifest_20260209T222818Z
+cloudctl_manifest_20260209T222818Z
 
 Two small doc/tooling fixes you should do while you’re here
 
@@ -149,8 +149,8 @@ tenant-bootstrap_manifest_20260…
 
  
 
-awsctl_manifest_20260209T202245Z
+cloudctl_manifest_20260209T202245Z
 
 If you add any new YAMLs, make sure your render step produces the corresponding PNGs, otherwise the linter will fail on YAML↔PNG parity. 
 
-awsctl_manifest_20260209T202245Z
+cloudctl_manifest_20260209T202245Z

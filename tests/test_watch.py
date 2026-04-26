@@ -1,5 +1,5 @@
 """
-tests/test_watch.py — Unit tests for `awsctl watch`.
+tests/test_watch.py — Unit tests for `cloudctl watch`.
 
 Covers:
   - _check_and_refresh: no token triggers login
@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from awsctl.commands.watch import WatchCommand, _check_and_refresh
+from cloudctl.commands.watch import WatchCommand, _check_and_refresh
 
 
 # ---------------------------------------------------------------------------
@@ -133,8 +133,8 @@ class TestWatchCommandExecute:
         token = _make_token(7200)
         mock_provider = _make_provider(token=token)
 
-        with patch("awsctl.config.get_org", return_value=org_data):
-            with patch("awsctl.providers.get_provider", return_value=mock_provider):
+        with patch("cloudctl.config.get_org", return_value=org_data):
+            with patch("cloudctl.providers.get_provider", return_value=mock_provider):
                 rc = cmd.execute(args)
 
         assert rc == 0
@@ -143,7 +143,7 @@ class TestWatchCommandExecute:
         cmd = self._make_cmd()
         args = self._make_args(org=None)
 
-        with patch("awsctl.context_manager.load_context", return_value={}):
+        with patch("cloudctl.context_manager.load_context", return_value={}):
             rc = cmd.execute(args)
 
         assert rc == 1
@@ -155,9 +155,9 @@ class TestWatchCommandExecute:
         token = _make_token(7200)
         mock_provider = _make_provider(token=token)
 
-        with patch("awsctl.context_manager.load_context", return_value={"current_org": "bt-avm"}):
-            with patch("awsctl.config.get_org", return_value=org_data):
-                with patch("awsctl.providers.get_provider", return_value=mock_provider):
+        with patch("cloudctl.context_manager.load_context", return_value={"current_org": "bt-avm"}):
+            with patch("cloudctl.config.get_org", return_value=org_data):
+                with patch("cloudctl.providers.get_provider", return_value=mock_provider):
                     rc = cmd.execute(args)
 
         assert rc == 0
@@ -166,7 +166,7 @@ class TestWatchCommandExecute:
         cmd = self._make_cmd()
         args = self._make_args(org="nonexistent")
 
-        with patch("awsctl.config.get_org", side_effect=Exception("not found")):
+        with patch("cloudctl.config.get_org", side_effect=Exception("not found")):
             rc = cmd.execute(args)
 
         assert rc == 1
@@ -186,9 +186,9 @@ class TestWatchCommandExecute:
                 raise KeyboardInterrupt
             return False, "Token valid"
 
-        with patch("awsctl.config.get_org", return_value=org_data):
-            with patch("awsctl.providers.get_provider", return_value=mock_provider):
-                with patch("awsctl.commands.watch._check_and_refresh", side_effect=_fake_check):
+        with patch("cloudctl.config.get_org", return_value=org_data):
+            with patch("cloudctl.providers.get_provider", return_value=mock_provider):
+                with patch("cloudctl.commands.watch._check_and_refresh", side_effect=_fake_check):
                     with patch("time.sleep"):
                         rc = cmd.execute(args)
 

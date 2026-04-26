@@ -1,10 +1,10 @@
-# Contributing to awsctl
+# Contributing to cloudctl
 
 ## Getting Started
 
 ```bash
-git clone https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl.git
-cd aws-terraform-infra-cloudops-awsctl
+git clone https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-cloudctl.git
+cd aws-terraform-infra-cloudops-cloudctl
 poetry install --with dev
 poetry run pytest
 ```
@@ -28,7 +28,7 @@ poetry run pytest
 
 - Keep PRs focused — one logical change per PR
 - All CI checks must pass before merge
-- Security-sensitive paths (`src/awsctl/providers/`, `src/awsctl/guardrails.py`, `src/awsctl/use_exports.py`, `.github/workflows/`) require CloudOps team review
+- Security-sensitive paths (`src/cloudctl/providers/`, `src/cloudctl/guardrails.py`, `src/cloudctl/use_exports.py`, `.github/workflows/`) require CloudOps team review
 - Include tests for new behaviour; maintain or improve coverage
 - Update the README changelog section for user-visible changes
 

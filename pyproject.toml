@@ -3,12 +3,12 @@ requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-name = "awsctl"
-version = "3.1.0"
+name = "cloudctl"
+version = "4.0.0"
 description = "Enterprise Cloud Identity & Context Manager (AWS, Azure, GCP)"
 authors = ["BeyondTrust CloudOps"]
 license = "MIT"
-packages = [{ include = "awsctl", from = "src" }]
+packages = [{ include = "cloudctl", from = "src" }]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: System Administrators",
@@ -26,18 +26,18 @@ classifiers = [
 ]
 
 # ---------------------------------------------------------------------------
-# Artifactory PyPI source — set AWSCTL_INDEX_URL env var when this is active.
+# Artifactory PyPI source — set CLOUDCTL_INDEX_URL env var when this is active.
 # Uncomment and fill in your org's Artifactory URL once access is provisioned.
 # ---------------------------------------------------------------------------
 # [[tool.poetry.source]]
 # name = "artifactory"
-# url = "https://org.jfrog.io/artifactory/api/pypi/awsctl-pypi/simple/"
+# url = "https://org.jfrog.io/artifactory/api/pypi/cloudctl-pypi/simple/"
 # priority = "supplemental"
 
 [tool.poetry.urls]
-"Repository" = "https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl"
-"Bug Tracker" = "https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl/issues"
-"Changelog" = "https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-awsctl/releases"
+"Repository" = "https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-cloudctl"
+"Bug Tracker" = "https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-cloudctl/issues"
+"Changelog" = "https://github.com/BT-IT-Infrastructure-CloudOps/aws-terraform-infra-cloudops-cloudctl/releases"
 
 [tool.poetry.dependencies]
 # Baseline: 3.12 (security-only as of Apr 2025) + 3.13 (LTS) + 3.14 (latest, released 2025).
@@ -66,8 +66,8 @@ checkov = "^3.2.510"
 aiohttp = ">=3.13.4"
 
 [tool.poetry.scripts]
-awsctl = "awsctl.cli:main"
-_awsctl_bin = "awsctl.main:main"
+cloudctl = "cloudctl.cli:main"
+_cloudctl_bin = "cloudctl.main:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -75,14 +75,14 @@ python_files = "test_*.py"
 addopts = "-v"
 
 [tool.coverage.run]
-source = ["src/awsctl"]
+source = ["src/cloudctl"]
 branch = true
 omit = [
-    "src/awsctl/main.py",
-    "src/awsctl/cli.py",
-    "src/awsctl/help_text.py",
-    "src/awsctl/__main__.py",
-    "src/awsctl/_version.py"
+    "src/cloudctl/main.py",
+    "src/cloudctl/cli.py",
+    "src/cloudctl/help_text.py",
+    "src/cloudctl/__main__.py",
+    "src/cloudctl/_version.py"
 ]
 
 [tool.coverage.report]

@@ -1,6 +1,6 @@
-# 🏠 Home: awsctl Documentation Hub
+# 🏠 Home: cloudctl Documentation Hub
 
-Welcome to the authoritative documentation for **awsctl**. 
+Welcome to the authoritative documentation for **cloudctl**. 
 
 This system is maintained using a **docs-as-code** methodology. The source of truth resides in the `docs/wiki/` directory of the repository. Content is published to this GitHub Wiki **strictly via CI/CD pipelines**. 
 
@@ -25,7 +25,7 @@ Our non-negotiable standards for handling identity and authority.
 
 * [[Security Overview|security-overview]] — Posture, goals, and core properties.
 * [[Security Trust Model|security-trust-model]] — Explicit definitions of who we trust.
-* [[Trust & Security Boundaries|trust-and-security-boundaries]] — Where awsctl stops and AWS begins.
+* [[Trust & Security Boundaries|trust-and-security-boundaries]] — Where cloudctl stops and AWS begins.
 * [[Identity Broker Pattern|identity-broker-pattern]] — Connecting identity to authority.
 * [[Threat Model|threat-model]] — Analysis of risks and mitigations.
 

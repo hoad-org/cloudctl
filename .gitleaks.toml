@@ -1,4 +1,4 @@
-# .gitleaks.toml — gitleaks configuration for awsctl repo
+# .gitleaks.toml — gitleaks configuration for cloudctl repo
 # Suppress known-safe patterns that would otherwise trigger false positives.
 
 [extend]

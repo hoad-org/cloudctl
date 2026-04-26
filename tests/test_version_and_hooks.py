@@ -8,9 +8,9 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
-from awsctl import use_exports
-from awsctl.plugins import call_hook, load_plugins
-from awsctl.sso_cache import SsoToken
+from cloudctl import use_exports
+from cloudctl.plugins import call_hook, load_plugins
+from cloudctl.sso_cache import SsoToken
 
 
 def test_plugins_lifecycle():
@@ -62,7 +62,7 @@ def test_aws_json_failure(monkeypatch, capsys):
 def test_emit_exports_success(monkeypatch):
     mock_token = SsoToken("tok", "u", "r", datetime.now(timezone.utc), {})
     monkeypatch.setattr(
-        "awsctl.use_exports.load_active_sso_token", lambda o: mock_token
+        "cloudctl.use_exports.load_active_sso_token", lambda o: mock_token
     )
 
     creds = {
@@ -72,7 +72,7 @@ def test_emit_exports_success(monkeypatch):
             "sessionToken": "ST",
         }
     }
-    monkeypatch.setattr("awsctl.use_exports._aws_json", lambda args: creds)
+    monkeypatch.setattr("cloudctl.use_exports._aws_json", lambda args: creds)
 
     org = MagicMock()
     org.name = "btavm"
@@ -84,7 +84,7 @@ def test_emit_exports_success(monkeypatch):
 
 
 def test_emit_exports_no_token(monkeypatch, capsys):
-    monkeypatch.setattr("awsctl.use_exports.load_active_sso_token", lambda o: None)
+    monkeypatch.setattr("cloudctl.use_exports.load_active_sso_token", lambda o: None)
     org = MagicMock()
     org.name = "btavm"
 
@@ -98,9 +98,9 @@ def test_emit_exports_no_token(monkeypatch, capsys):
 def test_emit_exports_no_creds(monkeypatch, capsys):
     mock_token = SsoToken("tok", "u", "r", datetime.now(timezone.utc), {})
     monkeypatch.setattr(
-        "awsctl.use_exports.load_active_sso_token", lambda o: mock_token
+        "cloudctl.use_exports.load_active_sso_token", lambda o: mock_token
     )
-    monkeypatch.setattr("awsctl.use_exports._aws_json", lambda args: {})
+    monkeypatch.setattr("cloudctl.use_exports._aws_json", lambda args: {})
     org = MagicMock()
 
     with pytest.raises(SystemExit):
@@ -114,7 +114,7 @@ def test_emit_exports_shellquote_metacharacters(monkeypatch):
     """Credential values containing shell metacharacters must be safely quoted."""
     mock_token = SsoToken("tok", "u", "r", datetime.now(timezone.utc), {})
     monkeypatch.setattr(
-        "awsctl.use_exports.load_active_sso_token", lambda o: mock_token
+        "cloudctl.use_exports.load_active_sso_token", lambda o: mock_token
     )
     creds = {
         "roleCredentials": {
@@ -123,7 +123,7 @@ def test_emit_exports_shellquote_metacharacters(monkeypatch):
             "sessionToken": "ST$(malicious)",
         }
     }
-    monkeypatch.setattr("awsctl.use_exports._aws_json", lambda args: creds)
+    monkeypatch.setattr("cloudctl.use_exports._aws_json", lambda args: creds)
 
     org = MagicMock()
     org.name = "btavm"

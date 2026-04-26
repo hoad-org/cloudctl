@@ -2,7 +2,7 @@
 
 # 🛡️ Trust and Security Boundaries
 
-This document defines the **explicit trust boundaries** and **security model** of `awsctl`. It explains **what awsctl trusts**, **what it does not**, and **why those decisions exist**.
+This document defines the **explicit trust boundaries** and **security model** of `cloudctl`. It explains **what cloudctl trusts**, **what it does not**, and **why those decisions exist**.
 
 This document is authoritative.
 
@@ -10,7 +10,7 @@ This document is authoritative.
 
 ## 🏗️ Core Security Posture
 
-`awsctl` is a **client-side identity orchestration tool**, not a control-plane service. Its security model is built on the principle that the client should be a transparent, policy-enforcing broker rather than a source of authority.
+`cloudctl` is a **client-side identity orchestration tool**, not a control-plane service. Its security model is built on the principle that the client should be a transparent, policy-enforcing broker rather than a source of authority.
 
 **Security Pillars:**
 * **Explicit Trust Boundaries:** Every data transition is a gated event.
@@ -19,7 +19,7 @@ This document is authoritative.
 * **Deterministic Execution:** Identical inputs yield identical security outcomes.
 * **Native Auditability:** Relies on AWS CloudTrail for the ultimate source of truth.
 
-`awsctl` does **not** introduce new trust relationships. It only consumes and enforces existing ones defined in AWS and your Identity Provider.
+`cloudctl` does **not** introduce new trust relationships. It only consumes and enforces existing ones defined in AWS and your Identity Provider.
 
 ---
 
@@ -31,7 +31,7 @@ This document is authoritative.
 flowchart LR
     Human[Human Operator]
     Shell[User Shell]
-    Awsctl[awsctl Binary]
+    Awsctl[cloudctl Binary]
     IdP[Identity Provider]
     AWS[AWS APIs]
 
@@ -49,50 +49,50 @@ flowchart LR
 
 ### Trust Assumption
 * The operator has authenticated access to their workstation.
-* OS-level security (disk encryption, user isolation) is enforced outside of `awsctl`.
+* OS-level security (disk encryption, user isolation) is enforced outside of `cloudctl`.
 
-### awsctl Guarantees
+### cloudctl Guarantees
 * **Zero Persistence:** No credentials or session tokens are stored in long-term files.
 * **No Daemons:** No background processes that could be hijacked.
-* **No Escalation:** `awsctl` runs with user-level permissions and never requests `sudo`.
+* **No Escalation:** `cloudctl` runs with user-level permissions and never requests `sudo`.
 
 ---
 
-## 🐚 Boundary 2: Shell → awsctl
+## 🐚 Boundary 2: Shell → cloudctl
 
 ### Why This Boundary Exists
-`awsctl` integrates with the shell to provide environment variable exports and context switching. Because the shell is a highly dynamic environment, it represents a significant risk vector.
+`cloudctl` integrates with the shell to provide environment variable exports and context switching. Because the shell is a highly dynamic environment, it represents a significant risk vector.
 
 ### Security Controls
 * **Controlled Execution:** Uses safe `exec` and `eval` patterns.
 * **Injection Prevention:** Strict validation of input characters to prevent shell command injection.
-* **Input Validation:** `awsctl` verifies all flags and arguments before processing.
+* **Input Validation:** `cloudctl` verifies all flags and arguments before processing.
 
 ```mermaid
 sequenceDiagram
     participant Shell
-    participant awsctl
-    Shell->>awsctl: invoke command
-    awsctl->>awsctl: validate input
-    awsctl-->>Shell: controlled output
+    participant cloudctl
+    Shell->>cloudctl: invoke command
+    cloudctl->>cloudctl: validate input
+    cloudctl-->>Shell: controlled output
 ```
 
 ---
 
-## 🆔 Boundary 3: awsctl → Identity Provider
+## 🆔 Boundary 3: cloudctl → Identity Provider
 
-`awsctl` acts as a broker, not an authenticator. It facilitates the handshake between the user and providers like AWS IAM Identity Center or Okta.
+`cloudctl` acts as a broker, not an authenticator. It facilitates the handshake between the user and providers like AWS IAM Identity Center or Okta.
 
 ### Trust Characteristics
-* **External Auth:** Authentication occurs in the browser or IdP-controlled prompt, not inside `awsctl` code.
-* **Zero Credential Storage:** `awsctl` never handles or stores IdP passwords.
-* **Fail-Safe:** If the IdP is unavailable or the token is invalid, `awsctl` aborts execution.
+* **External Auth:** Authentication occurs in the browser or IdP-controlled prompt, not inside `cloudctl` code.
+* **Zero Credential Storage:** `cloudctl` never handles or stores IdP passwords.
+* **Fail-Safe:** If the IdP is unavailable or the token is invalid, `cloudctl` aborts execution.
 
 ---
 
-## ☁️ Boundary 4: awsctl → AWS APIs
+## ☁️ Boundary 4: cloudctl → AWS APIs
 
-This is the most critical boundary. `awsctl` interacts with the AWS Control Plane to acquire scoped permissions.
+This is the most critical boundary. `cloudctl` interacts with the AWS Control Plane to acquire scoped permissions.
 
 ### Credential Model
 
@@ -100,7 +100,7 @@ This is the most critical boundary. `awsctl` interacts with the AWS Control Plan
 * **Native Trust:** Relies entirely on AWS IAM Trust Policies to determine if a role can be assumed.
 
 ### Explicit Constraints
-`awsctl` will **never**:
+`cloudctl` will **never**:
 * Mint its own credentials.
 * Store long-lived IAM Access Keys.
 * Modify AWS Organizations structure.
@@ -113,18 +113,18 @@ This is the most critical boundary. `awsctl` interacts with the AWS Control Plan
 ### Registry Enforcement
 The Registry defines the "rules of the road" (allowed accounts/roles).
 * **Tiered Trust:** Supports local, remote (HTTPS), and signed (verified) registries.
-* **Downgrade Protection:** Prevents attackers from forcing `awsctl` to use an older, less secure registry version.
+* **Downgrade Protection:** Prevents attackers from forcing `cloudctl` to use an older, less secure registry version.
 
 ### Plugin Isolation
 Plugins are treated as **untrusted extensions**.
 * **Sandboxed Logic:** Plugins cannot access the credential store or bypass core guardrails.
-* **Safe Failure:** A crash in a plugin triggers a safe termination of the entire `awsctl` process.
+* **Safe Failure:** A crash in a plugin triggers a safe termination of the entire `cloudctl` process.
 
 ---
 
-## 🚫 What awsctl Explicitly Does NOT Trust
+## 🚫 What cloudctl Explicitly Does NOT Trust
 
-To maintain high assurance, `awsctl` treats the following as potentially compromised:
+To maintain high assurance, `cloudctl` treats the following as potentially compromised:
 * **The Shell Environment:** Does not blindly trust inherited environment variables.
 * **User Scripts:** Will not execute unvalidated external scripts.
 * **Plugin Code:** Plugins are executed with the assumption they might fail or misbehave.
@@ -142,6 +142,6 @@ Any architectural change must adhere to these invariants, or it will be rejected
 5.  **No silent failure.**
 
 > [!IMPORTANT]
-> `awsctl` is secure because authority remains with AWS. If the tool ever becomes "automatic" or begins to function without explicit human intent, it has violated its security model.
+> `cloudctl` is secure because authority remains with AWS. If the tool ever becomes "automatic" or begins to function without explicit human intent, it has violated its security model.
 
 Would you like me to generate a security audit checklist based on these boundaries for your next internal review?

@@ -1,12 +1,12 @@
 # file: docs/GUARDRAILS.md
-# Guardrails & Governance Model — awsctl v2.8.1
+# Guardrails & Governance Model — cloudctl v2.8.1
 
 ## 1. Overview
 
 Guardrails allow corporate governance teams to centrally enforce boundaries.
 
 **Pilot Phase Notice:**
-During the pilot, these settings are defined in your local `~/.awsctl/orgs.yaml` (Manual Mode).
+During the pilot, these settings are defined in your local `~/.cloudctl/orgs.yaml` (Manual Mode).
 In the future **Tier 3** architecture, these will be loaded from an immutable Remote Registry and **cannot** be overridden locally.
 
 ## 2. Region Guardrails
@@ -40,5 +40,5 @@ Roles in `sensitive_roles` require mandatory justification.
 
 To prevent Arbitrary Code Execution (ACE) via config tampering:
 
-- Plugins **MUST** reside in `awsctl.plugins.*`.
+- Plugins **MUST** reside in `cloudctl.plugins.*`.
 - Loading `os` or `subprocess` directly via the plugin loader is blocked.

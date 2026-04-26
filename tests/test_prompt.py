@@ -1,5 +1,5 @@
 """
-tests/test_prompt.py — Unit tests for `awsctl prompt`.
+tests/test_prompt.py — Unit tests for `cloudctl prompt`.
 
 Covers:
   - full output format
@@ -21,7 +21,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from awsctl.commands.prompt import (
+from cloudctl.commands.prompt import (
     PromptCommand,
     _expiry_label,
     _parse_expiry_minutes,
@@ -61,7 +61,7 @@ def _run(args, ctx=None, capture=True):
     cmd = PromptCommand()
     ctx = ctx if ctx is not None else _CTX
     buf = io.StringIO()
-    with patch("awsctl.context_manager.load_context", return_value=ctx):
+    with patch("cloudctl.context_manager.load_context", return_value=ctx):
         with patch("sys.stdout", buf):
             rc = cmd.execute(args)
     return rc, buf.getvalue()
@@ -133,13 +133,13 @@ class TestPromptJson:
         assert data["provider"] == "aws"
 
     def test_json_no_expiry_when_unavailable(self):
-        with patch("awsctl.commands.prompt._expiry_label", return_value=None):
+        with patch("cloudctl.commands.prompt._expiry_label", return_value=None):
             rc, out = _run(_make_args(json=True))
         data = json.loads(out)
         assert "expires_in" not in data
 
     def test_json_includes_expiry_when_available(self):
-        with patch("awsctl.commands.prompt._expiry_label", return_value="47m"):
+        with patch("cloudctl.commands.prompt._expiry_label", return_value="47m"):
             rc, out = _run(_make_args(json=True))
         data = json.loads(out)
         assert data["expires_in"] == "47m"
@@ -170,8 +170,8 @@ class TestPromptSnippets:
             rc = cmd.execute(_make_args(starship=True))
         out = buf.getvalue()
         assert rc == 0
-        assert "starship.toml" in out.lower() or "awsctl" in out.lower()
-        assert "awsctl prompt" in out
+        assert "starship.toml" in out.lower() or "cloudctl" in out.lower()
+        assert "cloudctl prompt" in out
 
     def test_p10k_flag_prints_snippet(self):
         buf = io.StringIO()
@@ -181,22 +181,22 @@ class TestPromptSnippets:
         out = buf.getvalue()
         assert rc == 0
         assert "p10k" in out.lower() or "powerlevel" in out.lower()
-        assert "prompt_awsctl" in out
+        assert "prompt_cloudctl" in out
 
     def test_starship_snippet_standalone(self):
         buf = io.StringIO()
         with patch("sys.stdout", buf):
             _print_starship_snippet()
         out = buf.getvalue()
-        assert "[custom.awsctl]" in out
+        assert "[custom.cloudctl]" in out
 
     def test_p10k_snippet_standalone(self):
         buf = io.StringIO()
         with patch("sys.stdout", buf):
             _print_p10k_snippet()
         out = buf.getvalue()
-        assert "function prompt_awsctl" in out
-        assert "instant_prompt_awsctl" in out
+        assert "function prompt_cloudctl" in out
+        assert "instant_prompt_cloudctl" in out
 
 
 # ---------------------------------------------------------------------------
@@ -206,17 +206,17 @@ class TestPromptSnippets:
 
 class TestPromptExpiryWarning:
     def test_warn_shown_when_near_expiry(self):
-        with patch("awsctl.commands.prompt._expiry_label", return_value="10m"):
+        with patch("cloudctl.commands.prompt._expiry_label", return_value="10m"):
             rc, out = _run(_make_args(short=True, warn_expiry=15))
         assert "⚠" in out or "10m" in out
 
     def test_warn_not_shown_when_ample_time(self):
-        with patch("awsctl.commands.prompt._expiry_label", return_value="2h30m"):
+        with patch("cloudctl.commands.prompt._expiry_label", return_value="2h30m"):
             rc, out = _run(_make_args(short=True, warn_expiry=15))
         assert "⚠" not in out
 
     def test_expired_shows_expired_marker(self):
-        with patch("awsctl.commands.prompt._expiry_label", return_value="expired"):
+        with patch("cloudctl.commands.prompt._expiry_label", return_value="expired"):
             rc, out = _run(_make_args(short=True))
         assert "expired" in out
 
@@ -258,8 +258,8 @@ class TestExpiryLabel:
     def test_returns_none_when_no_token(self):
         mock_provider = MagicMock()
         mock_provider.load_token.return_value = None
-        with patch("awsctl.config.get_org", return_value={}):
-            with patch("awsctl.providers.get_provider", return_value=mock_provider):
+        with patch("cloudctl.config.get_org", return_value={}):
+            with patch("cloudctl.providers.get_provider", return_value=mock_provider):
                 result = _expiry_label(_CTX)
         assert result is None
 
@@ -270,8 +270,8 @@ class TestExpiryLabel:
         mock_token.expiresAt = datetime.now(timezone.utc) - timedelta(seconds=60)
         mock_provider = MagicMock()
         mock_provider.load_token.return_value = mock_token
-        with patch("awsctl.config.get_org", return_value={}):
-            with patch("awsctl.providers.get_provider", return_value=mock_provider):
+        with patch("cloudctl.config.get_org", return_value={}):
+            with patch("cloudctl.providers.get_provider", return_value=mock_provider):
                 result = _expiry_label(_CTX)
         assert result == "expired"
 
@@ -282,8 +282,8 @@ class TestExpiryLabel:
         mock_token.expiresAt = datetime.now(timezone.utc) + timedelta(minutes=47)
         mock_provider = MagicMock()
         mock_provider.load_token.return_value = mock_token
-        with patch("awsctl.config.get_org", return_value={}):
-            with patch("awsctl.providers.get_provider", return_value=mock_provider):
+        with patch("cloudctl.config.get_org", return_value={}):
+            with patch("cloudctl.providers.get_provider", return_value=mock_provider):
                 result = _expiry_label(_CTX)
         # Allow ±1 minute rounding
         assert result in ("46m", "47m", "48m")
@@ -295,8 +295,8 @@ class TestExpiryLabel:
         mock_token.expiresAt = datetime.now(timezone.utc) + timedelta(hours=2, minutes=30)
         mock_provider = MagicMock()
         mock_provider.load_token.return_value = mock_token
-        with patch("awsctl.config.get_org", return_value={}):
-            with patch("awsctl.providers.get_provider", return_value=mock_provider):
+        with patch("cloudctl.config.get_org", return_value={}):
+            with patch("cloudctl.providers.get_provider", return_value=mock_provider):
                 result = _expiry_label(_CTX)
         assert result is not None
         assert "h" in result
