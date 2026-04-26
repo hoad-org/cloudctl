@@ -1,0 +1,10 @@
+documentation:
+  space_key: Hoad-cloud-platforms
+  auto_title: true
+jira:
+  enabled: true
+  instance_url: https://darkmothcreative.atlassian.net
+  auth_token_env: JIRA_TOKEN
+  default_project: HCP
+  auto_link_related: true
+  create_tasks_for_gaps: true
