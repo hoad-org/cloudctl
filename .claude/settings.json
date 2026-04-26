@@ -65,5 +65,17 @@
     "jira-link": "Link Jira issues: /jira-link <from-key> <to-key> --type <type>"
   },
 
+  "skillDefaults": {
+    "comment": "Force Jira and Confluence skills to use MCP servers exclusively - no manual auth prompts",
+    "jira": {
+      "authMethod": "mcp",
+      "mcpServerName": "atlassian-cloud"
+    },
+    "confluence": {
+      "authMethod": "mcp",
+      "mcpServerName": "atlassian-cloud"
+    }
+  },
+
   "comment": "All hooks are MANDATORY (exit code 2) - no bypassing infrastructure, security, or Atlassian enforcement"
 }
