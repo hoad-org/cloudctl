@@ -1,0 +1,30 @@
+{
+  "projectName": "Guardrails-Enabled Repository",
+  "description": "Enterprise-grade infrastructure with permanent guardrails",
+  "hooks": {
+    "preCommit": [
+      {
+        "comment": "Block direct CLI infrastructure changes",
+        "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-direct-cli.sh"
+      },
+      {
+        "comment": "Block security pattern removal",
+        "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-security-removal.sh"
+      },
+      {
+        "comment": "Block error handling removal",
+        "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-error-handling-removal.sh"
+      },
+      {
+        "comment": "Require ADR for security changes",
+        "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/require-adr-for-security-changes.sh"
+      }
+    ],
+    "postCommit": [
+      {
+        "comment": "Validate terraform state after commit",
+        "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/validate-terraform-drift.sh"
+      }
+    ]
+  }
+}
