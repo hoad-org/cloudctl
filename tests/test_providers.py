@@ -316,13 +316,19 @@ class TestGcpProvider:
 
         def fake_gcloud(args):
             calls.append(args)
-            # First call (auth login) fails
-            return _gc_result(0 if len(calls) > 1 else 1)
+            # auth list succeeds (empty result), but auth login fails
+            if "login" in args:
+                return _gc_result(1)  # auth login fails
+            return _gc_result(0)  # auth list succeeds
 
         monkeypatch.setattr(provider, "_gcloud", fake_gcloud)
         rc = provider.login(org)
         assert rc == 1
-        assert len(calls) == 1  # second call (ADC) must not be made
+        # Should have called: auth list, then auth login (and failed)
+        # Should NOT have called application-default login
+        assert len(calls) == 2
+        assert calls[0] == ["auth", "list", "--format=json"]
+        assert calls[1] == ["auth", "login", "--no-launch-browser"]
 
     # --- load_token ---------------------------------------------------------
 
