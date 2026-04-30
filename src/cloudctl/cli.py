@@ -360,6 +360,27 @@ def cmd_org(args: Any) -> int:
         return 1
 
 
+def cmd_gcp(args: Any) -> int:
+    """Handle GCP-specific operations."""
+    from .commands.gcp_iam import GcpIamCommand
+    from .commands.gcp_login import GcpLoginCommand
+
+    sub = getattr(args, "gcp_command", None)
+    if sub == "login":
+        cmd = GcpLoginCommand()
+        cmd.set_args(args)
+        return cmd.execute()
+    elif sub == "grant-iam-roles":
+        cmd = GcpIamCommand()
+        cmd.set_args(args)
+        return cmd.execute()
+    else:
+        console.print("Usage:")
+        console.print("  cloudctl gcp login [--account EMAIL]")
+        console.print("  cloudctl gcp grant-iam-roles <org-id> <member> <role1> [role2] ...")
+        return 1
+
+
 def cmd_whoami(args: Any = None) -> int:
     """Show the active identity for the current provider context.
 
@@ -997,6 +1018,33 @@ def _build_parser():
     rm_p = org_sub.add_parser("remove", help="Remove an organization")
     rm_p.add_argument("name", help="Org name to remove")
 
+    # gcp — GCP-specific operations
+    gcp_p = sub.add_parser("gcp", help="GCP-specific operations")
+    gcp_sub = gcp_p.add_subparsers(dest="gcp_command")
+
+    # gcp login
+    login_p = gcp_sub.add_parser(
+        "login",
+        help="Authenticate with GCP (opens browser automatically)"
+    )
+    login_p.add_argument(
+        "--account", "-a",
+        help="GCP email to authenticate as (optional)"
+    )
+
+    # gcp grant-iam-roles
+    grant_p = gcp_sub.add_parser(
+        "grant-iam-roles",
+        help="Grant organization-level IAM roles"
+    )
+    grant_p.add_argument("org_id", help="GCP Organization ID")
+    grant_p.add_argument("member", help="Member email (e.g., admin@craighoad.com)")
+    grant_p.add_argument(
+        "roles",
+        nargs="+",
+        help="Roles to grant (e.g., projectCreator folderCreator)"
+    )
+
     # uninstall
     un_p = sub.add_parser("uninstall", help="Remove cloudctl shell integration and package")
     un_p.add_argument("--dry-run", action="store_true", help="Show what would be removed without doing it")
@@ -1051,6 +1099,7 @@ _DISPATCH = {
     "watch": "cmd_watch",
     "completion": "cmd_completion",
     "uninstall": "cmd_uninstall",
+    "gcp": "cmd_gcp",
 }
 
 
@@ -1076,7 +1125,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         stdout_console.print(
             "[bold]cloudctl[/bold] — Enterprise Cloud Identity & Context Manager\n\n"
             "Commands: login, switch, logout, exec, status, env, accounts, doctor, init,\n"
-            "          org, prompt, watch, upgrade, completion, uninstall\n"
+            "          org, prompt, watch, upgrade, completion, uninstall, gcp\n"
             "Options:  --version, --help, --check-strategy <cmd>"
         )
         return 0

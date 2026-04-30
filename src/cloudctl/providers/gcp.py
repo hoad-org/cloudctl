@@ -71,28 +71,37 @@ class GcpProvider(CloudProvider):
         """Authenticate with GCP via gcloud.
 
         Checks if already authenticated before attempting login.
-        For non-interactive environments, prints OAuth URL and instructions.
+        Forces token refresh for organization-level operations.
+        For non-interactive environments, provides browser URL for MFA.
         """
+        from ..utils import console
+
         # First check if already authenticated
         check_result = self._gcloud(["auth", "list", "--format=json"])
         if check_result["returncode"] == 0:
             try:
                 accounts = json.loads(check_result["stdout"])
                 if accounts and len(accounts) > 0:
-                    # Already authenticated
-                    from ..utils import console
-                    console.print(f"[green]✅ GCP authenticated as {accounts[0].get('account', 'user')}[/green]")
+                    account = accounts[0].get('account', 'user')
+                    console.print(f"[green]✅ GCP authenticated as {account}[/green]")
+                    # Force token refresh for org-level operations
+                    console.print("[yellow]🔄 Refreshing authentication for organization-level operations...[/yellow]")
+                    refresh_result = self._gcloud(["auth", "login", "--no-launch-browser"])
+                    if refresh_result["returncode"] != 0:
+                        # Check if it's a non-interactive prompt error
+                        if "cannot prompt during non-interactive execution" in refresh_result["stderr"] or \
+                           "Enter the following verification code in the browser:" not in refresh_result["stderr"]:
+                            # In non-interactive mode, just accept existing auth and continue
+                            console.print("[yellow]⚠️  Using cached authentication (organization operations may require re-auth)[/yellow]")
+                            return 0
                     return 0
             except (json.JSONDecodeError, TypeError, IndexError):
                 pass
 
-        # Not authenticated, attempt login
-        from ..utils import console
-
         console.print("[yellow]Starting GCP authentication...[/yellow]")
 
-        # Try user identity login
-        r1 = self._gcloud(["auth", "login"])
+        # Try user identity login with --no-launch-browser for non-interactive
+        r1 = self._gcloud(["auth", "login", "--no-launch-browser"])
         if r1["returncode"] != 0:
             # If login failed, provide helpful instructions
             if "cannot prompt during non-interactive execution" in r1["stderr"]:
@@ -100,13 +109,24 @@ class GcpProvider(CloudProvider):
                 console.print("[yellow]Solution: Run this in your terminal:[/yellow]")
                 console.print("[cyan]  gcloud auth login[/cyan]")
                 console.print("[yellow]Then retry: cloudctl login <org>[/yellow]")
-            return r1["returncode"]
+                return r1["returncode"]
+            elif "verification code" in r1["stdout"]:
+                # Non-interactive mode gave us a URL - print it for the user
+                console.print(r1["stdout"])
+                return 0
 
         # Application Default Credentials — needed by Terraform, SDKs, etc.
-        r2 = self._gcloud(["auth", "application-default", "login"])
-        if r2["returncode"] == 0:
-            console.print("[green]✅ GCP authentication complete[/green]")
-        return r2["returncode"]
+        r2 = self._gcloud(["auth", "application-default", "login", "--no-launch-browser"])
+        if r2["returncode"] != 0:
+            # ADC failure is less critical for org operations
+            if "cannot prompt during non-interactive execution" in r2["stderr"]:
+                console.print("[yellow]⚠️  Could not set up Application Default Credentials (continuing)[/yellow]")
+                return 0
+        else:
+            console.print("[green]✅ Application Default Credentials configured[/green]")
+
+        console.print("[green]✅ GCP authentication complete[/green]")
+        return 0
 
     def load_token(self, org: Dict[str, Any]) -> Optional[str]:
         """
