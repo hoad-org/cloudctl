@@ -62,7 +62,7 @@ ruff = "^0.15.0"
 black = ">=26.3.1"
 bandit = "^1.9.0"
 pip-audit = "^2.10.0"
-checkov = "^3.2.510"
+checkov = "^3.2.526"
 aiohttp = ">=3.13.4"
 
 [tool.poetry.scripts]
