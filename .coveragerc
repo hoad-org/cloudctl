@@ -1,11 +1,11 @@
 [run]
-source = src/awsctl
+source = src/cloudctl
 branch = True
 omit =
     tests/*
     */__init__.py
     */__main__.py
-    src/awsctl/_version.py
+    src/cloudctl/_version.py
 
 [report]
 show_missing = True
