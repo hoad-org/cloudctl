@@ -48,7 +48,7 @@ pyyaml = "^6.0.2"
 rich = "^14.3.0"
 inquirerpy = "^0.3.4"
 py-minisign = ">=0.9.1"
-requests = ">=2.33.0"
+requests = ">=2.34.2"
 argcomplete = ">=3.0"
 # Minimum versions for transitive-dep CVE fixes
 cryptography = ">=46.0.7"
