@@ -317,6 +317,7 @@ def cmd_logout(args: Any) -> int:
 
 def cmd_exec(args: Any) -> int:
     from .commands.exec import ExecCommand
+
     return ExecCommand().execute(args)
 
 
@@ -377,7 +378,9 @@ def cmd_gcp(args: Any) -> int:
     else:
         console.print("Usage:")
         console.print("  cloudctl gcp login [--account EMAIL]")
-        console.print("  cloudctl gcp grant-iam-roles <org-id> <member> <role1> [role2] ...")
+        console.print(
+            "  cloudctl gcp grant-iam-roles <org-id> <member> <role1> [role2] ..."
+        )
         return 1
 
 
@@ -494,14 +497,18 @@ def _remove_cloudctl_blocks(lines: list, markers: list) -> list:
             if i >= len(lines):
                 break
             next_stripped = lines[i].rstrip("\n").strip()
-            if next_stripped.startswith("cloudctl()") or next_stripped.startswith("function cloudctl"):
+            if next_stripped.startswith("cloudctl()") or next_stripped.startswith(
+                "function cloudctl"
+            ):
                 # Multi-line function: skip until standalone closing brace
                 while i < len(lines):
                     if lines[i].rstrip("\n").rstrip() == "}":
                         i += 1  # skip the closing brace too
                         break
                     i += 1
-            elif next_stripped.startswith("eval") or next_stripped.startswith("register-python"):
+            elif next_stripped.startswith("eval") or next_stripped.startswith(
+                "register-python"
+            ):
                 # Single-line command — skip just that one line
                 i += 1
             # else: marker with no recognised follow-on — just removed the marker
@@ -586,6 +593,7 @@ def cmd_uninstall(args: Any = None) -> int:
     if not dry_run:
         try:
             from InquirerPy import inquirer
+
             confirmed = inquirer.confirm(
                 message="This will remove cloudctl shell integration. Continue?",
                 default=False,
@@ -673,22 +681,22 @@ def cmd_uninstall(args: Any = None) -> int:
 
 def cmd_prompt(args: Any = None) -> int:
     from .commands.prompt import PromptCommand
+
     return PromptCommand().execute(args)
 
 
 def cmd_watch(args: Any = None) -> int:
     from .commands.watch import WatchCommand
+
     return WatchCommand().execute(args)
 
 
 def cmd_upgrade(args: Any = None) -> int:
     """Upgrade cloudctl — prefers Artifactory pip, falls back to GitHub Releases."""
-    import subprocess
 
     # Resolve index URL: flag > env var > None (GitHub fallback)
-    index_url = (
-        getattr(args, "index_url", None)
-        or os.environ.get("AWSCTL_INDEX_URL", "")
+    index_url = getattr(args, "index_url", None) or os.environ.get(
+        "AWSCTL_INDEX_URL", ""
     )
 
     if index_url:
@@ -709,22 +717,37 @@ def _upgrade_via_pip(index_url: str) -> int:
         console.print("  Using pipx...")
         result = subprocess.run(
             [
-                "pipx", "runpip", "cloudctl", "install", "--upgrade", "cloudctl",
-                "--index-url", index_url,
-                "--extra-index-url", "https://pypi.org/simple/",
+                "pipx",
+                "runpip",
+                "cloudctl",
+                "install",
+                "--upgrade",
+                "cloudctl",
+                "--index-url",
+                index_url,
+                "--extra-index-url",
+                "https://pypi.org/simple/",
             ],
         )
     else:
         pip_args = [
-            sys.executable, "-m", "pip", "install", "--upgrade",
-            "--user", "cloudctl",
-            "--index-url", index_url,
-            "--extra-index-url", "https://pypi.org/simple/",
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--upgrade",
+            "--user",
+            "cloudctl",
+            "--index-url",
+            index_url,
+            "--extra-index-url",
+            "https://pypi.org/simple/",
         ]
         # PEP 668: add --break-system-packages if supported
         probe = subprocess.run(
             [sys.executable, "-m", "pip", "install", "--help"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if "break-system-packages" in probe.stdout:
             pip_args.insert(pip_args.index("--user") + 1, "--break-system-packages")
@@ -935,13 +958,19 @@ def _build_parser():
     # accounts
     ap = sub.add_parser("accounts", help="List accessible accounts")
     ap.add_argument("org", help="Organization name")
-    ap.add_argument("--sync", action="store_true",
-                    help="Refresh account list from the provider before displaying")
+    ap.add_argument(
+        "--sync",
+        action="store_true",
+        help="Refresh account list from the provider before displaying",
+    )
 
     # doctor
     dp = sub.add_parser("doctor", help="Validate system configuration")
-    dp.add_argument("--fix-path", action="store_true",
-                    help="Attempt to add missing bin directories to PATH")
+    dp.add_argument(
+        "--fix-path",
+        action="store_true",
+        help="Attempt to add missing bin directories to PATH",
+    )
 
     # init
     ip = sub.add_parser("init", help="Initialize configuration wizard")
@@ -964,20 +993,42 @@ def _build_parser():
         ),
     )
     ppg = pp.add_mutually_exclusive_group()
-    ppg.add_argument("--short", action="store_true",
-                     help="Short form: icon + org name only (e.g. ☁ bt-avm)")
-    ppg.add_argument("--json", action="store_true",
-                     help="Output full context as JSON for custom tooling")
-    ppg.add_argument("--starship", action="store_true",
-                     help="Print a ready-to-paste ~/.config/starship.toml snippet and exit")
-    ppg.add_argument("--p10k", action="store_true",
-                     help="Print a ready-to-paste ~/.p10k.zsh segment snippet and exit")
-    pp.add_argument("--format", choices=["plain", "ps1"], default="plain",
-                    help="Output format: plain (default) or ps1 (bash/zsh escape sequences)")
-    pp.add_argument("--no-icon", action="store_true",
-                    help="Omit the provider icon (☁/⬡/◆)")
-    pp.add_argument("--warn-expiry", type=int, default=15, metavar="MINUTES",
-                    help="Show ⚠ warning when credentials expire within N minutes (default: 15)")
+    ppg.add_argument(
+        "--short",
+        action="store_true",
+        help="Short form: icon + org name only (e.g. ☁ bt-avm)",
+    )
+    ppg.add_argument(
+        "--json",
+        action="store_true",
+        help="Output full context as JSON for custom tooling",
+    )
+    ppg.add_argument(
+        "--starship",
+        action="store_true",
+        help="Print a ready-to-paste ~/.config/starship.toml snippet and exit",
+    )
+    ppg.add_argument(
+        "--p10k",
+        action="store_true",
+        help="Print a ready-to-paste ~/.p10k.zsh segment snippet and exit",
+    )
+    pp.add_argument(
+        "--format",
+        choices=["plain", "ps1"],
+        default="plain",
+        help="Output format: plain (default) or ps1 (bash/zsh escape sequences)",
+    )
+    pp.add_argument(
+        "--no-icon", action="store_true", help="Omit the provider icon (☁/⬡/◆)"
+    )
+    pp.add_argument(
+        "--warn-expiry",
+        type=int,
+        default=15,
+        metavar="MINUTES",
+        help="Show ⚠ warning when credentials expire within N minutes (default: 15)",
+    )
 
     # watch
     wp = sub.add_parser(
@@ -990,19 +1041,35 @@ def _build_parser():
             "Terraform operations. Press Ctrl+C to stop."
         ),
     )
-    wp.add_argument("org", nargs="?",
-                    help="Organisation to watch (defaults to active context)")
-    wp.add_argument("--interval", type=int, default=60, metavar="SECS",
-                    help="How often to check token expiry in seconds (default: 60)")
-    wp.add_argument("--threshold", type=int, default=900, metavar="SECS",
-                    help="Refresh when this many seconds remain on the token (default: 900 = 15m)")
-    wp.add_argument("--once", action="store_true",
-                    help="Check once and exit (useful for scripts and CI health checks)")
+    wp.add_argument(
+        "org", nargs="?", help="Organisation to watch (defaults to active context)"
+    )
+    wp.add_argument(
+        "--interval",
+        type=int,
+        default=60,
+        metavar="SECS",
+        help="How often to check token expiry in seconds (default: 60)",
+    )
+    wp.add_argument(
+        "--threshold",
+        type=int,
+        default=900,
+        metavar="SECS",
+        help="Refresh when this many seconds remain on the token (default: 900 = 15m)",
+    )
+    wp.add_argument(
+        "--once",
+        action="store_true",
+        help="Check once and exit (useful for scripts and CI health checks)",
+    )
 
     # upgrade
     up = sub.add_parser("upgrade", help="Upgrade cloudctl (Artifactory or GitHub)")
     up.add_argument(
-        "--index-url", dest="index_url", metavar="URL",
+        "--index-url",
+        dest="index_url",
+        metavar="URL",
         help="Artifactory PyPI index URL (or set AWSCTL_INDEX_URL env var)",
     )
 
@@ -1024,41 +1091,53 @@ def _build_parser():
 
     # gcp login
     login_p = gcp_sub.add_parser(
-        "login",
-        help="Authenticate with GCP (opens browser automatically)"
+        "login", help="Authenticate with GCP (opens browser automatically)"
     )
     login_p.add_argument(
-        "--account", "-a",
-        help="GCP email to authenticate as (optional)"
+        "--account", "-a", help="GCP email to authenticate as (optional)"
     )
 
     # gcp grant-iam-roles
     grant_p = gcp_sub.add_parser(
-        "grant-iam-roles",
-        help="Grant organization-level IAM roles"
+        "grant-iam-roles", help="Grant organization-level IAM roles"
     )
     grant_p.add_argument("org_id", help="GCP Organization ID")
     grant_p.add_argument("member", help="Member email (e.g., admin@craighoad.com)")
     grant_p.add_argument(
-        "roles",
-        nargs="+",
-        help="Roles to grant (e.g., projectCreator folderCreator)"
+        "roles", nargs="+", help="Roles to grant (e.g., projectCreator folderCreator)"
     )
 
     # uninstall
-    un_p = sub.add_parser("uninstall", help="Remove cloudctl shell integration and package")
-    un_p.add_argument("--dry-run", action="store_true", help="Show what would be removed without doing it")
-    un_p.add_argument("--keep-config", action="store_true", help="Keep ~/.config/cloudctl/ intact")
-    un_p.add_argument("--package-only", action="store_true", help="Uninstall package only (leave shell integration)")
+    un_p = sub.add_parser(
+        "uninstall", help="Remove cloudctl shell integration and package"
+    )
+    un_p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be removed without doing it",
+    )
+    un_p.add_argument(
+        "--keep-config", action="store_true", help="Keep ~/.config/cloudctl/ intact"
+    )
+    un_p.add_argument(
+        "--package-only",
+        action="store_true",
+        help="Uninstall package only (leave shell integration)",
+    )
 
     # completion
-    comp_p = sub.add_parser("completion", help="Print shell completion setup instructions")
+    comp_p = sub.add_parser(
+        "completion", help="Print shell completion setup instructions"
+    )
     comp_p.add_argument(
-        "--shell", choices=["bash", "zsh", "fish"], default=None,
+        "--shell",
+        choices=["bash", "zsh", "fish"],
+        default=None,
         help="Target shell (auto-detected if omitted)",
     )
     comp_p.add_argument(
-        "--install", action="store_true",
+        "--install",
+        action="store_true",
         help="Write the activation line to your shell profile",
     )
 
@@ -1066,6 +1145,7 @@ def _build_parser():
     # This is a no-op when argcomplete is not installed or stdout is not a terminal.
     try:
         import argcomplete
+
         argcomplete.autocomplete(p)
     except ImportError:
         pass

@@ -98,7 +98,6 @@ def test_cmd_switch_dispatch_simple(monkeypatch):
 def test_cmd_exec_dispatch(monkeypatch):
     """Verify cmd_exec delegates to ExecCommand, picking up credentials from context."""
     from unittest.mock import MagicMock
-    import subprocess
 
     ctx = {
         "current_org": "btavm",
@@ -107,8 +106,11 @@ def test_cmd_exec_dispatch(monkeypatch):
         "region": "us-east-1",
     }
     import cloudctl.commands.exec as _exec_mod
+
     monkeypatch.setattr(_exec_mod, "load_context", lambda: ctx)
-    monkeypatch.setattr("cloudctl.commands.exec.get_org", lambda n: {"name": n, "provider": "aws"})
+    monkeypatch.setattr(
+        "cloudctl.commands.exec.get_org", lambda n: {"name": n, "provider": "aws"}
+    )
 
     mock_provider = MagicMock()
     mock_provider.get_credentials.return_value = {"AWS_ACCESS_KEY_ID": "AKID"}

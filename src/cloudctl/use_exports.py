@@ -111,10 +111,9 @@ def emit_exports(org: Any, account: str, role: str, region: str) -> str:
     # Convert dict to OrgRef if needed
     if isinstance(org, dict):
         from .sso_cache import OrgRef
+
         org_ref = OrgRef(
-            org.get("name", ""),
-            org.get("sso_start_url", ""),
-            org.get("sso_region", "")
+            org.get("name", ""), org.get("sso_start_url", ""), org.get("sso_region", "")
         )
     else:
         org_ref = org

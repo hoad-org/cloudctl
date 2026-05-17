@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import sys
 from typing import Any
 
 from cloudctl.commands.base import BaseCommand
@@ -66,18 +65,26 @@ class GcpLoginCommand(BaseCommand):
         account = getattr(args, "account", None)
         if not account:
             try:
-                account = input("Enter GCP email to authenticate as (leave blank for default): ").strip()
+                account = input(
+                    "Enter GCP email to authenticate as (leave blank for default): "
+                ).strip()
                 if not account:
                     # Use gcloud auth login without explicit account
                     account = None
             except EOFError:
                 # Running non-interactively, require --account
-                utils.console.print("[red]Error: --account is required when running non-interactively[/red]")
-                utils.console.print("[yellow]Usage: cloudctl gcp login --account admin@example.com[/yellow]")
+                utils.console.print(
+                    "[red]Error: --account is required when running non-interactively[/red]"
+                )
+                utils.console.print(
+                    "[yellow]Usage: cloudctl gcp login --account admin@example.com[/yellow]"
+                )
                 return 1
 
         utils.console.print("[yellow]🔐 Starting GCP authentication...[/yellow]")
-        utils.console.print("[yellow]Browser will open automatically for OAuth2 sign-in.[/yellow]")
+        utils.console.print(
+            "[yellow]Browser will open automatically for OAuth2 sign-in.[/yellow]"
+        )
 
         # Build gcloud command
         cmd = ["auth", "login"]
@@ -92,16 +99,29 @@ class GcpLoginCommand(BaseCommand):
         if result["returncode"] != 0:
             stderr = result["stderr"]
             # Check for specific errors
-            if "You attempted to log in as account" in stderr and "but the received credentials were for" in stderr:
+            if (
+                "You attempted to log in as account" in stderr
+                and "but the received credentials were for" in stderr
+            ):
                 utils.console.print("[red]❌ Account mismatch![/red]")
-                utils.console.print("[red]The browser was logged into a different Google account.[/red]")
+                utils.console.print(
+                    "[red]The browser was logged into a different Google account.[/red]"
+                )
                 utils.console.print("[yellow]Solution:[/yellow]")
-                utils.console.print("[yellow]  Option 1: Sign out from that account in your browser and sign in with the correct one[/yellow]")
-                utils.console.print("[yellow]  Option 2: Use an Incognito/Private window[/yellow]")
-                utils.console.print("[yellow]  Then run: cloudctl gcp login --account {account}[/yellow]".format(account=account or "EMAIL"))
+                utils.console.print(
+                    "[yellow]  Option 1: Sign out from that account in your browser and sign in with the correct one[/yellow]"
+                )
+                utils.console.print(
+                    "[yellow]  Option 2: Use an Incognito/Private window[/yellow]"
+                )
+                utils.console.print(
+                    "[yellow]  Then run: cloudctl gcp login --account {account}[/yellow]".format(
+                        account=account or "EMAIL"
+                    )
+                )
                 return 1
             else:
-                utils.console.print(f"[red]❌ Authentication failed[/red]")
+                utils.console.print("[red]❌ Authentication failed[/red]")
                 if stderr:
                     utils.console.print(f"[red]{stderr[:200]}[/red]")
                 return 1
@@ -113,18 +133,28 @@ class GcpLoginCommand(BaseCommand):
         check = self._gcloud(["auth", "list", "--format=json"])
         if check["returncode"] == 0:
             import json
+
             try:
                 accounts = json.loads(check["stdout"])
                 if accounts:
-                    active = next((a for a in accounts if a.get("status") == "ACTIVE"), accounts[0])
+                    active = next(
+                        (a for a in accounts if a.get("status") == "ACTIVE"),
+                        accounts[0],
+                    )
                     active_email = active.get("account", "unknown")
-                    utils.console.print(f"[green]Active account: {active_email}[/green]")
+                    utils.console.print(
+                        f"[green]Active account: {active_email}[/green]"
+                    )
             except (json.JSONDecodeError, StopIteration, KeyError):
                 pass
 
         utils.console.print("\n[bold]Next steps:[/bold]")
-        utils.console.print("[cyan]cloudctl gcp grant-iam-roles <org-id> <email> <role1> [role2] ...[/cyan]")
-        utils.console.print("[yellow]Example: cloudctl gcp grant-iam-roles 1045595480395 admin@example.com projectCreator folderCreator[/yellow]")
+        utils.console.print(
+            "[cyan]cloudctl gcp grant-iam-roles <org-id> <email> <role1> [role2] ...[/cyan]"
+        )
+        utils.console.print(
+            "[yellow]Example: cloudctl gcp grant-iam-roles 1045595480395 admin@example.com projectCreator folderCreator[/yellow]"
+        )
 
         return 0
 

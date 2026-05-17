@@ -48,16 +48,26 @@ class AzureProvider(CloudProvider):
                 "[red]Azure CLI (az) not found in PATH. Install from https://aka.ms/azure-cli[/]"
             )
             sys.exit(1)
-        result = subprocess.run(
-            [az_bin] + args,
-            capture_output=True,
-            text=True,
-        )
-        return {
-            "returncode": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-        }
+        try:
+            result = subprocess.run(
+                [az_bin] + args,
+                capture_output=True,
+                text=True,
+                timeout=30,  # Prevent hangs from network/proxy issues
+            )
+            return {
+                "returncode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            }
+        except subprocess.TimeoutExpired:
+            from ..utils import console
+
+            console.print(
+                "[red]Azure CLI command timed out after 30 seconds. "
+                "Check network connectivity and try again.[/]"
+            )
+            sys.exit(1)
 
     # ----------------------------------------------------------------- interface
 
@@ -88,6 +98,9 @@ class AzureProvider(CloudProvider):
         The expiresOn field is a UTC datetime string: "2024-03-15 10:30:00.000000"
         """
         from datetime import datetime, timezone
+        import logging
+
+        logger = logging.getLogger(__name__)
 
         result = self._az(["account", "get-access-token", "--output", "json"])
         if result["returncode"] != 0:
@@ -97,10 +110,27 @@ class AzureProvider(CloudProvider):
             expires_on = data.get("expiresOn", "")
             if not expires_on:
                 return None
-            # Format: "2024-03-15 10:30:00.000000" (UTC)
-            dt = datetime.strptime(expires_on, "%Y-%m-%d %H:%M:%S.%f")
+
+            # Try primary format first: "2024-03-15 10:30:00.000000" (UTC)
+            try:
+                dt = datetime.strptime(expires_on, "%Y-%m-%d %H:%M:%S.%f")
+            except ValueError:
+                # Fall back to format without microseconds if format differs
+                try:
+                    dt = datetime.strptime(expires_on, "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    # Unable to parse - log and return None
+                    logger.warning(
+                        f"Unable to parse Azure token expiry format: {expires_on}"
+                    )
+                    return None
+
             return dt.replace(tzinfo=timezone.utc)
-        except Exception:
+        except json.JSONDecodeError:
+            logger.debug("Failed to parse Azure token response as JSON")
+            return None
+        except Exception as e:
+            logger.debug(f"Error getting Azure token expiry: {e}")
             return None
 
     def list_accounts(self, org: Dict[str, Any], token: Any) -> List[Dict[str, str]]:

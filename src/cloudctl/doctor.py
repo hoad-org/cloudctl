@@ -106,6 +106,7 @@ def check_time_sync() -> Tuple[bool, str]:
     rules (which cause the OS TCP stack to retry beyond the socket timeout) can
     never cause this check to hang.
     """
+
     def _connect() -> None:
         # Port 443 on time.cloudflare.com — unlikely to be blocked on corporate networks.
         sock = socket.create_connection(("time.cloudflare.com", 443), timeout=2)

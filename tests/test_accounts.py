@@ -48,7 +48,9 @@ def test_pagination(monkeypatch):
 def test_list_accounts_no_token(monkeypatch, mock_rich_console):
     """Verify failure path when no active SSO session is found."""
     # Simulate token missing
-    monkeypatch.setattr("cloudctl.accounts.load_active_sso_token", lambda org, **k: None)
+    monkeypatch.setattr(
+        "cloudctl.accounts.load_active_sso_token", lambda org, **k: None
+    )
 
     # Implementation should return an empty list or raise SystemExit
     out = mod.list_accounts(OrgRef("o", "u", "r"))

@@ -56,6 +56,7 @@ def _info(msg: str) -> None:
 def _show_welcome() -> None:
     try:
         from importlib.metadata import version as _ver
+
         ver = _ver("cloudctl")
     except Exception:
         ver = "?"
@@ -80,7 +81,9 @@ def _show_welcome() -> None:
             )
         )
     except Exception:
-        utils.console.print(f"\n[bold cyan]cloudctl v{ver} — Setup Wizard[/bold cyan]\n")
+        utils.console.print(
+            f"\n[bold cyan]cloudctl v{ver} — Setup Wizard[/bold cyan]\n"
+        )
 
     utils.console.print()
     utils.console.print(
@@ -107,7 +110,11 @@ def _select_providers() -> List[str]:
     selected = inquirer.checkbox(
         message="Providers:",
         choices=[
-            {"name": "AWS   — Amazon Web Services (Commercial & GovCloud)", "value": "aws", "enabled": True},
+            {
+                "name": "AWS   — Amazon Web Services (Commercial & GovCloud)",
+                "value": "aws",
+                "enabled": True,
+            },
             {"name": "Azure — Microsoft Azure", "value": "azure", "enabled": False},
             {"name": "GCP   — Google Cloud Platform", "value": "gcp", "enabled": False},
         ],
@@ -124,9 +131,11 @@ def _load_registry_choices() -> List[Dict[str, Any]]:
     """Return InquirerPy choices from the org registry, filtered of placeholders."""
     try:
         from .. import registry as _reg
+
         choices = _reg.get_choices()
         return [
-            c for c in choices
+            c
+            for c in choices
             if c.get("value", {}).get("name") != "manual-setup-required"
         ]
     except Exception:
@@ -179,23 +188,33 @@ def _prompt_aws_manual() -> Optional[Dict[str, Any]]:
 
     # Name
     while True:
-        name = inquirer.text(
-            message="Org name (slug, e.g. bt-avm, company-prod):",
-        ).execute().strip()
+        name = (
+            inquirer.text(
+                message="Org name (slug, e.g. bt-avm, company-prod):",
+            )
+            .execute()
+            .strip()
+        )
         if name:
             org["name"] = name
             break
         _err("Org name cannot be empty.")
 
     # SSO Start URL
-    _info("Where to find this → AWS Console : IAM Identity Center → Settings → Instance ARN")
+    _info(
+        "Where to find this → AWS Console : IAM Identity Center → Settings → Instance ARN"
+    )
     _info("It looks like: https://d-xxxxxxxxxx.awsapps.com/start")
     _info("GovCloud:      https://d-xxxxxxxxxx.awsapps-us-gov.com/start")
     while True:
-        sso_url = inquirer.text(
-            message="SSO Start URL:",
-            default=org.get("sso_start_url", ""),
-        ).execute().strip()
+        sso_url = (
+            inquirer.text(
+                message="SSO Start URL:",
+                default=org.get("sso_start_url", ""),
+            )
+            .execute()
+            .strip()
+        )
         if sso_url.startswith("https://"):
             org["sso_start_url"] = sso_url
             break
@@ -234,7 +253,9 @@ def _prompt_aws_manual() -> Optional[Dict[str, Any]]:
     partition = org["partition"]
 
     _info("Where to find SSO region → same IAM Identity Center Settings page")
-    _info("This is the region IC is deployed in — often different from your workload region")
+    _info(
+        "This is the region IC is deployed in — often different from your workload region"
+    )
     # SSO Region — sensible default per partition
     default_sso_region = {
         "aws": "us-east-1",
@@ -242,16 +263,26 @@ def _prompt_aws_manual() -> Optional[Dict[str, Any]]:
         "aws-cn": "cn-north-1",
     }.get(partition, "us-east-1")
 
-    org["sso_region"] = inquirer.text(
-        message="SSO Region:",
-        default=org.get("sso_region", default_sso_region),
-    ).execute().strip() or default_sso_region
+    org["sso_region"] = (
+        inquirer.text(
+            message="SSO Region:",
+            default=org.get("sso_region", default_sso_region),
+        )
+        .execute()
+        .strip()
+        or default_sso_region
+    )
 
     # Default region for CLI operations
-    org["default_region"] = inquirer.text(
-        message="Default region for CLI operations:",
-        default=org.get("default_region", org["sso_region"]),
-    ).execute().strip() or org["sso_region"]
+    org["default_region"] = (
+        inquirer.text(
+            message="Default region for CLI operations:",
+            default=org.get("default_region", org["sso_region"]),
+        )
+        .execute()
+        .strip()
+        or org["sso_region"]
+    )
 
     return org
 
@@ -270,7 +301,9 @@ def _add_azure_orgs() -> List[Dict[str, Any]]:
     if not az_ok:
         _warn("Azure CLI ('az') not found on PATH.")
         _info("Install (macOS):  brew install azure-cli")
-        _info("Install (Linux):  curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash")
+        _info(
+            "Install (Linux):  curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash"
+        )
         _info("You can still add Azure orgs manually using your Tenant ID.")
     else:
         _ok("Azure CLI detected.")
@@ -299,9 +332,13 @@ def _collect_one_azure_org(az_available: bool) -> Optional[Dict[str, Any]]:
 
     # Name
     while True:
-        name = inquirer.text(
-            message="Org name (slug, e.g. bt-azure, contoso-prod):",
-        ).execute().strip()
+        name = (
+            inquirer.text(
+                message="Org name (slug, e.g. bt-azure, contoso-prod):",
+            )
+            .execute()
+            .strip()
+        )
         if name:
             org["name"] = name
             break
@@ -350,32 +387,47 @@ def _discover_azure_live(org: Dict[str, Any]) -> Dict[str, Any]:
     org["default_subscription"] = chosen.get("id", "")
 
     # Confirm or override tenant ID
-    org["tenant_id"] = inquirer.text(
-        message="Tenant ID:",
-        default=org["tenant_id"],
-    ).execute().strip() or org["tenant_id"]
+    org["tenant_id"] = (
+        inquirer.text(
+            message="Tenant ID:",
+            default=org["tenant_id"],
+        )
+        .execute()
+        .strip()
+        or org["tenant_id"]
+    )
 
     return org
 
 
 def _prompt_azure_manual(org: Dict[str, Any]) -> Dict[str, Any]:
     """Collect Azure fields without CLI discovery."""
-    _info("Where to find Tenant ID → Azure Portal : Azure Active Directory → Overview → Tenant ID")
+    _info(
+        "Where to find Tenant ID → Azure Portal : Azure Active Directory → Overview → Tenant ID"
+    )
     _info("Format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")
     while True:
-        tenant_id = inquirer.text(
-            message="Azure Tenant ID:",
-            default=org.get("tenant_id", ""),
-        ).execute().strip()
+        tenant_id = (
+            inquirer.text(
+                message="Azure Tenant ID:",
+                default=org.get("tenant_id", ""),
+            )
+            .execute()
+            .strip()
+        )
         if tenant_id:
             org["tenant_id"] = tenant_id
             break
         _err("Tenant ID is required.")
 
-    sub_id = inquirer.text(
-        message="Default Subscription ID (leave blank to select at runtime):",
-        default=org.get("default_subscription", ""),
-    ).execute().strip()
+    sub_id = (
+        inquirer.text(
+            message="Default Subscription ID (leave blank to select at runtime):",
+            default=org.get("default_subscription", ""),
+        )
+        .execute()
+        .strip()
+    )
     if sub_id:
         org["default_subscription"] = sub_id
 
@@ -426,9 +478,13 @@ def _collect_one_gcp_org(gcloud_available: bool) -> Optional[Dict[str, Any]]:
     org: Dict[str, Any] = {"provider": "gcp"}
 
     while True:
-        name = inquirer.text(
-            message="Org name (slug, e.g. bt-gcp, company-prod):",
-        ).execute().strip()
+        name = (
+            inquirer.text(
+                message="Org name (slug, e.g. bt-gcp, company-prod):",
+            )
+            .execute()
+            .strip()
+        )
         if name:
             org["name"] = name
             break
@@ -483,10 +539,14 @@ def _discover_gcp_live(org: Dict[str, Any]) -> Dict[str, Any]:
 
     org["default_project"] = chosen.get("projectId", "")
 
-    region = inquirer.text(
-        message="Default region (e.g. us-central1 — leave blank to set later):",
-        default="",
-    ).execute().strip()
+    region = (
+        inquirer.text(
+            message="Default region (e.g. us-central1 — leave blank to set later):",
+            default="",
+        )
+        .execute()
+        .strip()
+    )
     if region:
         org["region"] = region
 
@@ -495,22 +555,32 @@ def _discover_gcp_live(org: Dict[str, Any]) -> Dict[str, Any]:
 
 def _prompt_gcp_manual(org: Dict[str, Any]) -> Dict[str, Any]:
     """Collect GCP fields without CLI discovery."""
-    _info("Where to find Project ID → GCP Console : click the project selector dropdown")
+    _info(
+        "Where to find Project ID → GCP Console : click the project selector dropdown"
+    )
     _info("Use the ID (e.g. my-project-123), not the display name")
     while True:
-        project_id = inquirer.text(
-            message="GCP Project ID:",
-            default=org.get("default_project", ""),
-        ).execute().strip()
+        project_id = (
+            inquirer.text(
+                message="GCP Project ID:",
+                default=org.get("default_project", ""),
+            )
+            .execute()
+            .strip()
+        )
         if project_id:
             org["default_project"] = project_id
             break
         _err("Project ID is required.")
 
-    region = inquirer.text(
-        message="Default region (e.g. us-central1 — leave blank to set later):",
-        default="",
-    ).execute().strip()
+    region = (
+        inquirer.text(
+            message="Default region (e.g. us-central1 — leave blank to set later):",
+            default="",
+        )
+        .execute()
+        .strip()
+    )
     if region:
         org["region"] = region
 
@@ -610,7 +680,9 @@ def _write_config(orgs: List[Dict[str, Any]]) -> bool:
         # Sync AWS ~/.aws/config profiles (non-fatal if it fails)
         if any(o.get("provider", "aws") == "aws" for o in orgs):
             if core.cmd_config_sync() != 0:
-                _warn("AWS profile sync had issues — run 'cloudctl doctor' to diagnose.")
+                _warn(
+                    "AWS profile sync had issues — run 'cloudctl doctor' to diagnose."
+                )
 
         return True
 
@@ -654,9 +726,7 @@ def _install_shell_integration() -> None:
         else:
             _ok("Shell integration already present — nothing to do.")
     else:
-        _warn(
-            "Skipped. Install manually later with:  cloudctl init --shell-only"
-        )
+        _warn("Skipped. Install manually later with:  cloudctl init --shell-only")
 
 
 # ---------------------------------------------------------------------------
@@ -668,7 +738,9 @@ def _show_next_steps(orgs: List[Dict[str, Any]]) -> None:
     _section("You're all set!")
     utils.console.print()
 
-    utils.console.print("  [bold]1. Restart your terminal[/bold] (or reload your profile)")
+    utils.console.print(
+        "  [bold]1. Restart your terminal[/bold] (or reload your profile)"
+    )
     utils.console.print()
     utils.console.print("  [bold]2. Log in to each org:[/bold]")
     for org in orgs:
@@ -677,7 +749,7 @@ def _show_next_steps(orgs: List[Dict[str, Any]]) -> None:
     utils.console.print("  [bold]3. Switch context and verify:[/bold]")
     first = orgs[0]["name"] if orgs else "<org>"
     utils.console.print(f"       cloudctl switch [bold]{first}[/bold]")
-    utils.console.print(f"       cloudctl env")
+    utils.console.print("       cloudctl env")
     utils.console.print()
     utils.console.print(
         "  [dim]cloudctl doctor[/dim]          — run health checks at any time\n"
@@ -700,9 +772,7 @@ def _run_json(
     Returns (parsed_list, None) on success, (None, error_message) on failure.
     """
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         if result.returncode != 0:
             return None, result.stderr.strip()
         data = json.loads(result.stdout.strip())
@@ -786,5 +856,6 @@ def run_wizard() -> bool:
         utils.console.print(f"\n[red]  Wizard failed: {exc}[/red]\n")
         if os.environ.get("AWSCTL_DEBUG") == "1":
             import traceback
+
             traceback.print_exc()
         return False

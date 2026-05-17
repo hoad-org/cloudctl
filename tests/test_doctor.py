@@ -29,9 +29,13 @@ def mock_doctor_deps(monkeypatch):
     monkeypatch.setattr(
         "cloudctl.doctor.check_shell_integration", lambda: (True, "Present")
     )
-    monkeypatch.setattr("cloudctl.doctor.check_permissions", lambda: (True, "User owned"))
+    monkeypatch.setattr(
+        "cloudctl.doctor.check_permissions", lambda: (True, "User owned")
+    )
     monkeypatch.setattr("cloudctl.doctor.check_time_sync", lambda: (True, "Synced"))
-    monkeypatch.setattr("cloudctl.doctor.check_network_ssl", lambda: (True, "Reachable"))
+    monkeypatch.setattr(
+        "cloudctl.doctor.check_network_ssl", lambda: (True, "Reachable")
+    )
     monkeypatch.setattr("cloudctl.doctor.check_wsl_performance", lambda: (True, "N/A"))
 
     return mocks

@@ -18,6 +18,7 @@ Add to your shell:
 
   # Powerlevel10k — add to ~/.p10k.zsh  (cloudctl prompt --p10k)
 """
+
 from __future__ import annotations
 
 import json
@@ -25,8 +26,6 @@ import sys
 from typing import Any, Dict, Optional
 
 from cloudctl.commands.base import BaseCommand
-from cloudctl import utils
-
 
 _PROVIDER_ICON = {"aws": "☁", "azure": "⬡", "gcp": "◆"}
 _PROVIDER_COLOR = {"aws": "yellow", "azure": "blue", "gcp": "green"}
@@ -75,31 +74,41 @@ class PromptCommand(BaseCommand):
         )
         group = p.add_mutually_exclusive_group()
         group.add_argument(
-            "--short", action="store_true",
+            "--short",
+            action="store_true",
             help="Short form: icon + org name only",
         )
         group.add_argument(
-            "--json", action="store_true",
+            "--json",
+            action="store_true",
             help="Output context as JSON",
         )
         group.add_argument(
-            "--starship", action="store_true",
+            "--starship",
+            action="store_true",
             help="Print a starship.toml snippet and exit",
         )
         group.add_argument(
-            "--p10k", action="store_true",
+            "--p10k",
+            action="store_true",
             help="Print a Powerlevel10k zsh segment snippet and exit",
         )
         p.add_argument(
-            "--format", choices=["plain", "ps1"], default="plain",
+            "--format",
+            choices=["plain", "ps1"],
+            default="plain",
             help="Output format (default: plain)",
         )
         p.add_argument(
-            "--no-icon", action="store_true",
+            "--no-icon",
+            action="store_true",
             help="Omit the provider icon",
         )
         p.add_argument(
-            "--warn-expiry", type=int, default=15, metavar="MINUTES",
+            "--warn-expiry",
+            type=int,
+            default=15,
+            metavar="MINUTES",
             help="Show expiry warning when credentials expire within N minutes (default: 15)",
         )
 
@@ -125,7 +134,9 @@ class PromptCommand(BaseCommand):
         account = ctx.get("account", "")
         role = ctx.get("role", "")
         region = ctx.get("region", "")
-        icon = "" if getattr(args, "no_icon", False) else _PROVIDER_ICON.get(provider, "☁")
+        icon = (
+            "" if getattr(args, "no_icon", False) else _PROVIDER_ICON.get(provider, "☁")
+        )
 
         # ── JSON mode ────────────────────────────────────────────────────────
         if getattr(args, "json", False):
@@ -177,7 +188,8 @@ class PromptCommand(BaseCommand):
 def _parse_expiry_minutes(expiry_str: str) -> Optional[int]:
     """Parse '47m' or '1h23m' into total minutes."""
     import re
-    m = re.fullmatch(r'(?:(\d+)h)?(?:(\d+)m)?', expiry_str)
+
+    m = re.fullmatch(r"(?:(\d+)h)?(?:(\d+)m)?", expiry_str)
     if not m:
         return None
     hours = int(m.group(1) or 0)

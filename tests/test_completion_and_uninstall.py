@@ -8,15 +8,12 @@ Tests for:
 """
 
 import os
-import sys
 from types import SimpleNamespace
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 import cloudctl.cli as cli
 from cloudctl.cli import _remove_cloudctl_blocks
-
 
 # ===========================================================================
 # _remove_cloudctl_blocks — unit tests
@@ -137,7 +134,9 @@ class TestCmdCompletion:
     def test_prints_bash_snippet(self):
         messages = []
         mock_console = MagicMock()
-        mock_console.print.side_effect = lambda *a, **_: messages.append(str(a[0]) if a else "")
+        mock_console.print.side_effect = lambda *a, **_: messages.append(
+            str(a[0]) if a else ""
+        )
 
         with patch.dict(os.environ, {"SHELL": "/bin/bash"}):
             with patch.object(cli, "console", mock_console):
@@ -151,7 +150,9 @@ class TestCmdCompletion:
     def test_prints_zsh_snippet(self):
         messages = []
         mock_console = MagicMock()
-        mock_console.print.side_effect = lambda *a, **_: messages.append(str(a[0]) if a else "")
+        mock_console.print.side_effect = lambda *a, **_: messages.append(
+            str(a[0]) if a else ""
+        )
 
         with patch.dict(os.environ, {"SHELL": "/bin/zsh"}):
             with patch.object(cli, "console", mock_console):
@@ -164,7 +165,9 @@ class TestCmdCompletion:
     def test_explicit_fish_shell(self):
         messages = []
         mock_console = MagicMock()
-        mock_console.print.side_effect = lambda *a, **_: messages.append(str(a[0]) if a else "")
+        mock_console.print.side_effect = lambda *a, **_: messages.append(
+            str(a[0]) if a else ""
+        )
 
         with patch.object(cli, "console", mock_console):
             rc = cli.cmd_completion(self._make_args(shell="fish"))
@@ -189,7 +192,9 @@ class TestCmdCompletion:
 
     def test_install_is_idempotent(self, tmp_path):
         profile = tmp_path / ".zshrc"
-        profile.write_text("export FOO=bar\n# cloudctl completion\neval \"$(register-python-argcomplete cloudctl)\"\n")
+        profile.write_text(
+            'export FOO=bar\n# cloudctl completion\neval "$(register-python-argcomplete cloudctl)"\n'
+        )
 
         with patch.dict(os.environ, {"SHELL": "/bin/zsh"}):
             with patch("os.path.expanduser", return_value=str(profile)):
@@ -209,18 +214,27 @@ class TestCmdCompletion:
 
 class TestCmdUninstall:
     def _make_args(self, dry_run=False, keep_config=False, package_only=False):
-        return SimpleNamespace(dry_run=dry_run, keep_config=keep_config, package_only=package_only)
+        return SimpleNamespace(
+            dry_run=dry_run, keep_config=keep_config, package_only=package_only
+        )
 
     def test_dry_run_prints_would_remove(self, tmp_path):
         profile = tmp_path / ".zshrc"
         profile.write_text(_WRAPPER_BLOCK + "export PATH=foo\n")
         messages = []
         mock_console = MagicMock()
-        mock_console.print.side_effect = lambda *a, **_: messages.append(str(a[0]) if a else "")
+        mock_console.print.side_effect = lambda *a, **_: messages.append(
+            str(a[0]) if a else ""
+        )
 
-        with patch("os.path.expanduser", side_effect=lambda p: str(profile) if "zshrc" in p else "/nonexistent"):
+        with patch(
+            "os.path.expanduser",
+            side_effect=lambda p: str(profile) if "zshrc" in p else "/nonexistent",
+        ):
             with patch.object(cli, "console", mock_console):
-                with patch("subprocess.run", return_value=MagicMock(returncode=0, stdout="")):
+                with patch(
+                    "subprocess.run", return_value=MagicMock(returncode=0, stdout="")
+                ):
                     rc = cli.cmd_uninstall(self._make_args(dry_run=True))
 
         assert rc == 0
@@ -232,12 +246,17 @@ class TestCmdUninstall:
         profile = tmp_path / ".zshrc"
         profile.write_text("export FOO=bar\n" + _WRAPPER_BLOCK + "export BAZ=qux\n")
 
-        with patch("os.path.expanduser", side_effect=lambda p: str(profile) if "zshrc" in p else "/nonexistent"):
+        with patch(
+            "os.path.expanduser",
+            side_effect=lambda p: str(profile) if "zshrc" in p else "/nonexistent",
+        ):
             with patch.object(cli, "console", MagicMock()):
-                with patch("subprocess.run", return_value=MagicMock(returncode=0, stdout="")):
+                with patch(
+                    "subprocess.run", return_value=MagicMock(returncode=0, stdout="")
+                ):
                     with patch("InquirerPy.inquirer.confirm") as mock_confirm:
                         mock_confirm.return_value.execute.return_value = True
-                        rc = cli.cmd_uninstall(self._make_args())
+                        _ = cli.cmd_uninstall(self._make_args())
 
         content = profile.read_text()
         assert "cloudctl()" not in content
@@ -250,12 +269,19 @@ class TestCmdUninstall:
         config_dir.mkdir()
         (config_dir / "context.json").write_text('{"org": "test"}')
 
-        with patch("os.path.expanduser", side_effect=lambda p: str(config_dir) if "config/cloudctl" in p else "/nonexistent"):
+        with patch(
+            "os.path.expanduser",
+            side_effect=lambda p: (
+                str(config_dir) if "config/cloudctl" in p else "/nonexistent"
+            ),
+        ):
             with patch.object(cli, "console", MagicMock()):
-                with patch("subprocess.run", return_value=MagicMock(returncode=0, stdout="")):
+                with patch(
+                    "subprocess.run", return_value=MagicMock(returncode=0, stdout="")
+                ):
                     with patch("InquirerPy.inquirer.confirm") as mock_confirm:
                         mock_confirm.return_value.execute.return_value = True
-                        rc = cli.cmd_uninstall(self._make_args(keep_config=True))
+                        _ = cli.cmd_uninstall(self._make_args(keep_config=True))
 
         # Config should still exist
         assert config_dir.exists()
@@ -265,12 +291,19 @@ class TestCmdUninstall:
         profile.write_text(_WRAPPER_BLOCK)
         run_calls = []
 
-        with patch("os.path.expanduser", side_effect=lambda p: str(profile) if "zshrc" in p else "/nonexistent"):
+        with patch(
+            "os.path.expanduser",
+            side_effect=lambda p: str(profile) if "zshrc" in p else "/nonexistent",
+        ):
             with patch.object(cli, "console", MagicMock()):
-                with patch("subprocess.run", side_effect=lambda cmd, **_: run_calls.append(cmd) or MagicMock(returncode=0, stdout="")):
+                with patch(
+                    "subprocess.run",
+                    side_effect=lambda cmd, **_: run_calls.append(cmd)
+                    or MagicMock(returncode=0, stdout=""),
+                ):
                     with patch("InquirerPy.inquirer.confirm") as mock_confirm:
                         mock_confirm.return_value.execute.return_value = True
-                        rc = cli.cmd_uninstall(self._make_args(package_only=True))
+                        _ = cli.cmd_uninstall(self._make_args(package_only=True))
 
         # Profile should be untouched
         assert "cloudctl()" in profile.read_text()

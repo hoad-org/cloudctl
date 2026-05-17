@@ -1,12 +1,11 @@
 # file: tests/test_wizard.py
 """Tests for the interactive setup wizard."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import yaml
 from cloudctl import config, core, shell, wizard
 from cloudctl.wizard import inquirer
-
 
 # ---------------------------------------------------------------------------
 # Helpers — build sequential mocks for multi-call inquirer prompts

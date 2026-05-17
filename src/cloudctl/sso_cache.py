@@ -81,7 +81,9 @@ def load_active_sso_token(
         raise RuntimeError(f"Permission denied accessing cache: {target}")
 
     # Handle both OrgRef objects and dicts
-    sso_start_url = org.get("sso_start_url", "") if isinstance(org, dict) else org.sso_start_url
+    sso_start_url = (
+        org.get("sso_start_url", "") if isinstance(org, dict) else org.sso_start_url
+    )
     sso_region = org.get("sso_region", "") if isinstance(org, dict) else org.sso_region
     norm_target = _normalize_start_url(sso_start_url)
     try:

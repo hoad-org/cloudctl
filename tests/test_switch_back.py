@@ -14,10 +14,8 @@ Covers:
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 import cloudctl.cli as cli
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -39,9 +37,7 @@ _ORG_DATA = {
 
 
 def _make_args(org="-"):
-    return SimpleNamespace(
-        org=org, target=None, account=None, role=None, region=None
-    )
+    return SimpleNamespace(org=org, target=None, account=None, role=None, region=None)
 
 
 # ---------------------------------------------------------------------------
@@ -53,18 +49,25 @@ class TestSwitchBack:
     def test_switch_dash_restores_previous_context(self):
         messages = []
         mock_console = MagicMock()
-        mock_console.print.side_effect = lambda *a, **_: messages.append(str(a[0]) if a else "")
+        mock_console.print.side_effect = lambda *a, **_: messages.append(
+            str(a[0]) if a else ""
+        )
 
         with patch("cloudctl.context_manager.get_previous_context", return_value=_PREV):
             with patch("cloudctl.config.get_org", return_value=_ORG_DATA):
-                with patch("cloudctl.cli.emit_exports", return_value="export AWS_REGION=us-east-1\n"):
+                with patch(
+                    "cloudctl.cli.emit_exports",
+                    return_value="export AWS_REGION=us-east-1\n",
+                ):
                     with patch("cloudctl.context_manager.save_context") as mock_save:
                         with patch.object(cli, "console", mock_console):
                             with patch("builtins.print"):
                                 rc = cli.cmd_switch(_make_args())
 
         assert rc == 0
-        mock_save.assert_called_once_with("bt-avm", "111111111111", "AdminAccess", "us-east-1")
+        mock_save.assert_called_once_with(
+            "bt-avm", "111111111111", "AdminAccess", "us-east-1"
+        )
 
     def test_switch_dash_prints_success_message(self, capsys):
         with patch("cloudctl.context_manager.get_previous_context", return_value=_PREV):
@@ -83,10 +86,15 @@ class TestSwitchBack:
 
         with patch("cloudctl.context_manager.get_previous_context", return_value=_PREV):
             with patch("cloudctl.config.get_org", return_value=_ORG_DATA):
-                with patch("cloudctl.cli.emit_exports", return_value="export FOO=bar\n"):
+                with patch(
+                    "cloudctl.cli.emit_exports", return_value="export FOO=bar\n"
+                ):
                     with patch("cloudctl.context_manager.save_context"):
                         with patch.object(cli, "console", MagicMock()):
-                            with patch("builtins.print", side_effect=lambda x: printed.append(x)):
+                            with patch(
+                                "builtins.print",
+                                side_effect=lambda x: printed.append(x),
+                            ):
                                 rc = cli.cmd_switch(_make_args())
 
         assert rc == 0
@@ -117,13 +125,18 @@ class TestSwitchBackErrors:
                 rc = cli.cmd_switch(_make_args())
 
         assert rc == 1
-        combined = capsys.readouterr().out + capsys.readouterr().err
+        _ = capsys.readouterr().out + capsys.readouterr().err
         # Message may go to stdout or via rich console — just check rc==1
 
     def test_incomplete_previous_context_returns_1(self, capsys):
-        incomplete = {"current_org": "bt-avm", "account": "111111111111"}  # missing role/region
+        incomplete = {
+            "current_org": "bt-avm",
+            "account": "111111111111",
+        }  # missing role/region
 
-        with patch("cloudctl.context_manager.get_previous_context", return_value=incomplete):
+        with patch(
+            "cloudctl.context_manager.get_previous_context", return_value=incomplete
+        ):
             with patch.object(cli, "console", MagicMock()):
                 rc = cli.cmd_switch(_make_args())
 

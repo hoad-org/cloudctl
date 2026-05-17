@@ -28,19 +28,23 @@ class ExecCommand(BaseCommand):
             help="Run a command with cloud credentials (without changing shell context)",
         )
         parser.add_argument(
-            "--org", dest="exec_org",
+            "--org",
+            dest="exec_org",
             help="Organisation to use (defaults to active context)",
         )
         parser.add_argument(
-            "--account", dest="exec_account",
+            "--account",
+            dest="exec_account",
             help="Account/subscription/project ID (defaults to context)",
         )
         parser.add_argument(
-            "--role", dest="exec_role",
+            "--role",
+            dest="exec_role",
             help="Role/permission-set (defaults to context)",
         )
         parser.add_argument(
-            "--region", dest="exec_region",
+            "--region",
+            dest="exec_region",
             help="Region (defaults to context)",
         )
         parser.add_argument("cmd", nargs="+", help="Command to execute")
@@ -52,9 +56,13 @@ class ExecCommand(BaseCommand):
         org_name = getattr(args, "exec_org", None) or (
             ctx.get("current_org", "") or ctx.get("org", "") if ctx else ""
         )
-        account = getattr(args, "exec_account", None) or (ctx.get("account", "") if ctx else "")
-        role    = getattr(args, "exec_role", None)    or (ctx.get("role", "")    if ctx else "")
-        region  = getattr(args, "exec_region", None)  or (ctx.get("region", "")  if ctx else "")
+        account = getattr(args, "exec_account", None) or (
+            ctx.get("account", "") if ctx else ""
+        )
+        role = getattr(args, "exec_role", None) or (ctx.get("role", "") if ctx else "")
+        region = getattr(args, "exec_region", None) or (
+            ctx.get("region", "") if ctx else ""
+        )
 
         if not org_name:
             self.console.print(
@@ -72,6 +80,7 @@ class ExecCommand(BaseCommand):
                 self.console.print(f"[red]Org '{org_name}' not found in config.[/]")
                 return 1
             import cloudctl.interactive as _interactive
+
             account, role, region = _interactive.run_interactive_use(
                 org_data, account or None, role or None, region or None
             )

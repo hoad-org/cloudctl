@@ -58,7 +58,10 @@ def test_wizard_write_fail(monkeypatch, tmp_path, mock_rich_console):
     monkeypatch.setattr(inquirer, "confirm", _seq_mock([False, True]))
 
     from cloudctl import core
-    monkeypatch.setattr(core, "get_orgs_path", lambda ensure=True: tmp_path / "orgs.yaml")
+
+    monkeypatch.setattr(
+        core, "get_orgs_path", lambda ensure=True: tmp_path / "orgs.yaml"
+    )
 
     with patch("tempfile.mkstemp", side_effect=OSError("Write Fail")):
         assert wizard.run_wizard() is False
@@ -87,7 +90,10 @@ def test_wizard_cli_sync_fail(monkeypatch, tmp_path, mock_rich_console):
     monkeypatch.setattr(inquirer, "confirm", _seq_mock([False, True, True]))
 
     from cloudctl import core
-    monkeypatch.setattr(core, "get_orgs_path", lambda ensure=True: tmp_path / "orgs.yaml")
+
+    monkeypatch.setattr(
+        core, "get_orgs_path", lambda ensure=True: tmp_path / "orgs.yaml"
+    )
     monkeypatch.setattr(core, "cmd_config_sync", MagicMock(return_value=1))
     monkeypatch.setattr(shell, "detect_shell_profile", lambda: tmp_path / "rc")
     monkeypatch.setattr(shell, "inject_shell_function", lambda x: True)

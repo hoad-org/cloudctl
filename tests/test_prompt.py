@@ -15,11 +15,9 @@ Covers:
 
 import io
 import json
-import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from cloudctl.commands.prompt import (
     PromptCommand,
@@ -292,7 +290,9 @@ class TestExpiryLabel:
         from datetime import datetime, timezone, timedelta
 
         mock_token = MagicMock()
-        mock_token.expiresAt = datetime.now(timezone.utc) + timedelta(hours=2, minutes=30)
+        mock_token.expiresAt = datetime.now(timezone.utc) + timedelta(
+            hours=2, minutes=30
+        )
         mock_provider = MagicMock()
         mock_provider.load_token.return_value = mock_token
         with patch("cloudctl.config.get_org", return_value={}):

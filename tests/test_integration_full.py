@@ -93,7 +93,9 @@ def god_mode(monkeypatch, tmp_path):
     monkeypatch.setattr(
         accounts, "list_accounts", lambda *a: [{"id": "1", "name": "d"}]
     )
-    monkeypatch.setattr("cloudctl.accounts.load_active_sso_token", lambda *a: MagicMock())
+    monkeypatch.setattr(
+        "cloudctl.accounts.load_active_sso_token", lambda *a: MagicMock()
+    )
 
 
 def test_cli_dispatch_full(monkeypatch):
@@ -130,7 +132,8 @@ def test_cli_dispatch_full(monkeypatch):
 
     # Interaction & Switching
     monkeypatch.setattr(
-        "cloudctl.interactive.run_interactive_use", lambda o, **k: ("1", "r", "us-east-1")
+        "cloudctl.interactive.run_interactive_use",
+        lambda o, **k: ("1", "r", "us-east-1"),
     )
     run(["switch"])
     run(["switch", "-"])

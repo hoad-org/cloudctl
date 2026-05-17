@@ -71,7 +71,6 @@ class CloudProvider(ABC):
 
         Returns a timezone-aware datetime.datetime, or None.
         """
-        from datetime import datetime, timezone
 
         try:
             token = self.load_token(org)

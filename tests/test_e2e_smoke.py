@@ -72,7 +72,9 @@ class TestAwsSwitchE2E:
         monkeypatch.setattr(
             interactive, "select_role", lambda org_data, roles: "AdministratorAccess"
         )
-        monkeypatch.setattr("cloudctl.context_manager.save_context", lambda *a, **k: None)
+        monkeypatch.setattr(
+            "cloudctl.context_manager.save_context", lambda *a, **k: None
+        )
 
         fake_exports = (
             "export AWS_ACCESS_KEY_ID=FAKEKEYID4TESTING001\n"
@@ -121,7 +123,9 @@ class TestAwsSwitchE2E:
         monkeypatch.setattr(
             interactive, "select_role", lambda org_data, roles: "ReadOnly"
         )
-        monkeypatch.setattr("cloudctl.context_manager.save_context", lambda *a, **k: None)
+        monkeypatch.setattr(
+            "cloudctl.context_manager.save_context", lambda *a, **k: None
+        )
         monkeypatch.setattr(
             "cloudctl.use_exports.load_active_sso_token", lambda org: _make_sso_token()
         )
@@ -164,8 +168,10 @@ class TestAzureSwitchE2E:
 
         monkeypatch.setattr("cloudctl.config.get_org", lambda n: org_cfg)
         monkeypatch.setattr("cloudctl.config.load_config", lambda: {"orgs": [org_cfg]})
+
+        # Mock the provider's load_token method (not load_active_sso_token)
         monkeypatch.setattr(
-            "cloudctl.interactive.load_active_sso_token",
+            "cloudctl.interactive.load_provider_token",
             lambda org: {"token": "az-token"},
         )
         monkeypatch.setattr(
@@ -182,7 +188,9 @@ class TestAzureSwitchE2E:
         monkeypatch.setattr(
             interactive, "select_role", lambda org_data, roles: "Contributor"
         )
-        monkeypatch.setattr("cloudctl.context_manager.save_context", lambda *a, **k: None)
+        monkeypatch.setattr(
+            "cloudctl.context_manager.save_context", lambda *a, **k: None
+        )
 
         fake_exports = (
             "export AZURE_SUBSCRIPTION_ID=sub-123\n"
@@ -220,8 +228,10 @@ class TestGcpSwitchE2E:
 
         monkeypatch.setattr("cloudctl.config.get_org", lambda n: org_cfg)
         monkeypatch.setattr("cloudctl.config.load_config", lambda: {"orgs": [org_cfg]})
+
+        # Mock the provider-aware load_provider_token (not load_active_sso_token)
         monkeypatch.setattr(
-            "cloudctl.interactive.load_active_sso_token", lambda org: "ya29.gcp-token"
+            "cloudctl.interactive.load_provider_token", lambda org: "ya29.gcp-token"
         )
         monkeypatch.setattr(
             interactive,
@@ -239,7 +249,9 @@ class TestGcpSwitchE2E:
         monkeypatch.setattr(
             interactive, "select_role", lambda org_data, roles: "roles/viewer"
         )
-        monkeypatch.setattr("cloudctl.context_manager.save_context", lambda *a, **k: None)
+        monkeypatch.setattr(
+            "cloudctl.context_manager.save_context", lambda *a, **k: None
+        )
 
         fake_exports = (
             "export GOOGLE_CLOUD_PROJECT=my-gcp-project\n"

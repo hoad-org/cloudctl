@@ -12,19 +12,18 @@ prevents that). Instead it keeps the SSO token cache fresh so that the next
 `cloudctl switch` is instant. Works best when run in a dedicated terminal pane
 or a tmux/screen session alongside long-running Terraform operations.
 """
+
 from __future__ import annotations
 
-import sys
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from cloudctl.commands.base import BaseCommand
-from cloudctl import utils
 
 # Refresh when this many seconds remain on the token
 _REFRESH_THRESHOLD_SECS = 900  # 15 minutes
-_DEFAULT_CHECK_INTERVAL = 60   # seconds between checks
+_DEFAULT_CHECK_INTERVAL = 60  # seconds between checks
 
 
 class WatchCommand(BaseCommand):
@@ -36,19 +35,27 @@ class WatchCommand(BaseCommand):
             help="Auto-refresh credentials before they expire (run in background pane)",
         )
         p.add_argument(
-            "org", nargs="?",
+            "org",
+            nargs="?",
             help="Organisation to watch (defaults to active context)",
         )
         p.add_argument(
-            "--interval", type=int, default=_DEFAULT_CHECK_INTERVAL, metavar="SECS",
+            "--interval",
+            type=int,
+            default=_DEFAULT_CHECK_INTERVAL,
+            metavar="SECS",
             help=f"How often to check token expiry in seconds (default: {_DEFAULT_CHECK_INTERVAL})",
         )
         p.add_argument(
-            "--threshold", type=int, default=_REFRESH_THRESHOLD_SECS, metavar="SECS",
+            "--threshold",
+            type=int,
+            default=_REFRESH_THRESHOLD_SECS,
+            metavar="SECS",
             help=f"Refresh when this many seconds remain (default: {_REFRESH_THRESHOLD_SECS})",
         )
         p.add_argument(
-            "--once", action="store_true",
+            "--once",
+            action="store_true",
             help="Check once and exit (useful for scripts)",
         )
 
@@ -92,9 +99,7 @@ class WatchCommand(BaseCommand):
 
         try:
             while True:
-                refreshed, msg = _check_and_refresh(
-                    org_data, provider, threshold
-                )
+                refreshed, msg = _check_and_refresh(org_data, provider, threshold)
                 ts = datetime.now().strftime("%H:%M:%S")
                 if refreshed:
                     self.console.print(f"[green][{ts}] Refreshed — {msg}[/green]")

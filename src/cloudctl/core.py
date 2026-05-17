@@ -133,6 +133,7 @@ def cmd_exec(account: str, role: str, region: str, command: List[str]) -> int:
     if account is not None and role is not None and org.get("provider", "aws") == "aws":
         try:
             from .sso_cache import OrgRef
+
             org_ref = OrgRef(
                 org.get("name", ""),
                 org.get("sso_start_url", ""),

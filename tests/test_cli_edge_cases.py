@@ -31,7 +31,9 @@ def test_whoami_exception(
     monkeypatch: pytest.MonkeyPatch, mock_rich_console: Any
 ) -> None:
     """Verify whoami handles unexpected python exceptions during execution."""
-    monkeypatch.setattr("cloudctl.aws.run_aws", MagicMock(side_effect=Exception("Boom")))
+    monkeypatch.setattr(
+        "cloudctl.aws.run_aws", MagicMock(side_effect=Exception("Boom"))
+    )
 
     assert cli.cmd_whoami() == 1
     output = "".join(mock_rich_console.captured)

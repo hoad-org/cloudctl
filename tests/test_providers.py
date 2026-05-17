@@ -258,6 +258,20 @@ class TestAzureProvider:
             assert line.startswith("export ")
             assert "=" in line
 
+    # --- subprocess timeout -------------------------------------------------
+
+    def test_subprocess_timeout_exits(self, provider, org, monkeypatch):
+        """Verify that Azure CLI subprocess timeout causes graceful exit."""
+        import subprocess
+
+        def fake_subprocess_timeout(*args, **kwargs):
+            raise subprocess.TimeoutExpired("az", 30)
+
+        monkeypatch.setattr("subprocess.run", fake_subprocess_timeout)
+        # Try to use a method that calls _az; should exit gracefully
+        with pytest.raises(SystemExit):
+            provider.load_token(org)
+
     # --- logout -------------------------------------------------------------
 
     def test_logout_success(self, provider, org, monkeypatch):
@@ -428,6 +442,33 @@ class TestGcpProvider:
         with pytest.raises(SystemExit):
             provider.get_credentials(org, "my-project", "roles/viewer", "us-central1")
 
+    def test_get_credentials_non_interactive_fallback(self, provider, org, monkeypatch):
+        """Verify non-interactive fallback returns placeholder token instead of exiting."""
+        call_count = [0]
+
+        def fake_gcloud(args):
+            call_count[0] += 1
+            if "set" in args:
+                return _gc_result(0)
+            # Token fetch fails with "cannot prompt" error (non-interactive mode)
+            return _gc_result(
+                1,
+                "",
+                "gcloud: error: cannot prompt during non-interactive execution.\n",
+            )
+
+        monkeypatch.setattr(provider, "_gcloud", fake_gcloud)
+        # Should NOT raise SystemExit; should return placeholder token
+        creds = provider.get_credentials(
+            org, "my-project", "roles/viewer", "us-central1"
+        )
+
+        assert creds["GOOGLE_CLOUD_PROJECT"] == "my-project"
+        assert creds["CLOUDSDK_CORE_PROJECT"] == "my-project"
+        assert creds["GCLOUD_PROJECT"] == "my-project"
+        # Placeholder token for non-interactive mode
+        assert creds["GOOGLE_OAUTH_ACCESS_TOKEN"] == "cached:gcp:my-project"
+
     # --- get_unsets / get_exports -------------------------------------------
 
     def test_get_unsets_covers_all_env_vars(self, provider):
@@ -446,6 +487,20 @@ class TestGcpProvider:
         for line in exports.splitlines():
             assert line.startswith("export ")
             assert "=" in line
+
+    # --- subprocess timeout -------------------------------------------------
+
+    def test_subprocess_timeout_exits(self, provider, org, monkeypatch):
+        """Verify that gcloud subprocess timeout causes graceful exit."""
+        import subprocess
+
+        def fake_subprocess_timeout(*args, **kwargs):
+            raise subprocess.TimeoutExpired("gcloud", 30)
+
+        monkeypatch.setattr("subprocess.run", fake_subprocess_timeout)
+        # Try to use a method that calls _gcloud; should exit gracefully
+        with pytest.raises(SystemExit):
+            provider.load_token(org)
 
     # --- logout -------------------------------------------------------------
 

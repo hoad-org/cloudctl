@@ -4,6 +4,47 @@ from InquirerPy import inquirer
 
 from .sso_cache import load_active_sso_token
 
+
+def load_provider_token(org_data: Dict[str, Any]) -> Optional[Any]:
+    """
+    Provider-agnostic token loader.
+
+    Detects the provider type and calls the appropriate provider's load_token method.
+    This handles AWS SSO, GCP credentials, Azure authentication, etc.
+
+    Returns the provider's token/credential object, or None if unauthenticated.
+    """
+    import logging
+
+    provider_name = org_data.get("provider", "aws")
+    logger = logging.getLogger(__name__)
+
+    # For AWS, delegate to existing sso_cache module
+    if provider_name == "aws":
+        return load_active_sso_token(org_data)
+
+    # For other providers, use the provider's load_token method
+    try:
+        from .providers import get_provider
+
+        provider = get_provider(org_data)
+        return provider.load_token(org_data)
+    except KeyboardInterrupt:
+        # Don't catch Ctrl-C
+        raise
+    except SystemExit:
+        # Don't catch sys.exit()
+        raise
+    except ValueError as e:
+        # Provider not found or invalid config
+        logger.warning(f"Invalid provider in org config: {e}")
+        return None
+    except Exception as e:
+        # Other errors (API failures, network, etc.)
+        logger.debug(f"Token loading failed for {provider_name}: {e}")
+        return None
+
+
 # Fallback region list shown when an org has no allowed_regions configured.
 _COMMON_REGIONS = [
     "us-east-1",
@@ -36,6 +77,7 @@ _COMMON_REGIONS = [
 
 # ---- module-level re-exports so tests can monkeypatch these names ----
 load_active_sso_token = load_active_sso_token
+load_provider_token = load_provider_token
 
 # _active_org is set by run_interactive_use before calling the seam functions.
 # Tests replace list_accounts / list_roles entirely via monkeypatching,
@@ -168,7 +210,7 @@ def _run(
     """Inner implementation separated so the finally-block in run_interactive_use fires."""
     import cloudctl.utils as _utils
 
-    token = load_active_sso_token(org_data)
+    token = load_provider_token(org_data)
     if not token:
         org_name = org_data.get("name", "")
         _utils.console.print(
@@ -184,7 +226,7 @@ def _run(
                 "Run [bold]cloudctl login <org>[/bold] manually."
             )
             return None, None, None
-        token = load_active_sso_token(org_data)
+        token = load_provider_token(org_data)
         if not token:
             _utils.console.print(
                 f"[red]Still no session after login for '{org_name}'.[/]"

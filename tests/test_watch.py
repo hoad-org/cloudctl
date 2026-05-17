@@ -14,12 +14,10 @@ Covers:
 
 from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 from cloudctl.commands.watch import WatchCommand, _check_and_refresh
-
 
 # ---------------------------------------------------------------------------
 # _check_and_refresh unit tests
@@ -124,7 +122,9 @@ class TestWatchCommandExecute:
         return cmd
 
     def _make_args(self, org=None, interval=60, threshold=900, once=False):
-        return SimpleNamespace(org=org, interval=interval, threshold=threshold, once=once)
+        return SimpleNamespace(
+            org=org, interval=interval, threshold=threshold, once=once
+        )
 
     def test_once_checks_and_exits(self):
         cmd = self._make_cmd()
@@ -155,9 +155,14 @@ class TestWatchCommandExecute:
         token = _make_token(7200)
         mock_provider = _make_provider(token=token)
 
-        with patch("cloudctl.context_manager.load_context", return_value={"current_org": "bt-avm"}):
+        with patch(
+            "cloudctl.context_manager.load_context",
+            return_value={"current_org": "bt-avm"},
+        ):
             with patch("cloudctl.config.get_org", return_value=org_data):
-                with patch("cloudctl.providers.get_provider", return_value=mock_provider):
+                with patch(
+                    "cloudctl.providers.get_provider", return_value=mock_provider
+                ):
                     rc = cmd.execute(args)
 
         assert rc == 0
@@ -188,7 +193,10 @@ class TestWatchCommandExecute:
 
         with patch("cloudctl.config.get_org", return_value=org_data):
             with patch("cloudctl.providers.get_provider", return_value=mock_provider):
-                with patch("cloudctl.commands.watch._check_and_refresh", side_effect=_fake_check):
+                with patch(
+                    "cloudctl.commands.watch._check_and_refresh",
+                    side_effect=_fake_check,
+                ):
                     with patch("time.sleep"):
                         rc = cmd.execute(args)
 

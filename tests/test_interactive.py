@@ -89,7 +89,9 @@ def test_run_interactive_use_success(monkeypatch, mock_rich_console, mock_inquir
         "cloudctl.interactive.list_accounts",
         lambda token: [accounts.Account("1", "n", "e")],
     )
-    monkeypatch.setattr("cloudctl.interactive.list_roles", lambda token, acct: ["Admin"])
+    monkeypatch.setattr(
+        "cloudctl.interactive.list_roles", lambda token, acct: ["Admin"]
+    )
     monkeypatch.setattr("cloudctl.guardrails.sort_roles", lambda o, r: r)
     monkeypatch.setattr("cloudctl.interactive.load_active_sso_token", lambda o: "token")
 
@@ -128,7 +130,8 @@ def test_run_interactive_use_api_error(monkeypatch, mock_rich_console):
 
     # [FIX] Trigger Exception
     monkeypatch.setattr(
-        "cloudctl.interactive.list_accounts", MagicMock(side_effect=Exception("API Fail"))
+        "cloudctl.interactive.list_accounts",
+        MagicMock(side_effect=Exception("API Fail")),
     )
 
     with pytest.raises(RuntimeError) as e:
