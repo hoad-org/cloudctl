@@ -16,7 +16,27 @@ This file provides context and operational guidelines for working on the cloudct
 
 ## Confluence Integration
 
-This repository is configured for automatic documentation to Confluence.
+This repository is configured for automatic documentation to Confluence using a custom Claude skill.
+
+### Important: Confluence Skill (Not Atlassian Rovo MCP)
+
+**Tool Used**: `confluence` skill (custom Claude skill)  
+**NOT**: Atlassian Rovo MCP for Confluence (incompatible with our workflows)
+
+The custom `confluence` skill provides:
+- Code-to-docs generation from repository code
+- Page creation and bulk updates
+- Search and content management
+- Jira integration (linking issues automatically)
+- Multiple documentation templates
+- Template support for standardized documentation
+
+**Why not Rovo MCP**: Rovo MCP lacks template support and bulk operations needed for our documentation workflow. The custom skill is production-ready and fully integrated with CloudCTL documentation processes.
+
+**Skill Location**: `/Users/craighoad/Repos/confluence-skill`  
+**Status**: Production-ready, fully integrated
+
+---
 
 **Target Space**: `Hoad-cloud-platforms`  
 **Jira Project**: `HCP`  
@@ -31,18 +51,20 @@ Use the Confluence skill to generate docs for:
 - Runbooks and operational guides
 - Feature specifications
 - Troubleshooting guides
+- CloudCTL provider documentation
+- Security and audit logging procedures
 
 ### How Claude Should Use the Confluence Skill
 
 **Always**:
-1. Use the Confluence skill when user asks to document anything
+1. Use the `confluence` skill when user asks to document anything
 2. Pass `repo_path="."` to automatically use this repo's configuration
 3. Set `dry_run=False` only after user approval
 
 **Example**:
 ```python
 skill.document(
-    task="Document the new payment API",
+    task="Document the new CloudCTL provider integration",
     repo_path=".",
     dry_run=False
 )
@@ -52,7 +74,9 @@ The skill will automatically:
 - Create/update pages in the `Hoad-cloud-platforms` space
 - Link related issues in the `HCP` Jira project
 - Validate all inputs and permissions
-- Create tasks for undocumented APIs
+- Apply templates for consistent documentation
+- Create tasks for undocumented features
+- Generate audit logging documentation
 
 ---
 
