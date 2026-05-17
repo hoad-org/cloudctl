@@ -4,7 +4,9 @@ This file provides context and operational guidelines for working on the cloudct
 
 ## Quick Navigation
 
-- **[Confluence Integration](#confluence-integration)** — Document cloud operations
+- **[Confluence Integration](#confluence-integration)** — Document cloud operations with `confluence` skill
+- **[Integration Checklist](#integration-checklist)** — Tool usage and documentation workflow
+- **[DevArmor Integration](#devarmor-integration)** — Audit logging and compliance documentation
 - **[Repository Structure](#repository-structure)** — Where everything lives
 - **[Multi-Cloud Operations](#multi-cloud-operations)** — AWS, GCP, Azure differences
 - **[Testing Guide](#testing-guide)** — How to run and write tests
@@ -77,6 +79,61 @@ The skill will automatically:
 - Apply templates for consistent documentation
 - Create tasks for undocumented features
 - Generate audit logging documentation
+
+---
+
+## Integration Checklist
+
+### Confluence Documentation
+- ✅ Use `confluence` skill (NOT Atlassian Rovo MCP)
+- ✅ Located: `/Users/craighoad/Repos/confluence-skill`
+- ✅ Full integration: Jira links, templates, bulk operations
+- ✅ Status: Production-ready for CloudCTL documentation
+- ✅ Target Space: `Hoad-cloud-platforms`
+- ✅ Jira Project: `HCP` (automatic linking)
+
+### When to Use Each Tool
+| Task | Tool | Note |
+|------|------|------|
+| Document CloudCTL features | `confluence` skill | Recommended, templates included |
+| Generate docs from code | `confluence` skill | Bulk operations supported |
+| Link to Jira tickets | `confluence` skill | Automatic via Jira project config |
+| Create runbooks | `confluence` skill | Template support |
+| Search documentation | `confluence` skill | Full-text search included |
+
+---
+
+## DevArmor Integration
+
+### Audit Logging Documentation
+
+CloudCTL audit logs are documented in Confluence for governance and compliance tracking.
+
+**Audit Log Location**: `~/.cloudctl/audit.log`
+
+**Documented in Confluence**:
+- Audit log schema and format
+- What events are logged (role assumption, credential export, account switches)
+- Break-glass access procedures
+- Compliance and FedRAMP requirements
+- Log retention and archival policies
+
+**Use `confluence` skill to update**:
+```python
+skill.document(
+    task="Update CloudCTL audit logging documentation",
+    repo_path=".",
+    dry_run=False
+)
+```
+
+This ensures audit documentation stays synchronized with code changes and is accessible to security and compliance teams.
+
+**Security Controls**:
+- Audit logs contain sensitive context (account IDs, roles)
+- Access to Confluence audit documentation restricted to authorized personnel
+- Sensitive data (tokens, credentials) never logged
+- All audit events timestamped and immutable
 
 ---
 
