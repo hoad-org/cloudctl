@@ -55,7 +55,7 @@ cryptography = ">=46.0.7"
 pygments = ">=2.20.0"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.4.0"
+pytest = "^9.0.3"
 pytest-cov = "^6.0.0"
 pytest-mock = "^3.12.0"
 ruff = "^0.15.0"
