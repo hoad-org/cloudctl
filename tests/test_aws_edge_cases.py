@@ -51,17 +51,16 @@ def test_utils_run_no_check():
 
 
 def test_core_login_subprocess_error(mock_rich_console, monkeypatch):
-    """Verify error reporting when the underlying AWS SSO process fails."""
+    """Verify error reporting when the SSO OIDC device flow fails."""
     monkeypatch.setattr(
         "cloudctl.config.get_org",
         lambda x: {"name": "o", "sso_start_url": "u", "sso_region": "r"},
     )
-    monkeypatch.setattr("cloudctl.aws.ensure_sso_base_profile", lambda x: "prof")
     monkeypatch.setattr("cloudctl.core.load_active_sso_token", lambda *a, **k: None)
 
-    # Simulate a generic failure in the run utility
+    # Simulate a generic failure while creating the boto3 sso-oidc client.
     monkeypatch.setattr(
-        "cloudctl.utils.run", MagicMock(side_effect=Exception("Subprocess Fail"))
+        "boto3.client", MagicMock(side_effect=Exception("Subprocess Fail"))
     )
 
     assert core.cmd_login("o") == 1

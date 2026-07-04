@@ -48,6 +48,7 @@ def mock_home(tmp_path, monkeypatch):
     import cloudctl.context_manager as _ctxmgr
     import cloudctl.aws as _aws
     import cloudctl.core as _core
+    import cloudctl.sso_cache as _sso_cache
 
     aws_dir = home / ".aws"
     sso_cache = aws_dir / "sso" / "cache"
@@ -57,6 +58,12 @@ def mock_home(tmp_path, monkeypatch):
     monkeypatch.setattr(_ctxmgr, "CONTEXT_FILE", ctx_file, raising=False)
     monkeypatch.setattr(_aws, "AWS_DIR", aws_dir, raising=False)
     monkeypatch.setattr(_aws, "SSO_CACHE_DIR", sso_cache, raising=False)
+    # sso_cache owns the canonical read/write of the SSO token cache. Its
+    # module-level AWS_DIR/SSO_CACHE_DIR are frozen at import from the *real*
+    # Path.home(), so writers/readers there would otherwise hit the user's real
+    # ~/.aws/sso/cache. Redirect them at the hermetic tmp home too.
+    monkeypatch.setattr(_sso_cache, "AWS_DIR", aws_dir, raising=False)
+    monkeypatch.setattr(_sso_cache, "SSO_CACHE_DIR", sso_cache, raising=False)
     # core re-binds these at import (AWS_DIR = aws.AWS_DIR), so patching aws
     # alone leaves core's frozen copies pointing at the real ~/.aws — which is
     # how a cache-clear test wiped the user's real SSO token cache.

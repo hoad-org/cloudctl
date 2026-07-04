@@ -5,9 +5,8 @@ from typing import Any, Dict, List, Optional
 from .base import CloudProvider
 from ..aws import (
     run_aws,
-    ensure_sso_base_profile,
 )
-from ..sso_cache import OrgRef, load_active_sso_token
+from ..sso_cache import OrgRef, load_active_sso_token, write_sso_token
 
 
 class AwsProvider(CloudProvider):
@@ -26,7 +25,22 @@ class AwsProvider(CloudProvider):
         "AWS_PROFILE",
     ]
 
+    # Device-authorization polling bounds. The AWS SSO OIDC service returns an
+    # `interval` (seconds between polls) and `expiresIn` (seconds until the
+    # device code dies); we honour both. These are only fallbacks used when the
+    # service omits them.
+    _DEFAULT_POLL_INTERVAL = 5
+    _MAX_POLL_INTERVAL = 60
+
     def login(self, org: Dict[str, Any]) -> int:
+        """Authenticate to IAM Identity Center via the SSO OIDC device flow.
+
+        Zero-trust: this writes NO profile or `[sso-session]` block to
+        ~/.aws/config. The only disk artifact is the short-lived SSO access
+        token in the standard AWS SSO cache dir (~/.aws/sso/cache) — the same
+        file the AWS CLI itself uses and that `get_credentials` reads back.
+        The vended STS credentials are never written to disk.
+        """
         # AWS China (aws-cn) does not support IAM Identity Center.
         # Users must configure long-term IAM access keys directly.
         partition = org.get("partition", "aws")
@@ -41,24 +55,130 @@ class AwsProvider(CloudProvider):
                 "  export AWS_DEFAULT_REGION=cn-north-1"
             )
             return 1
-        try:
-            ensure_sso_base_profile(org)
-            from .. import utils as _utils
 
-            # Interactive: inherit stdio (capture=False) so `aws sso login` opens
-            # the browser AND prints the verification URL/code as a fallback, and
-            # blocks until the human completes the browser approval. Capturing
-            # output here would hide the code and break the device-auth flow.
-            _utils.run(
-                ["aws", "sso", "login", "--sso-session", org["name"]],
-                capture=False,
-            )
-            return 0
+        try:
+            return self._device_authorization_login(org)
         except Exception as e:
             from ..utils import console
 
             console.print(f"[red]Login failed:[/] {e}")
             return 1
+
+    def _device_authorization_login(self, org: Dict[str, Any]) -> int:
+        import time
+        from datetime import datetime, timedelta, timezone
+
+        import boto3
+        from botocore.exceptions import ClientError
+
+        from .. import utils as _utils
+
+        sso_region = org.get("sso_region", "")
+        start_url = org.get("sso_start_url", "")
+        name = org.get("name", "")
+
+        if not sso_region or not start_url:
+            raise RuntimeError(
+                "Org is missing sso_region/sso_start_url; cannot start SSO login."
+            )
+
+        # boto3 resolves the correct sso-oidc endpoint from region_name, so
+        # govcloud/other partitions work without any endpoint override.
+        ssooidc = boto3.client("sso-oidc", region_name=sso_region)
+
+        reg = ssooidc.register_client(clientName="cloudctl", clientType="public")
+        client_id = reg["clientId"]
+        client_secret = reg["clientSecret"]
+
+        dev = ssooidc.start_device_authorization(
+            clientId=client_id,
+            clientSecret=client_secret,
+            startUrl=start_url,
+        )
+        device_code = dev["deviceCode"]
+        user_code = dev.get("userCode", "")
+        verification_uri_complete = dev.get("verificationUriComplete", "")
+        verification_uri = dev.get("verificationUri", "")
+        _interval = dev.get("interval")
+        interval = (
+            int(_interval)
+            if _interval is not None
+            else self._DEFAULT_POLL_INTERVAL
+        )
+        expires_in = int(dev.get("expiresIn", 600))
+
+        # Open the browser AND print the URL + code to STDERR so a headless /
+        # agent flow can complete the approval out-of-band. `console` writes to
+        # stderr; keeping the machine-readable stdout stream clean.
+        _utils.console.print(
+            "[yellow]To authenticate, open the following URL and confirm the "
+            f"code:[/]\n  URL:  {verification_uri or verification_uri_complete}\n"
+            f"  Code: {user_code}"
+        )
+        if verification_uri_complete:
+            _utils.open_browser(verification_uri_complete)
+
+        # Poll create_token, honouring interval/SlowDown and the hard expiry
+        # deadline so we NEVER hang indefinitely.
+        deadline = time.monotonic() + expires_in
+        while True:
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    "Device authorization expired before it was approved. "
+                    "Run 'cloudctl login' again."
+                )
+            time.sleep(interval)
+            try:
+                tok = ssooidc.create_token(
+                    clientId=client_id,
+                    clientSecret=client_secret,
+                    grantType="urn:ietf:params:oauth:grant-type:device_code",
+                    deviceCode=device_code,
+                )
+                break
+            except ClientError as e:
+                code = e.response.get("Error", {}).get("Code", "")
+                if code == "AuthorizationPendingException":
+                    continue
+                if code == "SlowDownException":
+                    interval = min(interval + 5, self._MAX_POLL_INTERVAL)
+                    continue
+                raise
+
+        access_token = tok["accessToken"]
+        expires_in_token = int(tok.get("expiresIn", 8 * 3600))
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(seconds=expires_in_token)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        write_sso_token(
+            OrgRef(name, start_url, sso_region),
+            access_token=access_token,
+            expires_at=expires_at,
+            client_id=client_id,
+            client_secret=client_secret,
+            registration_expires_at=self._iso_from_epoch(
+                reg.get("clientSecretExpiresAt")
+            ),
+            refresh_token=tok.get("refreshToken"),
+        )
+        _utils.console.print("[green]SSO login complete.[/]")
+        return 0
+
+    @staticmethod
+    def _iso_from_epoch(epoch: Any) -> str:
+        """Format an epoch-seconds value (as returned by register_client's
+        clientSecretExpiresAt) as an ISO-8601 UTC string; '' if unavailable."""
+        from datetime import datetime, timezone
+
+        if not epoch:
+            return ""
+        try:
+            return datetime.fromtimestamp(int(epoch), tz=timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+        except (ValueError, TypeError, OSError):
+            return ""
 
     def load_token(self, org: Dict[str, Any]) -> Optional[Any]:
         name = org.get("name", "") if isinstance(org, dict) else org.name

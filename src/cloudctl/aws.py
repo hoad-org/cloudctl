@@ -185,6 +185,16 @@ def sso_list_account_roles(
 
 
 def ensure_sso_base_profile(org: Dict[str, Any]) -> str:
+    """DEPRECATED for the login path — writes a ``[sso-session]`` block to
+    ~/.aws/config.
+
+    ``AwsProvider.login`` no longer calls this: login is now a self-contained
+    SSO OIDC device-authorization flow (see ``providers/aws.py``) that writes
+    NO profile/config to disk. This function remains only because
+    ``core.cmd_config_sync`` still materialises base sso-session entries for
+    users who want to drive the raw ``aws`` CLI directly. Do not reintroduce it
+    into the zero-trust login path.
+    """
     name = org.get("name", "base")
     with _config_file_lock():
         cfg = configparser.RawConfigParser()

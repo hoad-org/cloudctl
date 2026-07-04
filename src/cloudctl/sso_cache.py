@@ -1,4 +1,6 @@
+import hashlib
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -116,3 +118,67 @@ def load_active_sso_token(
     if strict:
         raise RuntimeError("SSO cache corrupted: No valid token found")
     return None
+
+
+def _cache_filename(session_name: str) -> str:
+    """AWS SSO cache filename: sha1 hex of the sso-session name.
+
+    Mirrors the AWS CLI's behaviour for `[sso-session]`-style configs, where
+    the token file is named after the sha1 of the session name (not the start
+    URL). `load_active_sso_token` matches on startUrl+region regardless of the
+    filename, so round-trip discovery does not depend on this — but using the
+    same scheme as the AWS CLI keeps the on-disk artifact interchangeable with
+    the one the CLI itself writes.
+    """
+    return hashlib.sha1(session_name.encode("utf-8")).hexdigest()  # nosec B324
+
+
+def write_sso_token(
+    org: OrgRef,
+    *,
+    access_token: str,
+    expires_at: str,
+    client_id: str = "",
+    client_secret: str = "",
+    registration_expires_at: str = "",
+    refresh_token: Optional[str] = None,
+    cache_dir: Optional[Path] = None,
+) -> Path:
+    """Write an SSO access token to the standard AWS SSO cache directory.
+
+    The on-disk JSON shape matches exactly what `load_active_sso_token` reads
+    back (startUrl / region / accessToken / expiresAt / clientId /
+    clientSecret / registrationExpiresAt / refreshToken). The file is created
+    with 0o600 permissions — it holds a bearer token.
+
+    Returns the path to the written cache file.
+    """
+    target = cache_dir or SSO_CACHE_DIR
+    target.mkdir(parents=True, exist_ok=True)
+
+    data: Dict[str, Any] = {
+        "startUrl": org.sso_start_url,
+        "region": org.sso_region,
+        "accessToken": access_token,
+        "expiresAt": expires_at,
+        "clientId": client_id,
+        "clientSecret": client_secret,
+        "registrationExpiresAt": registration_expires_at,
+    }
+    if refresh_token is not None:
+        data["refreshToken"] = refresh_token
+
+    path = target / f"{_cache_filename(org.name)}.json"
+    # Write then tighten perms; create with restrictive mode where supported.
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    finally:
+        # os.fdopen took ownership of fd; ensure perms are 0o600 regardless of
+        # a pre-existing file's mode.
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+    return path

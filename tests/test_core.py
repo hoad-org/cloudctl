@@ -61,13 +61,13 @@ def test_cmd_login_failure(monkeypatch, mock_rich_console):
         "cloudctl.config.get_org",
         lambda x: {"name": "o", "sso_start_url": "u", "sso_region": "r"},
     )
-    monkeypatch.setattr("cloudctl.aws.ensure_sso_base_profile", lambda x: "p")
     monkeypatch.setattr("cloudctl.core.load_active_sso_token", lambda *a, **k: None)
 
-    # [FIX] Mock binary resolution for login failure test
-    monkeypatch.setattr("cloudctl.aws._resolve_aws_cli", lambda: "aws")
-
-    monkeypatch.setattr("cloudctl.utils.run", MagicMock(side_effect=Exception("Fail")))
+    # login is now a boto3 device-authorization flow; simulate the sso-oidc
+    # client blowing up so the provider returns 1 and reports "Login failed".
+    monkeypatch.setattr(
+        "boto3.client", MagicMock(side_effect=Exception("Fail"))
+    )
     assert core.cmd_login("o") == 1
     assert "Login failed" in "".join(mock_rich_console.captured)
 

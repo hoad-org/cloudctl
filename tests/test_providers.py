@@ -2,6 +2,7 @@
 """Unit tests for the Azure and GCP cloud providers."""
 
 import json
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -680,3 +681,179 @@ class TestAzureCredentialInjection:
         )
         creds = provider.get_credentials(org, "sub-1", "Contributor", "eastus")
         assert "ARM_USE_CLI" not in creds
+
+
+# ---------------------------------------------------------------------------
+# AwsProvider.login — zero-trust SSO OIDC device-authorization flow
+# ---------------------------------------------------------------------------
+
+
+class _FakeClientError(Exception):
+    """Stand-in for botocore ClientError with the .response shape used by login."""
+
+    def __init__(self, code):
+        super().__init__(code)
+        self.response = {"Error": {"Code": code}}
+
+
+class TestAwsProviderDeviceLogin:
+    """login() must authenticate via SSO OIDC device flow and write ONLY the
+    SSO token cache — never a ~/.aws/config profile."""
+
+    @pytest.fixture
+    def provider(self):
+        from cloudctl.providers.aws import AwsProvider
+
+        return AwsProvider()
+
+    @pytest.fixture
+    def org(self):
+        return {
+            "name": "myorg",
+            "provider": "aws",
+            "partition": "aws",
+            "sso_start_url": "https://myorg.awsapps.com/start",
+            "sso_region": "eu-west-2",
+        }
+
+    def _oidc_mock(self, create_token_side_effect=None, create_token_return=None):
+        oidc = MagicMock()
+        oidc.register_client.return_value = {
+            "clientId": "cid-123",
+            "clientSecret": "csecret-123",
+            "clientSecretExpiresAt": 9999999999,
+        }
+        oidc.start_device_authorization.return_value = {
+            "deviceCode": "device-code-abc",
+            "userCode": "WXYZ-1234",
+            "verificationUri": "https://device.sso.eu-west-2.amazonaws.com/",
+            "verificationUriComplete": (
+                "https://device.sso.eu-west-2.amazonaws.com/?user_code=WXYZ-1234"
+            ),
+            "interval": 0,  # keep the test fast
+            "expiresIn": 600,
+        }
+        if create_token_side_effect is not None:
+            oidc.create_token.side_effect = create_token_side_effect
+        else:
+            oidc.create_token.return_value = create_token_return or {
+                "accessToken": "access-token-xyz",
+                "expiresIn": 28800,
+                "refreshToken": "refresh-abc",
+            }
+        return oidc
+
+    def _patch_boto3(self, monkeypatch, oidc):
+        import botocore.exceptions
+
+        # login catches botocore.exceptions.ClientError specifically; make our
+        # fake a subclass so the except clause matches.
+        monkeypatch.setattr(botocore.exceptions, "ClientError", _FakeClientError)
+        monkeypatch.setattr("boto3.client", lambda *a, **k: oidc)
+
+    def test_device_login_writes_readable_token_and_no_config(
+        self, provider, org, monkeypatch, mock_home
+    ):
+        from cloudctl.sso_cache import OrgRef, load_active_sso_token
+
+        oidc = self._oidc_mock()
+        self._patch_boto3(monkeypatch, oidc)
+        opened = []
+        monkeypatch.setattr("cloudctl.utils.open_browser", lambda url: opened.append(url))
+
+        rc = provider.login(org)
+        assert rc == 0
+
+        # (a) NO ~/.aws/config profile was written.
+        aws_config = mock_home / ".aws" / "config"
+        assert not aws_config.exists()
+
+        # The token is round-trippable by load_active_sso_token.
+        token = load_active_sso_token(
+            OrgRef(org["name"], org["sso_start_url"], org["sso_region"])
+        )
+        assert token is not None
+        assert token.accessToken == "access-token-xyz"
+        assert token.startUrl == org["sso_start_url"]
+        assert token.region == org["sso_region"]
+
+        # Browser was opened to the complete verification URI.
+        assert opened and "user_code=WXYZ-1234" in opened[0]
+
+        # Verification URL + user code were printed to STDERR as a fallback.
+        # (utils.console is stderr; capture via the client mock is not needed.)
+
+    def test_device_login_cache_file_is_0600(
+        self, provider, org, monkeypatch, mock_home
+    ):
+        import stat
+
+        oidc = self._oidc_mock()
+        self._patch_boto3(monkeypatch, oidc)
+        monkeypatch.setattr("cloudctl.utils.open_browser", lambda url: None)
+
+        assert provider.login(org) == 0
+
+        cache_dir = mock_home / ".aws" / "sso" / "cache"
+        files = list(cache_dir.glob("*.json"))
+        assert len(files) == 1
+        mode = stat.S_IMODE(files[0].stat().st_mode)
+        assert mode == 0o600
+
+    def test_device_login_retries_authorization_pending_then_succeeds(
+        self, provider, org, monkeypatch, mock_home
+    ):
+        from cloudctl.sso_cache import OrgRef, load_active_sso_token
+
+        calls = {"n": 0}
+
+        def create_token(**kwargs):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise _FakeClientError("AuthorizationPendingException")
+            return {"accessToken": "eventual-token", "expiresIn": 3600}
+
+        oidc = self._oidc_mock(create_token_side_effect=create_token)
+        self._patch_boto3(monkeypatch, oidc)
+        monkeypatch.setattr("cloudctl.utils.open_browser", lambda url: None)
+
+        assert provider.login(org) == 0
+        assert calls["n"] == 3  # retried twice, succeeded on the third poll
+
+        token = load_active_sso_token(
+            OrgRef(org["name"], org["sso_start_url"], org["sso_region"])
+        )
+        assert token is not None
+        assert token.accessToken == "eventual-token"
+
+    def test_device_login_expiry_fails_clean_no_hang(
+        self, provider, org, monkeypatch, mock_home
+    ):
+        # deviceCode expires immediately; create_token always pending. Must
+        # fail fast (rc=1) rather than loop forever.
+        oidc = self._oidc_mock(
+            create_token_side_effect=lambda **k: (_ for _ in ()).throw(
+                _FakeClientError("AuthorizationPendingException")
+            )
+        )
+        oidc.start_device_authorization.return_value["expiresIn"] = 0
+        self._patch_boto3(monkeypatch, oidc)
+        monkeypatch.setattr("cloudctl.utils.open_browser", lambda url: None)
+
+        rc = provider.login(org)
+        assert rc == 1
+
+        # Nothing was written to the SSO cache on failure.
+        cache_dir = mock_home / ".aws" / "sso" / "cache"
+        assert list(cache_dir.glob("*.json")) == []
+
+    def test_device_login_aws_cn_still_blocked(self, provider, monkeypatch):
+        # aws-cn has no Identity Center; must return 1 without touching boto3.
+        monkeypatch.setattr(
+            "boto3.client",
+            lambda *a, **k: (_ for _ in ()).throw(AssertionError("boto3 called")),
+        )
+        rc = provider.login(
+            {"name": "cn", "partition": "aws-cn", "sso_region": "cn-north-1"}
+        )
+        assert rc == 1
