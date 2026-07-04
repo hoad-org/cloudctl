@@ -36,7 +36,8 @@ def test_eval_flag_stripped_before_dispatch(monkeypatch):
     import cloudctl.cli as cli
 
     calls = []
-    monkeypatch.setattr(cli, "cmd_status", lambda args: calls.append("status") or 0)
+    # status/env are hidden aliases of whoami; dispatch lands on cmd_whoami.
+    monkeypatch.setattr(cli, "cmd_whoami", lambda args: calls.append("status") or 0)
     env = {**os.environ, "AWSCTL_WRAPPER_ACTIVE": "1"}
     with patch.dict(os.environ, env, clear=True):
         cli.main(["--eval", "status"])

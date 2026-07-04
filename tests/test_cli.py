@@ -144,11 +144,11 @@ def test_cmd_doctor_dispatch(monkeypatch):
 
 
 def test_cmd_status_dispatch(monkeypatch):
-    """Verify status command triggers the dashboard view."""
-    mock_stat = MagicMock(return_value=0)
-    # Patch where the cli module looks for cmd_status
-    monkeypatch.setattr("cloudctl.cli.cmd_status", mock_stat)
+    """`status` is a hidden alias of `whoami` and dispatches to cmd_whoami."""
+    mock_who = MagicMock(return_value=0)
+    # status/env now dispatch to the unified whoami handler.
+    monkeypatch.setattr("cloudctl.cli.cmd_whoami", mock_who)
 
     # We test the main entry point to ensure dispatcher works
     cli.main(["status"])
-    assert mock_stat.called
+    assert mock_who.called

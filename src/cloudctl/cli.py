@@ -91,6 +91,32 @@ def load_context():
         return {}
 
 
+def _resolve_default_format() -> str:
+    """Default output format for read/discovery commands.
+
+    Agents drive the binary without a TTY, so machine-parseable JSON is the
+    right default there; interactive humans get the friendlier table view.
+    Returns "json" when stdout is NOT a TTY, else "table".
+    """
+    try:
+        return "table" if sys.stdout.isatty() else "json"
+    except Exception:
+        return "json"
+
+
+def _resolve_format(args: Any) -> str:
+    """Resolve the effective --format for a read command.
+
+    Argparse defaults --format to ``None`` for these commands so we can tell
+    "user did not pass --format" apart from an explicit choice. When unset we
+    fall back to :func:`_resolve_default_format` (json when non-TTY).
+    """
+    fmt = getattr(args, "format", None)
+    if fmt in ("table", "json", "text"):
+        return fmt
+    return _resolve_default_format()
+
+
 def _non_interactive(args: Any = None) -> bool:
     """True when we must NOT show an interactive prompt.
 
@@ -478,36 +504,38 @@ def cmd_cache_clear(args: Any) -> int:
     return 0
 
 
-def cmd_exec(args: Any) -> int:
+def cmd_run(args: Any) -> int:
+    """THE primary command: run a child command with cloud credentials injected.
+
+    Stateless — nothing is written to disk. Same behaviour and args as the
+    legacy `exec` verb (which is now a hidden alias of this).
+    """
     from .commands.exec import ExecCommand
 
     return ExecCommand().execute(args)
 
 
+# `exec` is a hidden back-compat alias of `run`; identical dispatch and args.
+cmd_exec = cmd_run
+
+
 def cmd_status(args: Any) -> int:
-    from .context_manager import load_context, print_status
+    """Back-compat handler for `status` / `env`.
 
-    if getattr(args, "format", None) == "json":
-        ctx = load_context()
-        payload = {
-            "status": "active" if ctx else "no_context",
-            "org": (ctx.get("current_org") or ctx.get("org")) if ctx else None,
-            "account": ctx.get("account") if ctx else None,
-            "role": ctx.get("role") if ctx else None,
-            "region": ctx.get("region") if ctx else None,
-            "provider": ctx.get("provider", "aws") if ctx else None,
-        }
-        # Data goes to stdout so an agent can pipe it; never Rich-decorated.
-        stdout_console.print_json(data=payload)
-        return 0
+    These are hidden aliases of `whoami`. They dispatch to the same handler so
+    all three print an identical context/identity payload (JSON in json mode).
+    """
+    import cloudctl.cli as _self
 
-    print_status()
-    return 0
+    return _self.cmd_whoami(args)
 
 
 def cmd_accounts(args: Any) -> int:
     from .commands.accounts import AccountsCommand
 
+    # Normalise the read-command format: json when non-TTY unless overridden.
+    if getattr(args, "format", None) is None:
+        args.format = _resolve_default_format()
     return AccountsCommand().execute(args)
 
 
@@ -558,7 +586,7 @@ def cmd_whoami(args: Any = None) -> int:
     account = ctx.get("account", "") if ctx else ""
     role = ctx.get("role", "") if ctx else ""
     region = ctx.get("region", "") if ctx else ""
-    as_json = getattr(args, "format", None) == "json"
+    as_json = _resolve_format(args) == "json"
 
     if provider == "aws":
         from . import aws
@@ -1112,8 +1140,16 @@ def cmd_setup(args: Any = None) -> int:
 
 
 def cmd_orgs(args: Any = None) -> int:
-    """Alias for cmd_org."""
-    return cmd_org(args)
+    """List configured orgs.
+
+    Previously this delegated to ``cmd_org`` with no subcommand, which printed
+    a "Usage: cloudctl org <add|list|remove>" stub instead of listing anything.
+    It now dispatches straight to the org-list logic so `orgs`, `list` and
+    `org list` all behave identically.
+    """
+    from .commands.org import OrgListCommand
+
+    return OrgListCommand().execute(args)
 
 
 def cmd_list(args: Any = None) -> int:
@@ -1127,6 +1163,9 @@ def cmd_list_roles(args: Any) -> int:
     """List available or assigned IAM roles for an AWS organization."""
     from .commands.list_roles import ListRolesCommand
 
+    # Normalise the read-command format: json when non-TTY unless overridden.
+    if getattr(args, "format", None) is None:
+        args.format = _resolve_default_format()
     try:
         cmd = ListRolesCommand()
         return cmd.execute(args)
@@ -1134,6 +1173,79 @@ def cmd_list_roles(args: Any) -> int:
         console.print(f"[red]Error:[/] {e}")
         utils.debug_print(f"list-roles error: {e}")
         return 1
+
+
+# `roles` is the canonical verb; `list-roles` is a hidden back-compat alias.
+cmd_roles = cmd_list_roles
+
+
+def cmd_config(args: Any) -> int:
+    """`config` grouping command: init | validate | path.
+
+    Groups the configuration lifecycle under one discoverable verb. The old
+    top-level `init` and `setup` verbs remain as hidden aliases.
+    """
+    sub = getattr(args, "config_command", None)
+    if sub == "init":
+        return cmd_init(args)
+    if sub == "validate":
+        return cmd_config_validate(args)
+    if sub == "path":
+        return cmd_config_path(args)
+    console.print("Usage: cloudctl config <init|validate|path>")
+    return exit_codes.USAGE
+
+
+def cmd_config_path(args: Any = None) -> int:
+    """Print the absolute path to the orgs.yaml config file (stdout).
+
+    Uses a plain write (not the Rich console) so the path is emitted verbatim
+    on one line — Rich would soft-wrap long paths, breaking `$(cloudctl config
+    path)` capture.
+    """
+    from . import config as _cfg
+
+    sys.stdout.write(str(_cfg.ORGS_USER) + "\n")
+    return 0
+
+
+def cmd_config_validate(args: Any = None) -> int:
+    """Validate orgs.yaml against the schema and print the result."""
+    import yaml
+
+    from . import config as _cfg
+    from . import schema as _schema
+
+    path = _cfg.ORGS_USER
+    if not path.exists():
+        console.print(
+            f"[red]No config found at[/] {path}. "
+            "Run [bold]cloudctl config init[/bold] first."
+        )
+        return exit_codes.NOT_FOUND
+
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception as e:
+        console.print(f"[red]Failed to parse {path}:[/] {e}")
+        return exit_codes.ERROR
+
+    errors = _schema.validate_orgs_config(data)
+    fmt = _resolve_format(args)
+    if fmt == "json":
+        stdout_console.print_json(
+            data={"valid": not errors, "path": str(path), "errors": errors}
+        )
+        return 0 if not errors else exit_codes.USAGE
+
+    if errors:
+        console.print(f"[red]✗ {path} is invalid ({len(errors)} error(s)):[/]")
+        for err in errors:
+            console.print(f"  • {err}")
+        return exit_codes.USAGE
+
+    console.print(f"[green]✓[/] {path} is valid.")
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -1146,20 +1258,46 @@ def _build_parser():
 
     p = argparse.ArgumentParser(
         prog="cloudctl",
-        description="Enterprise Cloud Identity & Context Manager",
+        description=(
+            "cloudctl — run a command with cloud credentials, statelessly.\n"
+            "The primary verb is `run`: it injects short-lived credentials into a\n"
+            "child process without writing anything to disk."
+        ),
         epilog=(
-            "AGENT WORKFLOW:\n"
-            "  cloudctl login <org>                           Authenticate\n"
-            "  cloudctl switch <org> --account X --role Y     Set context\n"
-            "  cloudctl exec -- <command>                     Run with credentials\n"
+            "COMMANDS BY PURPOSE:\n"
+            "\n"
+            "  Run        run     Run a command with cloud credentials injected\n"
+            "\n"
+            "  Authenticate\n"
+            "             login   Authenticate with a cloud provider\n"
+            "             logout  Log out and clear the active context\n"
+            "\n"
+            "  Inspect    whoami  Show the active identity/context (--format json)\n"
+            "             open    Open the cloud console in a browser\n"
+            "             prompt  Emit compact context for a shell prompt\n"
+            "\n"
+            "  Discover   orgs    List configured organizations\n"
+            "             accounts  List accounts for an org\n"
+            "             roles   List assumable roles (--account <id>)\n"
+            "\n"
+            "  Configure  config  Manage config: init | validate | path\n"
+            "             org     Add / remove / list orgs\n"
+            "             switch  Set the active context (aka use)\n"
+            "\n"
+            "  Maintain   doctor  Validate the local setup\n"
+            "             cache-clear  Clear cached SSO tokens\n"
+            "             completion   Shell tab-completion setup\n"
+            "             upgrade / uninstall\n"
+            "\n"
+            "THE ONE FORM AN AGENT NEEDS (stateless, no prior context):\n"
+            "  cloudctl run --org O --account A --role R --region G -- <command>\n"
+            "\n"
+            "Read commands (whoami, orgs, accounts, roles, config validate) accept\n"
+            "--format {table,json} and default to json when stdout is not a TTY.\n"
             "\n"
             "EXIT CODES:\n"
-            "  0 = success\n"
-            "  1 = general error\n"
-            "  2 = auth required (credentials expired)\n"
-            "  3 = not found (invalid org/account/role)\n"
-            "  4 = permission denied (approval pending/rate limited)\n"
-            "  5 = invalid arguments\n"
+            "  0 = success   1 = error   2 = auth required   3 = not found\n"
+            "  4 = permission denied   5 = invalid arguments\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1171,7 +1309,11 @@ def _build_parser():
         help="Print EVAL or EXEC for CMD and exit",
     )
 
-    sub = p.add_subparsers(dest="command")
+    # metavar suppresses argparse's auto-generated {a,b,c,…} choice line, which
+    # would otherwise leak every hidden alias (exec, use, env, status, list,
+    # list-roles, init, setup, orgs). Canonical verbs are documented in the
+    # epilog grouped by purpose; only sub-parsers with help= show a one-liner.
+    sub = p.add_subparsers(dest="command", metavar="<command>")
 
     # login
     lp = sub.add_parser("login", help="Authenticate with a cloud provider")
@@ -1187,9 +1329,12 @@ def _build_parser():
         help="Skip interactive prompts (for automation/Claude)",
     )
 
-    # switch / use (alias)
+    # switch (canonical) / use (hidden alias)
     for name in ("switch", "use"):
-        sp = sub.add_parser(name, help="Switch cloud context interactively")
+        # Omit help= entirely for the hidden alias so argparse drops it from the
+        # command list (help=SUPPRESS would print a literal ==SUPPRESS== line).
+        kwargs = {"help": "Set the active cloud context"} if name == "switch" else {}
+        sp = sub.add_parser(name, **kwargs)
         sp.add_argument("org", nargs="?", help="Organization name")
         sp.add_argument(
             "--org",
@@ -1211,38 +1356,40 @@ def _build_parser():
         "cache-clear", help="Clear cached SSO tokens and credentials (forces re-login)"
     )
 
-    # exec
-    ep = sub.add_parser(
-        "exec", help="Run a command with credentials (without changing shell context)"
-    )
-    ep.add_argument("--org", dest="exec_org", help="Organisation name")
-    ep.add_argument("--account", dest="exec_account", help="Account/project ID")
-    ep.add_argument("--role", dest="exec_role", help="Role/permission-set")
-    ep.add_argument("--region", dest="exec_region", help="Region")
-    ep.add_argument(
-        "--json-errors",
-        action="store_true",
-        dest="json_errors",
-        help='On failure, print a one-line JSON object {"error","code"} to '
-        "stderr instead of prose (success path is unchanged).",
-    )
-    ep.add_argument("cmd", nargs="+", metavar="CMD")
+    # run (THE primary command) + exec (hidden back-compat alias)
+    def _add_run_args(parser):
+        parser.add_argument("--org", dest="exec_org", help="Organisation name")
+        parser.add_argument("--account", dest="exec_account", help="Account/project ID")
+        parser.add_argument("--role", dest="exec_role", help="Role/permission-set")
+        parser.add_argument("--region", dest="exec_region", help="Region")
+        parser.add_argument(
+            "--json-errors",
+            action="store_true",
+            dest="json_errors",
+            help='On failure, print a one-line JSON object {"error","code"} to '
+            "stderr instead of prose (success path is unchanged).",
+        )
+        parser.add_argument("cmd", nargs="+", metavar="CMD")
 
-    # status / env (alias)
-    sp = sub.add_parser("status", help="Show active context")
-    sp.add_argument(
-        "--format",
-        choices=["table", "json"],
-        default="table",
-        help="Output format (default: table)",
+    rp = sub.add_parser(
+        "run",
+        help="Run a command with cloud credentials injected (nothing written to disk)",
     )
-    ep = sub.add_parser("env", help="Show active context (alias for status)")
-    ep.add_argument(
-        "--format",
-        choices=["table", "json"],
-        default="table",
-        help="Output format (default: table)",
-    )
+    _add_run_args(rp)
+
+    # exec — hidden alias of run (identical dispatch/args). Kept for scripts.
+    ep = sub.add_parser("exec")  # hidden alias of run
+    _add_run_args(ep)
+
+    # status / env — hidden aliases of whoami (same handler, same output)
+    for _alias in ("status", "env"):
+        sp = sub.add_parser(_alias)  # hidden alias of whoami
+        sp.add_argument(
+            "--format",
+            choices=["table", "json"],
+            default=None,
+            help="Output format (default: json when not a TTY, else table)",
+        )
 
     # accounts
     ap = sub.add_parser("accounts", help="List accessible accounts")
@@ -1260,8 +1407,8 @@ def _build_parser():
     ap.add_argument(
         "--format",
         choices=["table", "json"],
-        default="table",
-        help="Output format (default: table)",
+        default=None,
+        help="Output format (default: json when not a TTY, else table)",
     )
 
     # doctor
@@ -1272,8 +1419,8 @@ def _build_parser():
         help="Attempt to add missing bin directories to PATH",
     )
 
-    # init
-    ip = sub.add_parser("init", help="Initialize configuration (non-interactive)")
+    # init — hidden top-level alias of `config init`
+    ip = sub.add_parser("init")  # hidden alias of `config init`
     ip.add_argument(
         "--shell-only",
         action="store_true",
@@ -1351,21 +1498,19 @@ def _build_parser():
     list_p.add_argument(
         "--format",
         choices=["table", "json"],
-        default="table",
-        help="Output format (table or json)",
+        default=None,
+        help="Output format (default: json when not a TTY, else table)",
     )
     rm_p = org_sub.add_parser("remove", help="Remove an organization")
     rm_p.add_argument("name", help="Org name to remove")
 
-    # list (top-level alias for 'org list')
-    list_alias = sub.add_parser(
-        "list", help="List configured organizations (shortcut for 'org list')"
-    )
+    # list — hidden alias for 'orgs' / 'org list'
+    list_alias = sub.add_parser("list")  # hidden alias of orgs
     list_alias.add_argument(
         "--format",
         choices=["table", "json"],
-        default="table",
-        help="Output format (table or json)",
+        default=None,
+        help="Output format (default: json when not a TTY, else table)",
     )
 
     # uninstall
@@ -1402,41 +1547,69 @@ def _build_parser():
         help="Write the activation line to your shell profile",
     )
 
-    # list-roles
-    lr_p = sub.add_parser(
-        "list-roles", help="List the IAM roles you can assume (per account)"
+    # roles (canonical) / list-roles (hidden alias)
+    def _add_roles_args(parser):
+        parser.add_argument(
+            "org", nargs="?", help="Organization name (optional if context set)"
+        )
+        parser.add_argument(
+            "--org",
+            dest="org_flag",
+            help="Organization name (flag form; same as positional)",
+        )
+        parser.add_argument("--account", help="Limit to a single account ID")
+        parser.add_argument(
+            "--assigned",
+            action="store_true",
+            help="(SSO only ever lists assumable roles; kept for compatibility)",
+        )
+        parser.add_argument(
+            "--format",
+            choices=["table", "json"],
+            default=None,
+            help="Output format (default: json when not a TTY, else table)",
+        )
+
+    roles_p = sub.add_parser(
+        "roles", help="List the roles you can assume (per account)"
     )
-    lr_p.add_argument(
-        "org", nargs="?", help="Organization name (optional if context set)"
-    )
-    lr_p.add_argument(
-        "--org",
-        dest="org_flag",
-        help="Organization name (flag form; same as positional)",
-    )
-    lr_p.add_argument("--account", help="Limit to a single account ID")
-    lr_p.add_argument(
-        "--assigned",
+    _add_roles_args(roles_p)
+    lr_p = sub.add_parser("list-roles")  # hidden alias of roles
+    _add_roles_args(lr_p)
+
+    # config (canonical grouping) — init | validate | path
+    cfg_p = sub.add_parser("config", help="Manage configuration (init/validate/path)")
+    cfg_sub = cfg_p.add_subparsers(dest="config_command")
+    cfg_init = cfg_sub.add_parser("init", help="Initialize configuration")
+    cfg_init.add_argument(
+        "--shell-only",
         action="store_true",
-        help="(SSO only ever lists assumable roles; kept for compatibility)",
+        dest="shell_only",
+        help="Install shell integration only (skip config setup)",
     )
-    lr_p.add_argument(
+    cfg_val = cfg_sub.add_parser(
+        "validate", help="Validate orgs.yaml against the schema"
+    )
+    cfg_val.add_argument(
         "--format",
-        choices=["text", "json"],
-        default="text",
-        help="Output format (default: text)",
+        choices=["table", "json"],
+        default=None,
+        help="Output format (default: json when not a TTY, else table)",
     )
+    cfg_sub.add_parser("path", help="Print the orgs.yaml config path")
 
-    # setup
-    sub.add_parser("setup", help="Merge sample defaults into orgs.yaml")
+    # setup — hidden alias (merge sample defaults into orgs.yaml)
+    sub.add_parser("setup")  # hidden alias
 
-    # whoami
-    wp = sub.add_parser("whoami", help="Show current user and account details")
+    # whoami (canonical inspect verb; absorbs status/env)
+    wp = sub.add_parser(
+        "whoami", help="Show the active identity/context (--format json)"
+    )
     wp.add_argument(
         "--format",
         choices=["table", "json"],
-        default="table",
-        help="Output format (default: table)",
+        default=None,
+        help="Output format (default: json when not a TTY, else table)",
     )
 
     # open
@@ -1447,15 +1620,13 @@ def _build_parser():
         help="Print URL instead of opening browser",
     )
 
-    # orgs
-    orgs_p = sub.add_parser(
-        "orgs", help="List configured organizations (alias for org list)"
-    )
+    # orgs (canonical discover verb) — list configured organizations
+    orgs_p = sub.add_parser("orgs", help="List configured organizations")
     orgs_p.add_argument(
         "--format",
         choices=["table", "json"],
-        default="table",
-        help="Output format (table or json)",
+        default=None,
+        help="Output format (default: json when not a TTY, else table)",
     )
 
     # Register argcomplete — must come after all subparsers are added.
@@ -1475,27 +1646,36 @@ def _build_parser():
 # ---------------------------------------------------------------------------
 
 _DISPATCH = {
+    # Run
+    "run": "cmd_run",
+    "exec": "cmd_exec",  # hidden alias of run
+    # Authenticate
     "login": "cmd_login",
-    "switch": "cmd_switch",
-    "use": "cmd_switch",
     "logout": "cmd_logout",
-    "cache-clear": "cmd_cache_clear",
-    "exec": "cmd_exec",
-    "status": "cmd_status",
-    "env": "cmd_status",
-    "accounts": "cmd_accounts",
-    "doctor": "cmd_doctor",
-    "init": "cmd_init",
-    "org": "cmd_org",
-    "orgs": "cmd_orgs",
-    "list": "cmd_list",
-    "list-roles": "cmd_list_roles",
-    "setup": "cmd_setup",
+    # Inspect
     "whoami": "cmd_whoami",
+    "status": "cmd_whoami",  # hidden alias of whoami
+    "env": "cmd_whoami",  # hidden alias of whoami
     "open": "cmd_open",
-    "upgrade": "cmd_upgrade",
     "prompt": "cmd_prompt",
+    # Discover
+    "orgs": "cmd_orgs",
+    "list": "cmd_list",  # hidden alias of orgs
+    "accounts": "cmd_accounts",
+    "roles": "cmd_roles",
+    "list-roles": "cmd_list_roles",  # hidden alias of roles
+    # Configure
+    "config": "cmd_config",
+    "init": "cmd_init",  # hidden alias of `config init`
+    "setup": "cmd_setup",  # hidden alias
+    "org": "cmd_org",
+    "switch": "cmd_switch",
+    "use": "cmd_switch",  # hidden alias of switch
+    # Maintain
+    "doctor": "cmd_doctor",
+    "cache-clear": "cmd_cache_clear",
     "completion": "cmd_completion",
+    "upgrade": "cmd_upgrade",
     "uninstall": "cmd_uninstall",
 }
 

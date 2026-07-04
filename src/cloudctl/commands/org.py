@@ -301,6 +301,38 @@ class OrgListCommand(BaseCommand):
 
         enabled: List[str] = data.get("enabled_orgs", [o.get("name", "") for o in orgs])
 
+        # Resolve output format. A read/discovery command defaults to JSON when
+        # stdout is not a TTY (agent context), else table. `_resolve_format`
+        # lives in cli.py so the default is consistent across every read verb.
+        from cloudctl import cli as _cli
+
+        fmt = _cli._resolve_format(args)
+
+        if fmt == "json":
+            payload = []
+            for org in orgs:
+                name = org.get("name", "")
+                provider = org.get("provider", "aws")
+                if provider == "aws":
+                    key = org.get("sso_start_url", "")
+                elif provider == "azure":
+                    key = org.get("tenant_id") or org.get("default_subscription") or ""
+                elif provider == "gcp":
+                    key = org.get("default_project", "")
+                else:
+                    key = ""
+                payload.append(
+                    {
+                        "name": name,
+                        "provider": provider,
+                        "enabled": name in enabled,
+                        "key": key,
+                    }
+                )
+            # Data goes to stdout so an agent can pipe it; never Rich-decorated.
+            utils.stdout_console.print_json(data={"orgs": payload})
+            return 0
+
         if not orgs:
             utils.console.print(
                 "No organizations configured. Run [bold]cloudctl org add[/bold] or [bold]cloudctl init[/bold]."

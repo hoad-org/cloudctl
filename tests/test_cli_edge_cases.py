@@ -22,7 +22,10 @@ def test_whoami_error(monkeypatch: pytest.MonkeyPatch, mock_rich_console: Any) -
     monkeypatch.setattr("cloudctl.aws.run_aws", mock_run)
 
     # A failed STS call = no valid SSO session → AUTH exit code (2).
-    assert cli.cmd_whoami() == 2
+    # Force table format so the error is emitted as prose to the rich console;
+    # in non-TTY contexts whoami now defaults to JSON (error goes to stdout).
+    args = type("Args", (), {"format": "table"})()
+    assert cli.cmd_whoami(args) == 2
     # Check unified console capture
     output = "".join(mock_rich_console.captured)
     assert "Failed to get identity" in output or "AccessDenied" in output
@@ -36,7 +39,10 @@ def test_whoami_exception(
         "cloudctl.aws.run_aws", MagicMock(side_effect=Exception("Boom"))
     )
 
-    assert cli.cmd_whoami() == 1
+    # Force table format so the exception is emitted as prose to the rich
+    # console (non-TTY whoami defaults to JSON, which routes the error to stdout).
+    args = type("Args", (), {"format": "table"})()
+    assert cli.cmd_whoami(args) == 1
     output = "".join(mock_rich_console.captured)
     assert "Boom" in output
 
