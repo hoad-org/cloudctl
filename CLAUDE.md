@@ -111,17 +111,19 @@ direct test, which is why they survived. See
 ## Known remaining work (honest backlog)
 
 - **Verb redundancy**: `login`/`switch`/`use`/`exec` + `status`/`env`/`whoami`
-  overlap. `use` == `switch`. A future pass should collapse these.
+  overlap. `use` == `switch`. A future pass should collapse these — a breaking
+  API change, deliberately deferred.
 - **Output contract**: `--format json` works for `status`/`env`/`accounts`/
-  `list-roles`; `whoami` and `exec` have no JSON mode yet. Console output still
-  goes to stdout in places it should go to stderr.
-- **Exit codes**: the documented 2/3/4/5 scheme is only partially emitted.
-- **Bloat still present**: `wizard/` (~863 LOC, tied to `init`) is a candidate
-  for removal but is entangled with critical paths; cut it carefully with tests.
-- Removed already: dead `skills/` tree, `pricing`, `watch`, `okta` plugin, and
-  `encryption.py` (AES-256 over public SSO start URLs — security theatre that
-  was wired into `config.py` load/save; its decrypt-on-load could silently
-  swallow config).
+  `list-roles`/`whoami`; `exec` has `--json-errors`. A few remaining commands
+  (e.g. `prompt`) could still grow a JSON mode. Minor wart: in
+  `exec --json-errors`, the AWS provider still prints one prose line to stderr
+  before the JSON error line.
+- **Exit codes** (`exit_codes.py`): `OK/ERROR/AUTH=2/NOT_FOUND=3/DENIED=4/
+  USAGE=5` are emitted at the obvious sites; coverage could still be broadened.
+- Removed: dead `skills/` tree, `pricing`, `watch`, `okta` plugin,
+  `encryption.py` (AES-256 over public SSO start URLs — security theatre wired
+  into `config.py` load/save), and the interactive `wizard/` (`init` is now
+  a non-interactive config initializer).
 
 ## Golden rules when changing this tool
 
