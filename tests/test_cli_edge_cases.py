@@ -8,43 +8,57 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from cloudctl import cli
+from cloudctl import cli, exit_codes
 
 
 def test_whoami_error(monkeypatch: pytest.MonkeyPatch, mock_rich_console: Any) -> None:
-    """Verify whoami reports failure correctly when the AWS CLI returns an error."""
-    # [FIX] Implementation in core/aws expects a dict return, not a CompletedProcess
+    """Verify whoami reports failure correctly when the AWS CLI returns an error.
+
+    whoami routes AWS identity through provider.get_identity (real sts call),
+    so patch the provider-module run_aws binding."""
     mock_run = MagicMock(
         return_value={"returncode": 1, "stdout": "", "stderr": "AccessDenied"}
     )
-
-    # [FIX] Dispatcher calls aws.run_aws or core.run_aws. Patch at the utility level.
-    monkeypatch.setattr("cloudctl.aws.run_aws", mock_run)
+    monkeypatch.setattr("cloudctl.providers.aws.run_aws", mock_run)
+    monkeypatch.setattr("cloudctl.cli.load_context", lambda: {"provider": "aws"})
+    monkeypatch.setattr(
+        "cloudctl.config.get_org", lambda _n: {"name": "", "provider": "aws"}
+    )
 
     # A failed STS call = no valid SSO session → AUTH exit code (2).
     # Force table format so the error is emitted as prose to the rich console;
     # in non-TTY contexts whoami now defaults to JSON (error goes to stdout).
     args = type("Args", (), {"format": "table"})()
-    assert cli.cmd_whoami(args) == 2
+    assert cli.cmd_whoami(args) == exit_codes.AUTH
     # Check unified console capture
     output = "".join(mock_rich_console.captured)
-    assert "Failed to get identity" in output or "AccessDenied" in output
+    assert "Failed to get identity" in output
 
 
 def test_whoami_exception(
     monkeypatch: pytest.MonkeyPatch, mock_rich_console: Any
 ) -> None:
-    """Verify whoami handles unexpected python exceptions during execution."""
+    """whoami never crashes if identity resolution fails. Under the honest-
+    identity contract, an unverifiable AWS identity (get_identity raising, or
+    returning None) is reported as AUTH (2) — cloudctl NEVER fabricates an
+    identity from stored context."""
+    monkeypatch.setattr("cloudctl.cli.load_context", lambda: {"provider": "aws"})
     monkeypatch.setattr(
-        "cloudctl.aws.run_aws", MagicMock(side_effect=Exception("Boom"))
+        "cloudctl.config.get_org", lambda _n: {"name": "", "provider": "aws"}
+    )
+    # get_identity blows up internally — whoami must still not crash.
+    monkeypatch.setattr(
+        "cloudctl.providers.aws.AwsProvider.get_identity",
+        MagicMock(side_effect=Exception("Boom")),
     )
 
-    # Force table format so the exception is emitted as prose to the rich
-    # console (non-TTY whoami defaults to JSON, which routes the error to stdout).
+    # Force table format so the failure is emitted as prose to the rich console
+    # (non-TTY whoami defaults to JSON, which routes to stdout).
     args = type("Args", (), {"format": "table"})()
-    assert cli.cmd_whoami(args) == 1
+    # No verified identity → AUTH (2), and whoami did not raise.
+    assert cli.cmd_whoami(args) == exit_codes.AUTH
     output = "".join(mock_rich_console.captured)
-    assert "Boom" in output
+    assert "identity" in output.lower()
 
 
 def test_open_exception(

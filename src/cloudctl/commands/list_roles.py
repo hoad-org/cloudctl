@@ -68,10 +68,19 @@ class ListRolesCommand(BaseCommand):
     def roles_by_account(
         self, org_name: str, account: Optional[str] = None
     ) -> Dict[str, Dict[str, Any]]:
-        """Return {account_id: {"name": str, "roles": [role_name, ...]}} via SSO."""
+        """Return {account_id: {"name": str, "roles": [role_name, ...]}}.
+
+        Provider-aware dispatch: only AWS gates on an SSO access token (its
+        list_roles needs one). GCP/Azure have no SSO-token concept — gating them
+        on `load_active_sso_token` gave every non-AWS org a bogus
+        "No active SSO session" error and never reached provider.list_roles. For
+        non-AWS providers we skip the SSO-token gate and pass token=None
+        (mirroring how commands/accounts.py dispatches).
+        """
         from cloudctl.accounts import get_account_list
         from cloudctl.config import get_org
         from cloudctl.providers import get_provider
+        from cloudctl.providers.base import ProviderCredentialError
         from cloudctl.sso_cache import OrgRef, load_active_sso_token
 
         # A bad org name is a user typo, not a bug — surface it as NOT_FOUND (3)
@@ -80,23 +89,34 @@ class ListRolesCommand(BaseCommand):
             org_data = get_org(org_name)
         except Exception as e:
             raise _OrgNotFound(f"Organization '{org_name}' not found: {e}")
-        token = load_active_sso_token(
-            OrgRef(
-                org_data.get("name", org_name),
-                org_data.get("sso_start_url", ""),
-                org_data.get("sso_region", ""),
-            )
-        )
-        if not token:
-            raise RuntimeError(
-                f"No active SSO session for '{org_name}'. Run: cloudctl login {org_name}"
-            )
 
+        provider_name = (
+            org_data.get("provider", "aws") if isinstance(org_data, dict) else "aws"
+        )
         provider = get_provider(org_data)
+
+        # Token acquisition is AWS-only. Non-AWS providers do not use an SSO
+        # access token; passing None is correct (see gcp/azure list_roles).
+        token: Any = None
+        if provider_name == "aws":
+            token = load_active_sso_token(
+                OrgRef(
+                    org_data.get("name", org_name),
+                    org_data.get("sso_start_url", ""),
+                    org_data.get("sso_region", ""),
+                )
+            )
+            if not token:
+                raise RuntimeError(
+                    f"No active SSO session for '{org_name}'. "
+                    f"Run: cloudctl login {org_name}"
+                )
 
         if account:
             accounts: List[Dict[str, str]] = [{"Id": account, "Name": account}]
         else:
+            # list_accounts may raise ProviderCredentialError (auth/denied) —
+            # let it propagate so execute() maps .code/.message to an exit code.
             accounts = get_account_list(org_data)
 
         out: Dict[str, Dict[str, Any]] = {}
@@ -104,13 +124,20 @@ class ListRolesCommand(BaseCommand):
             acc_id = acc.get("Id") or acc.get("id")
             if not acc_id:
                 continue
+            try:
+                roles = provider.list_roles(org_data, token, acc_id)
+            except ProviderCredentialError:
+                # Re-raise so execute() renders a faithful message + exit code.
+                raise
             out[acc_id] = {
                 "name": acc.get("Name") or acc.get("name") or "",
-                "roles": provider.list_roles(org_data, token, acc_id),
+                "roles": roles,
             }
         return out
 
     def execute(self, args: Any) -> int:
+        from cloudctl.providers.base import ProviderCredentialError
+
         as_json = getattr(args, "format", "text") == "json"
         try:
             org_name = self._resolve_org(args)
@@ -122,6 +149,15 @@ class ListRolesCommand(BaseCommand):
             else:
                 self.console.print(f"[red]✗ {e}[/]")
             return exit_codes.NOT_FOUND
+        except ProviderCredentialError as e:
+            # FAITHFUL ERRORS: the provider classified the real cause (auth /
+            # denied / not-found) — map its code + message to a clean message and
+            # that exit code, json-aware. Never flatten to a generic error.
+            if as_json:
+                print(json.dumps({"error": e.message, "code": e.code}))
+            else:
+                self.console.print(f"[red]✗ {e.message}[/]")
+            return e.code
         except Exception as e:
             self.console.print(f"[red]✗ Error:[/] {e}")
             return 1

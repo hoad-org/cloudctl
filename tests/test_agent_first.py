@@ -40,8 +40,11 @@ def test_whoami_json_aws_emits_object_on_stdout(monkeypatch, capsys):
         "provider": "aws",
     }
     monkeypatch.setattr("cloudctl.cli.load_context", lambda: ctx)
+    # Honest identity: whoami routes AWS through provider.get_identity(), which
+    # runs `sts get-caller-identity`. The provider imports run_aws directly, so
+    # patch the provider-module binding.
     monkeypatch.setattr(
-        "cloudctl.aws.run_aws",
+        "cloudctl.providers.aws.run_aws",
         lambda _cmd: {
             "returncode": 0,
             "stdout": json.dumps(
@@ -54,6 +57,7 @@ def test_whoami_json_aws_emits_object_on_stdout(monkeypatch, capsys):
             "stderr": "",
         },
     )
+    monkeypatch.setattr("cloudctl.config.get_org", lambda _n: _ORG_DATA)
 
     args = SimpleNamespace(format="json")
     rc = cli.cmd_whoami(args)
@@ -66,17 +70,19 @@ def test_whoami_json_aws_emits_object_on_stdout(monkeypatch, capsys):
     assert payload["account"] == "123456789012"
     assert payload["role"] == "AdministratorAccess"
     assert payload["region"] == "us-east-1"
-    # STS caller-identity fields live under `identity`.
-    assert payload["identity"]["Account"] == "123456789012"
+    # LIVE STS caller-identity fields live under `identity` (real, not fabricated).
+    assert payload["identity"]["account"] == "123456789012"
+    assert payload["identity"]["arn"].endswith("role/Admin")
 
 
 def test_whoami_json_auth_failure_exit_2(monkeypatch, capsys):
     """A failed STS call in json mode still emits JSON and returns AUTH (2)."""
     monkeypatch.setattr("cloudctl.cli.load_context", lambda: {"provider": "aws"})
     monkeypatch.setattr(
-        "cloudctl.aws.run_aws",
+        "cloudctl.providers.aws.run_aws",
         lambda _cmd: {"returncode": 1, "stdout": "", "stderr": "ExpiredToken"},
     )
+    monkeypatch.setattr("cloudctl.config.get_org", lambda _n: _ORG_DATA)
 
     rc = cli.cmd_whoami(SimpleNamespace(format="json"))
     assert rc == exit_codes.AUTH
@@ -86,7 +92,8 @@ def test_whoami_json_auth_failure_exit_2(monkeypatch, capsys):
 
 
 def test_whoami_json_gcp(monkeypatch, capsys):
-    """Non-AWS providers emit known context under `identity`."""
+    """Non-AWS providers put the REAL identity dict under `identity`, or null —
+    never the stored context echoed back as identity."""
     ctx = {
         "current_org": "gcp-terrorgems",
         "account": "asatst-gemini-api-v2",
@@ -95,13 +102,49 @@ def test_whoami_json_gcp(monkeypatch, capsys):
         "provider": "gcp",
     }
     monkeypatch.setattr("cloudctl.cli.load_context", lambda: ctx)
+    monkeypatch.setattr(
+        "cloudctl.config.get_org", lambda _n: {"name": "g", "provider": "gcp"}
+    )
+    # Real live identity from the provider.
+    monkeypatch.setattr(
+        "cloudctl.providers.gcp.GcpProvider.get_identity",
+        lambda self, org: {"account": "svc@example.iam", "project": "proj-1"},
+    )
 
     rc = cli.cmd_whoami(SimpleNamespace(format="json"))
     assert rc == exit_codes.OK
     payload = json.loads(capsys.readouterr().out)
     assert payload["provider"] == "gcp"
     assert payload["account"] == "asatst-gemini-api-v2"
-    assert payload["identity"]["role"] == "roles/viewer"
+    # identity is the REAL dict, and does NOT carry the fabricated `role` echo.
+    assert payload["identity"] == {"account": "svc@example.iam", "project": "proj-1"}
+    assert "role" not in payload["identity"]
+
+
+def test_whoami_json_gcp_unverified_is_null(monkeypatch, capsys):
+    """When get_identity returns None, `identity` is null (no fabrication)."""
+    ctx = {
+        "current_org": "gcp-terrorgems",
+        "account": "asatst-gemini-api-v2",
+        "role": "roles/viewer",
+        "region": "us-central1",
+        "provider": "gcp",
+    }
+    monkeypatch.setattr("cloudctl.cli.load_context", lambda: ctx)
+    monkeypatch.setattr(
+        "cloudctl.config.get_org", lambda _n: {"name": "g", "provider": "gcp"}
+    )
+    monkeypatch.setattr(
+        "cloudctl.providers.gcp.GcpProvider.get_identity",
+        lambda self, org: None,
+    )
+
+    rc = cli.cmd_whoami(SimpleNamespace(format="json"))
+    assert rc == exit_codes.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["identity"] is None
+    # Stored context is still reported in its own fields.
+    assert payload["account"] == "asatst-gemini-api-v2"
 
 
 # ---------------------------------------------------------------------------

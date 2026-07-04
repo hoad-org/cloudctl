@@ -278,14 +278,16 @@ def test_whoami_json_includes_expiry(monkeypatch, capsys):
         "provider": "aws",
     }
     monkeypatch.setattr("cloudctl.cli.load_context", lambda: ctx)
-    monkeypatch.setattr(
-        "cloudctl.aws.run_aws",
-        lambda x: {"returncode": 0, "stdout": '{"Account": "123456789012"}', "stderr": ""},
-    )
 
     future = datetime.now(timezone.utc) + timedelta(hours=1)
     fake_provider = MagicMock()
     fake_provider.get_token_expiry.return_value = future
+    # get_identity returns a real (serialisable) identity dict.
+    fake_provider.get_identity.return_value = {
+        "account": "123456789012",
+        "arn": "arn:aws:iam::123456789012:role/Admin",
+        "user_id": "AIDA...",
+    }
     monkeypatch.setattr("cloudctl.providers.get_provider", lambda org: fake_provider)
     monkeypatch.setattr("cloudctl.config.get_org", lambda name: {"name": name, "provider": "aws"})
 
@@ -308,12 +310,13 @@ def test_whoami_json_expiry_null_when_unknown(monkeypatch, capsys):
         "provider": "aws",
     }
     monkeypatch.setattr("cloudctl.cli.load_context", lambda: ctx)
-    monkeypatch.setattr(
-        "cloudctl.aws.run_aws",
-        lambda x: {"returncode": 0, "stdout": "{}", "stderr": ""},
-    )
     fake_provider = MagicMock()
     fake_provider.get_token_expiry.return_value = None
+    fake_provider.get_identity.return_value = {
+        "account": "123456789012",
+        "arn": "arn:aws:iam::123456789012:role/Admin",
+        "user_id": "AIDA...",
+    }
     monkeypatch.setattr("cloudctl.providers.get_provider", lambda org: fake_provider)
     monkeypatch.setattr("cloudctl.config.get_org", lambda name: {"name": name, "provider": "aws"})
 

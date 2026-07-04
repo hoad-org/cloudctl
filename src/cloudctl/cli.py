@@ -324,12 +324,6 @@ def cmd_switch(args: Any) -> int:
             ctx = load_context()
             org_name = ctx.get("current_org") if ctx else None
 
-        if account_arg and not role_arg:
-            utils.console.print(
-                "[red]--role is required when --account is specified.[/]"
-            )
-            return 1
-
         if org_name:
             try:
                 org_data = get_org(org_name)
@@ -369,6 +363,22 @@ def cmd_switch(args: Any) -> int:
                 except KeyboardInterrupt:
                     raise
 
+        # --role is provider-aware. Only AWS SSO requires a permission-set to
+        # switch; GCP/Azure have no runtime role assumption, so a missing --role
+        # must NOT block the switch (role is a display/audit no-op there). When
+        # AWS and role is missing while account is given, the error must TEACH.
+        _provider_name = (
+            org_data.get("provider", "aws") if isinstance(org_data, dict) else "aws"
+        )
+        _role_required = _provider_name == "aws"
+        if _role_required and account_arg and not role_arg:
+            utils.console.print(
+                "[red]AWS requires --role.[/] Run "
+                f"[bold]cloudctl roles --org {org_name} --account {account_arg}[/bold] "
+                "to list them (GCP/Azure don't use --role)."
+            )
+            return exit_codes.USAGE
+
         # Guardrail: validate explicit region before proceeding.
         if region_arg:
             try:
@@ -380,13 +390,19 @@ def cmd_switch(args: Any) -> int:
 
         # Non-interactive when the flag is set OR there's no TTY / we're in a
         # CI/agent context. In that case require all args and NEVER prompt —
-        # prompting would hang an agent forever.
+        # prompting would hang an agent forever. --role is required only for AWS.
         non_interactive = _non_interactive(args)
         if non_interactive:
-            if not all([account_arg, role_arg, region_arg]):
+            _required = (
+                [account_arg, role_arg, region_arg]
+                if _role_required
+                else [account_arg, region_arg]
+            )
+            if not all(_required):
+                _role_hint = "--role, " if _role_required else ""
                 utils.console.print(
-                    "[red]No TTY to prompt: --account, --role and --region are "
-                    "required here.[/] "
+                    f"[red]No TTY to prompt: --account, {_role_hint}and --region "
+                    "are required here.[/] "
                     "e.g. [bold]cloudctl switch <org> --account <id> --role "
                     "<role> --region <region>[/bold]"
                 )
@@ -401,7 +417,14 @@ def cmd_switch(args: Any) -> int:
                 region_arg,
             )
 
-        if not all([account, role, region]):
+        # Completeness: AWS needs account+role+region; GCP/Azure need only
+        # account+region (role is a no-op there and must not block).
+        _complete = (
+            all([account, role, region])
+            if _role_required
+            else all([account, region])
+        )
+        if not _complete:
             return 1
 
         # Validate role exists for this account (with auto-correction in interactive mode)
@@ -616,53 +639,29 @@ def cmd_whoami(args: Any = None) -> int:
     else:
         expires_at, expires_in_seconds = None, None
 
-    if provider == "aws":
-        from . import aws
+    # Resolve the LIVE identity through the provider's honest get_identity()
+    # contract — every provider queries the cloud (sts get-caller-identity,
+    # az account show, gcloud auth list) and returns the real dict or None. We
+    # NEVER fabricate an identity by echoing stored context.
+    from .config import get_org
+    from .providers import get_provider
 
+    try:
         try:
-            result = aws.run_aws(["sts", "get-caller-identity"])
-            if result.get("returncode") != 0:
-                stderr = result.get("stderr", "")
-                if as_json:
-                    stdout_console.print_json(
-                        data={
-                            "provider": provider,
-                            "org": org_name,
-                            "account": account,
-                            "role": role,
-                            "region": region,
-                            "identity": None,
-                            "expires_at": expires_at,
-                            "expires_in_seconds": expires_in_seconds,
-                            "error": f"Failed to get identity: {stderr}",
-                        }
-                    )
-                else:
-                    utils.console.print(f"Failed to get identity: {stderr}")
-                # No valid STS identity => SSO session is missing/expired.
-                return exit_codes.AUTH
-            if as_json:
-                # Parse STS caller-identity JSON into the `identity` field.
-                identity: Any
-                try:
-                    identity = json.loads(result.get("stdout", "") or "{}")
-                except Exception:
-                    identity = result.get("stdout", "")
-                stdout_console.print_json(
-                    data={
-                        "provider": provider,
-                        "org": org_name,
-                        "account": account,
-                        "role": role,
-                        "region": region,
-                        "identity": identity,
-                        "expires_at": expires_at,
-                        "expires_in_seconds": expires_in_seconds,
-                    }
-                )
-            else:
-                utils.console.print(result.get("stdout", ""))
-        except Exception as e:
+            org_data = get_org(org_name)
+        except Exception:
+            org_data = {"name": org_name, "provider": provider}
+        _provider_obj = get_provider(org_data)
+        identity = _provider_obj.get_identity(org_data)
+    except (Exception, SystemExit):
+        # get_identity must never crash whoami. Some providers sys.exit(1) when
+        # their CLI is absent (az/gcloud) — treat any such failure as
+        # "identity unverifiable" (None), never a fabrication.
+        identity = None
+
+    if provider == "aws":
+        # AWS: no verified identity means the SSO session is missing/expired.
+        if identity is None:
             if as_json:
                 stdout_console.print_json(
                     data={
@@ -674,15 +673,33 @@ def cmd_whoami(args: Any = None) -> int:
                         "identity": None,
                         "expires_at": expires_at,
                         "expires_in_seconds": expires_in_seconds,
-                        "error": str(e),
+                        "error": "Failed to get identity (no valid session).",
                     }
                 )
             else:
-                utils.console.print(str(e))
-            return exit_codes.ERROR
+                utils.console.print("Failed to get identity (no valid session).")
+            return exit_codes.AUTH
+        if as_json:
+            stdout_console.print_json(
+                data={
+                    "provider": provider,
+                    "org": org_name,
+                    "account": account,
+                    "role": role,
+                    "region": region,
+                    "identity": identity,
+                    "expires_at": expires_at,
+                    "expires_in_seconds": expires_in_seconds,
+                }
+            )
+        else:
+            utils.console.print(json.dumps(identity, indent=2))
         return exit_codes.OK
 
-    # Non-AWS providers: identity is whatever context we hold.
+    # Non-AWS providers: the JSON `identity` field holds the REAL dict from
+    # get_identity(), or null if it could not be verified. Stored context
+    # (org/account/role/region) is reported in its own fields — never smuggled
+    # in as identity.
     if as_json:
         stdout_console.print_json(
             data={
@@ -691,32 +708,32 @@ def cmd_whoami(args: Any = None) -> int:
                 "account": account,
                 "role": role,
                 "region": region,
-                "identity": {
-                    "org": org_name,
-                    "account": account,
-                    "role": role,
-                    "region": region,
-                },
+                "identity": identity,
                 "expires_at": expires_at,
                 "expires_in_seconds": expires_in_seconds,
             }
         )
         return exit_codes.OK
 
+    # Table view: show the verified identity, or "unverified" when None.
+    verified = "unverified" if identity is None else str(identity)
     if provider == "azure":
         utils.console.print(
             f"[bold]Azure[/bold]  org={org_name}  "
-            f"subscription={account}  role={role}  region={region}"
+            f"subscription={account}  role={role}  region={region}  "
+            f"identity={verified}"
         )
     elif provider == "gcp":
         utils.console.print(
             f"[bold]GCP[/bold]  org={org_name}  "
-            f"project={account}  role={role}  region={region}"
+            f"project={account}  role={role}  region={region}  "
+            f"identity={verified}"
         )
     else:
         utils.console.print(
             f"[bold]{provider}[/bold]  org={org_name}  "
-            f"account={account}  role={role}  region={region}"
+            f"account={account}  role={role}  region={region}  "
+            f"identity={verified}"
         )
     return exit_codes.OK
 
@@ -1299,7 +1316,22 @@ def cmd_config_validate(args: Any = None) -> int:
 def _build_parser():
     import argparse
 
-    p = argparse.ArgumentParser(
+    class UsageArgumentParser(argparse.ArgumentParser):
+        """ArgumentParser whose parse/usage errors exit 5 (USAGE), not argparse's
+        default 2.
+
+        Exit code 2 is reserved for AUTH in cloudctl's documented scheme, so a
+        bad flag or unknown subcommand must NOT collide with "authentication
+        required". We override error() to print the usage message to stderr and
+        exit with USAGE (5). Subparsers created via add_parser inherit this class
+        automatically (argparse uses type(self) for sub-parsers)."""
+
+        def error(self, message: str):  # noqa: D401
+            self.print_usage(sys.stderr)
+            sys.stderr.write(f"{self.prog}: error: {message}\n")
+            sys.exit(exit_codes.USAGE)
+
+    p = UsageArgumentParser(
         prog="cloudctl",
         description=(
             "cloudctl — run a command with cloud credentials, statelessly.\n"
@@ -1307,6 +1339,20 @@ def _build_parser():
             "child process without writing anything to disk."
         ),
         epilog=(
+            "WHAT IT DOES:\n"
+            "  Injects short-lived credentials into a child process — no SSO\n"
+            "  profiles, nothing written to disk, one command shape for AWS/GCP/\n"
+            "  Azure.\n"
+            "\n"
+            "VOCABULARY:\n"
+            "  --account = AWS account / GCP project / Azure subscription;\n"
+            "  --role    = AWS only (a no-op on GCP/Azure).\n"
+            "\n"
+            "FIRST RUN (init -> login -> run):\n"
+            "  cloudctl init                       # or: cloudctl config init\n"
+            "  cloudctl login <org>\n"
+            "  cloudctl run --org O --account A --role R --region G -- <command>\n"
+            "\n"
             "COMMANDS BY PURPOSE:\n"
             "\n"
             "  Run        run     Run a command with cloud credentials injected\n"
@@ -1323,7 +1369,8 @@ def _build_parser():
             "             accounts  List accounts for an org\n"
             "             roles   List assumable roles (--account <id>)\n"
             "\n"
-            "  Configure  config  Manage config: init | validate | path\n"
+            "  Configure  init    First-run setup (alias: config init)\n"
+            "             config  Manage config: init | validate | path\n"
             "             org     Add / remove / list orgs\n"
             "             switch  Set the active context (aka use)\n"
             "\n"
@@ -1344,13 +1391,12 @@ def _build_parser():
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("--version", action="store_true", help="Print version and exit")
-    p.add_argument("--eval", action="store_true", help="Shell wrapper mode (internal)")
-    p.add_argument(
-        "--check-strategy",
-        metavar="CMD",
-        help="Print EVAL or EXEC for CMD and exit",
-    )
+    # NOTE: --version / --eval / --check-strategy are deliberately NOT argparse
+    # actions on this parent parser. They are top-level, pre-argparse concerns
+    # handled entirely in main()'s scan of the pre-`--` head. Registering them
+    # here as parent actions reintroduced the footgun where `run ... aws
+    # --version` (or a stray `--eval` in a child command) could leak up into
+    # cloudctl's own flags. main() owns them; the parser never sees them.
 
     # metavar suppresses argparse's auto-generated {a,b,c,…} choice line, which
     # would otherwise leak every hidden alias (exec, use, env, status, list,
@@ -1426,6 +1472,13 @@ def _build_parser():
     import argparse as _argparse
 
     _run_epilog = (
+        "Injects short-lived credentials into a child process — no SSO profiles,\n"
+        "nothing written to disk, one command shape for AWS/GCP/Azure.\n"
+        "\n"
+        "VOCABULARY:\n"
+        "  --account = AWS account / GCP project / Azure subscription;\n"
+        "  --role    = AWS only (a no-op on GCP/Azure).\n"
+        "\n"
         "The `--` separator divides cloudctl's own flags from the child command;\n"
         "everything after `--` is passed to the child verbatim (including flags\n"
         "like --version, --query, --output, or --help).\n"
@@ -1791,7 +1844,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             sys.stdout.write(determine_strategy([cmd_arg]) + "\n")
             return 0
 
-        if "--version" in head:
+        # --version is a GENUINE top-level flag only when it is the first token
+        # of the invocation. Requiring position 0 means `run ... aws --version`
+        # (even WITHOUT a `--` separator, so the whole argv is `head`) can never
+        # fire cloudctl's own version — the `--version` there belongs to the
+        # child `aws`, and the child, not cloudctl, must answer it.
+        if head and head[0] in ("--version", "-V"):
             stdout_console.print(_resolved_version())
             return 0
 
@@ -1840,6 +1898,22 @@ def main(argv: Optional[List[str]] = None) -> int:
         handler = getattr(_self, handler_name)
         return handler(args)
 
+    except SystemExit as e:
+        # argparse raises SystemExit on a usage/parse error AND on --help. We
+        # normalise ONLY the error case so a bad flag / unknown subcommand reads
+        # as USAGE (5), never AUTH (2), and callers that invoke main() get a
+        # return value rather than a raised exception. A clean help exit
+        # (code 0) is left to propagate unchanged — subcommand `--help` is
+        # expected to raise SystemExit(0), matching argparse's own contract.
+        code = e.code
+        if code in (0, None):
+            raise
+        if isinstance(code, int):
+            # Defensively remap argparse's legacy 2 → USAGE (5); 2 means AUTH.
+            return exit_codes.USAGE if code == 2 else code
+        # Non-int exit message → treat as a usage error.
+        sys.stderr.write(f"{code}\n")
+        return exit_codes.USAGE
     except CloudCtlError as e:
         # Format and print CloudCtlError with suggestions and recovery info
         # NOTE: format_error() sanitizes context dict and removes any keys

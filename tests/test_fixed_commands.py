@@ -133,13 +133,17 @@ def test_whoami_shows_context(mock_rich_console, monkeypatch):
     }
     monkeypatch.setattr("cloudctl.cli.load_context", lambda: context)
 
-    # Mock AWS STS call to avoid actual AWS API
+    # Mock AWS STS call to avoid actual AWS API. whoami routes AWS identity
+    # through provider.get_identity, which imports run_aws in the provider module.
     mock_result = {
         "returncode": 0,
         "stdout": '{"UserId": "AIDA...","Account": "123456789012","Arn": "arn:aws:iam::123456789012:user/test"}',
         "stderr": "",
     }
-    monkeypatch.setattr("cloudctl.aws.run_aws", lambda x: mock_result)
+    monkeypatch.setattr("cloudctl.providers.aws.run_aws", lambda x: mock_result)
+    monkeypatch.setattr(
+        "cloudctl.config.get_org", lambda _n: {"name": "bt-avm", "provider": "aws"}
+    )
 
     # Execute whoami
     exit_code = cli.cmd_whoami(None)
@@ -152,13 +156,19 @@ def test_whoami_no_context_fallback(mock_rich_console, monkeypatch):
     """Test whoami falls back to AWS STS when no context exists."""
     monkeypatch.setattr("cloudctl.cli.load_context", lambda: {})
 
-    # Mock AWS STS call
+    # Mock AWS STS call (full, valid caller-identity so get_identity accepts it).
     mock_result = {
         "returncode": 0,
-        "stdout": '{"Account": "123456789012"}',
+        "stdout": (
+            '{"UserId": "AIDA...","Account": "123456789012",'
+            '"Arn": "arn:aws:iam::123456789012:user/test"}'
+        ),
         "stderr": "",
     }
-    monkeypatch.setattr("cloudctl.aws.run_aws", lambda x: mock_result)
+    monkeypatch.setattr("cloudctl.providers.aws.run_aws", lambda x: mock_result)
+    monkeypatch.setattr(
+        "cloudctl.config.get_org", lambda _n: {"name": "", "provider": "aws"}
+    )
 
     # Execute whoami
     exit_code = cli.cmd_whoami(None)
@@ -213,7 +223,10 @@ def test_whoami_sts_error_handling(mock_rich_console, monkeypatch):
         "stdout": "",
         "stderr": "InvalidClientTokenId: The provided token is malformed",
     }
-    monkeypatch.setattr("cloudctl.aws.run_aws", lambda x: mock_result)
+    monkeypatch.setattr("cloudctl.providers.aws.run_aws", lambda x: mock_result)
+    monkeypatch.setattr(
+        "cloudctl.config.get_org", lambda _n: {"name": "", "provider": "aws"}
+    )
 
     # Execute whoami
     exit_code = cli.cmd_whoami(None)
@@ -546,11 +559,17 @@ def test_logout_then_whoami(monkeypatch, mock_rich_console):
     mock_sts = MagicMock(
         return_value={
             "returncode": 0,
-            "stdout": '{"Account": "123456789012"}',
+            "stdout": (
+                '{"Account": "123456789012",'
+                '"Arn": "arn:aws:iam::123456789012:user/test","UserId": "AIDA..."}'
+            ),
             "stderr": "",
         }
     )
-    monkeypatch.setattr("cloudctl.aws.run_aws", mock_sts)
+    monkeypatch.setattr("cloudctl.providers.aws.run_aws", mock_sts)
+    monkeypatch.setattr(
+        "cloudctl.config.get_org", lambda _n: {"name": "", "provider": "aws"}
+    )
 
     # Logout then whoami
     exit_logout = cli.cmd_logout(None)

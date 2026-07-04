@@ -5,6 +5,7 @@ import sys
 from cloudctl.commands.base import BaseCommand
 from cloudctl.context_manager import load_context
 from cloudctl.config import get_org
+from cloudctl.providers.base import ProviderCredentialError
 from cloudctl import exit_codes
 
 
@@ -27,11 +28,11 @@ class ExecCommand(BaseCommand):
 
     Examples:
         # Use active context (set by cloudctl switch)
-        cloudctl exec -- terraform plan
+        cloudctl run -- terraform plan
 
         # Explicit org without changing shell context (safe for scripts)
-        cloudctl exec --org prod -- aws s3 ls
-        cloudctl exec --org fdr-gvc --account 111111111111 --role ReadOnly -- terraform show
+        cloudctl run --org prod -- aws s3 ls
+        cloudctl run --org fdr-gvc --account 111111111111 --role ReadOnly -- terraform show
     """
 
     def configure_parser(self, subparsers):
@@ -66,6 +67,19 @@ class ExecCommand(BaseCommand):
             help="On failure, print a one-line JSON error object to stderr",
         )
         parser.add_argument("cmd", nargs="+", help="Command to execute")
+
+    @staticmethod
+    def _prose_for(e: "ProviderCredentialError") -> str:
+        """Render a human-facing (Rich-markup) prose line for a classified
+        provider credential error, keyed off its exit code so the label matches
+        the faithful cause (AUTH/DENIED/NOT_FOUND/…) rather than a blanket
+        'no valid SSO session'."""
+        label = {
+            exit_codes.AUTH: "Authentication required",
+            exit_codes.DENIED: "Access denied",
+            exit_codes.NOT_FOUND: "Not found",
+        }.get(e.code, "Failed to get credentials")
+        return f"[red]{label}:[/] {e.message}"
 
     def _fail(self, prose: str, error: str, code: int) -> int:
         """Emit a failure and return its exit code.
@@ -104,49 +118,15 @@ class ExecCommand(BaseCommand):
             return self._fail(
                 "[red]No org specified and no active context.[/]\n"
                 "Run [bold]cloudctl switch <org>[/bold] first, or use: "
-                "[bold]cloudctl exec --org <org> -- <command>[/bold]",
+                "[bold]cloudctl run --org <org> -- <command>[/bold]",
                 "No org specified and no active context",
                 exit_codes.USAGE,
             )
 
-        # When --org is given without --account/--role, account/role must be
-        # resolved. cloudctl is built for agentic use, so never hang on an
-        # interactive picker in a non-interactive context: if there's no TTY,
-        # fail fast with an actionable error instead. (exec itself takes no
-        # --non-interactive flag — it is non-interactive by nature; a TTY is the
-        # only thing that enables the picker.)
-        if getattr(args, "exec_org", None) and not all([account, role]):
-            try:
-                org_data = get_org(org_name)
-            except Exception:
-                return self._fail(
-                    f"[red]Org '{org_name}' not found in config.[/]",
-                    f"Org '{org_name}' not found in config",
-                    exit_codes.NOT_FOUND,
-                )
-
-            if not sys.stdin.isatty():
-                return self._fail(
-                    "[red]Incomplete 'exec' invocation in a non-interactive context.[/]\n"
-                    "Provide all of --account, --role and --region explicitly, e.g.:\n"
-                    "  [bold]cloudctl exec --org <org> --account <id> --role <role> "
-                    "--region <region> -- <command>[/bold]",
-                    "Incomplete exec invocation: --account, --role and --region required",
-                    exit_codes.USAGE,
-                )
-
-            import cloudctl.interactive as _interactive
-
-            account, role, region = _interactive.run_interactive_use(
-                org_data, account or None, role or None, region or None
-            )
-            if not all([account, role, region]):
-                return self._fail(
-                    "[red]Incomplete selection; aborting.[/]",
-                    "Incomplete account/role/region selection",
-                    exit_codes.USAGE,
-                )
-
+        # Resolve the org (and provider) up front: the provider decides whether
+        # --role is even meaningful (AWS: required credential selector;
+        # GCP/Azure: a no-op). We must know the provider before we can render a
+        # correct completeness check or a provider-aware error.
         try:
             org_data = get_org(org_name)
         except Exception:
@@ -156,19 +136,122 @@ class ExecCommand(BaseCommand):
                 exit_codes.NOT_FOUND,
             )
 
+        provider_name = (
+            org_data.get("provider", "aws") if isinstance(org_data, dict) else "aws"
+        )
+
+        # --role is provider-aware. AWS SSO REQUIRES a permission-set (--role) to
+        # vend credentials; GCP/Azure have no runtime role assumption, so --role
+        # is a no-op there and a missing role must NEVER block the command.
+        role_required = provider_name == "aws"
+
+        # When --org is given without the resolvable bits, they must be filled in.
+        # cloudctl is built for agentic use, so never hang on an interactive
+        # picker in a non-interactive context: if there's no TTY, fail fast with
+        # an actionable, provider-aware error instead. (run/exec takes no
+        # --non-interactive flag — it is non-interactive by nature; a TTY is the
+        # only thing that enables the picker.)
+        _needs_resolution = not account or (role_required and not role)
+        if getattr(args, "exec_org", None) and _needs_resolution:
+            if not sys.stdin.isatty():
+                if role_required and not role:
+                    return self._fail(
+                        "[red]AWS requires --role.[/] Run "
+                        "[bold]cloudctl roles --org "
+                        f"{org_name} --account <A>[/bold] to list them "
+                        "(GCP/Azure don't use --role). Provide --account, --role "
+                        "and --region explicitly, e.g.:\n"
+                        "  [bold]cloudctl run --org <org> --account <id> --role "
+                        "<role> --region <region> -- <command>[/bold]",
+                        "AWS requires --role; run 'cloudctl roles --org "
+                        f"{org_name} --account <A>' to list them",
+                        exit_codes.USAGE,
+                    )
+                return self._fail(
+                    "[red]Incomplete 'run' invocation in a non-interactive "
+                    "context.[/]\n"
+                    "Provide --account (and --region) explicitly, e.g.:\n"
+                    "  [bold]cloudctl run --org <org> --account <id> "
+                    "--region <region> -- <command>[/bold]",
+                    "Incomplete run invocation: --account (and --region) required",
+                    exit_codes.USAGE,
+                )
+
+            import cloudctl.interactive as _interactive
+
+            account, role, region = _interactive.run_interactive_use(
+                org_data, account or None, role or None, region or None
+            )
+            # For AWS, account+role+region are all required; for GCP/Azure a
+            # missing role does not block (role is a no-op there).
+            _incomplete = not account or not region or (role_required and not role)
+            if _incomplete:
+                return self._fail(
+                    "[red]Incomplete selection; aborting.[/]",
+                    "Incomplete account/role/region selection",
+                    exit_codes.USAGE,
+                )
+
         from cloudctl.providers import get_provider
 
         provider = get_provider(org_data)
 
+        # AWS with no role at this point (e.g. from context) is a teachable
+        # failure: it cannot vend credentials without a permission-set.
+        if role_required and not role:
+            return self._fail(
+                "[red]AWS requires --role.[/] Run "
+                f"[bold]cloudctl roles --org {org_name} --account "
+                f"{account or '<A>'}[/bold] to list them "
+                "(GCP/Azure don't use --role).",
+                "AWS requires --role; run 'cloudctl roles --org "
+                f"{org_name} --account {account or '<A>'}' to list them",
+                exit_codes.USAGE,
+            )
+
+        # Azure bare-`az` safety: cloudctl cannot inject an identity into the
+        # bare `az` CLI without service-principal config — `az` always uses its
+        # ambient `az login`. Warn loudly (never let it silently run under an
+        # unknown identity) and, to at least pin the target, inject
+        # `--subscription <account>` into the invocation when the subscription
+        # is known. When SP creds ARE present, az_uses_injected_identity is True
+        # and the injected AZURE_CLIENT_* env does the work — no warning.
+        if (
+            provider_name == "azure"
+            and args.cmd
+            and args.cmd[0] == "az"
+            and not provider.az_uses_injected_identity(org_data)
+        ):
+            sys.stderr.write(
+                "cloudctl: WARNING — bare `az` runs under your ambient `az login`, "
+                "NOT the cloudctl-injected identity. cloudctl cannot inject an "
+                "identity into the bare `az` CLI without service-principal config "
+                "(client_id + client_secret + tenant_id in the org).\n"
+            )
+            if account and "--subscription" not in args.cmd:
+                # Pin the target subscription so at least the account is explicit.
+                args.cmd = [args.cmd[0], "--subscription", account] + list(
+                    args.cmd[1:]
+                )
+                sys.stderr.write(
+                    f"cloudctl: pinned target with --subscription {account}.\n"
+                )
+
         try:
             creds = provider.get_credentials(org_data, account, role, region)
+        except ProviderCredentialError as e:
+            # FAITHFUL ERRORS: the provider classified the REAL cause and handed
+            # up its code + message. A Forbidden now exits 4 (DENIED) with the
+            # real reason instead of being flattened to "no valid SSO session"/2.
+            prose = self._prose_for(e)
+            return self._fail(prose, e.message, e.code)
         except SystemExit:
-            # Providers raise SystemExit when the SSO session is missing/expired
-            # (auth required) — surface that as the AUTH exit code.
+            # Defensive: a provider that still raises SystemExit (missing/expired
+            # session) is surfaced as AUTH rather than an opaque crash.
             return self._fail(
-                "[red]Authentication required:[/] no valid SSO session. "
+                "[red]Authentication required:[/] no valid session. "
                 "Run [bold]cloudctl login <org>[/bold].",
-                "Authentication required: no valid SSO session",
+                "Authentication required: no valid session",
                 exit_codes.AUTH,
             )
         except Exception as e:

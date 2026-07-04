@@ -110,10 +110,19 @@ def _run_identity_verb(verb, capsys, monkeypatch):
     }
     monkeypatch.setattr("cloudctl.cli.load_context", lambda: ctx)
     monkeypatch.setattr(
-        "cloudctl.aws.run_aws",
+        "cloudctl.config.get_org", lambda _n: {"name": "myorg", "provider": "aws"}
+    )
+    # whoami routes AWS through provider.get_identity (real sts call). Patch the
+    # provider-module run_aws binding with a full, valid caller-identity.
+    monkeypatch.setattr(
+        "cloudctl.providers.aws.run_aws",
         lambda x: {
             "returncode": 0,
-            "stdout": '{"Account": "123456789012"}',
+            "stdout": (
+                '{"Account": "123456789012", '
+                '"Arn": "arn:aws:iam::123456789012:role/Admin", '
+                '"UserId": "AIDA..."}'
+            ),
             "stderr": "",
         },
     )
