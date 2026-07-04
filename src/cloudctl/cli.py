@@ -20,7 +20,6 @@ need EVAL?" before it decides whether to capture or stream stdout.
 import importlib.metadata
 import os
 import sys
-from pathlib import Path
 from typing import Any, List, Optional
 
 
@@ -839,12 +838,6 @@ def cmd_prompt(args: Any = None) -> int:
     return PromptCommand().execute(args)
 
 
-def cmd_watch(args: Any = None) -> int:
-    from .commands.watch import WatchCommand
-
-    return WatchCommand().execute(args)
-
-
 def cmd_upgrade(args: Any = None) -> int:
     """Upgrade cloudctl — prefers Artifactory pip, falls back to GitHub Releases."""
 
@@ -1055,117 +1048,6 @@ def cmd_list(args: Any = None) -> int:
     return OrgListCommand().execute(args)
 
 
-def cmd_pricing(args: Any) -> int:
-    """Estimate cloud infrastructure costs across providers."""
-    from .pricing import PricingCalculator, format_pricing_result
-    from InquirerPy import inquirer
-
-    calculator = PricingCalculator()
-
-    try:
-        # Get provider
-        provider = getattr(args, "provider", None)
-        if not provider:
-            provider = inquirer.select(
-                message="Select cloud provider:",
-                choices=["aws", "azure", "gcp"],
-            ).execute()
-
-        provider = provider.lower()
-
-        # Get component type
-        component = getattr(args, "component", None)
-        if not component:
-            components = [
-                "ec2",
-                "s3",
-                "rds",
-                "lambda",
-                "dynamodb",
-                "storage",
-                "compute",
-            ]
-            component = inquirer.select(
-                message="Select component type:",
-                choices=components,
-            ).execute()
-
-        component = component.lower()
-
-        # Get configuration based on component
-        config = {}
-        if component == "ec2":
-            config["vcpu"] = inquirer.number(
-                message="Number of vCPUs:", default=2
-            ).execute()
-            config["memory_gb"] = inquirer.number(
-                message="Memory (GB):", default=4
-            ).execute()
-        elif component == "s3":
-            config["storage_gb"] = inquirer.number(
-                message="Storage (GB):", default=100
-            ).execute()
-            config["requests_per_day"] = inquirer.number(
-                message="Requests per day:", default=1000
-            ).execute()
-        elif component == "rds":
-            config["vcpu"] = inquirer.number(message="vCPUs:", default=2).execute()
-            config["memory_gb"] = inquirer.number(
-                message="Memory (GB):", default=4
-            ).execute()
-            config["storage_gb"] = inquirer.number(
-                message="Storage (GB):", default=20
-            ).execute()
-        else:
-            console.print(f"[yellow]Using default configuration for {component}.[/]")
-            config = {"units": 1}
-
-        # Get region and other options
-        region = getattr(args, "region", "us-east-1")
-        currency = getattr(args, "currency", "USD")
-        period = getattr(args, "period", 1)
-        compare = getattr(args, "compare", False)
-        verbose = getattr(args, "verbose", False)
-
-        # Calculate costs
-        if compare:
-            console.print(f"\n[bold]Comparing {component} cost across providers[/]\n")
-            results = calculator.compare_providers(component, config, region, currency)
-
-            if not results:
-                console.print("[red]No pricing data available for comparison.[/]")
-                return 1
-
-            for i, result in enumerate(results, 1):
-                console.print(f"[bold]{i}. {result.provider.upper()}[/]")
-                console.print(format_pricing_result(result, verbose))
-
-                if i < len(results):
-                    savings = results[-1].monthly_cost - result.monthly_cost
-                    console.print(
-                        f"[green]Savings vs most expensive: {currency} ${savings:.2f}/mo[/]\n"
-                    )
-        else:
-            result = calculator.estimate_cost(
-                provider, component, config, region, currency, period
-            )
-            console.print("\n[bold]Cost Estimate[/]\n")
-            console.print(format_pricing_result(result, verbose))
-
-        return 0
-
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Cancelled.[/]")
-        return 1
-    except ValueError as e:
-        console.print(f"[red]Error: {e}[/]")
-        return 1
-    except Exception as e:
-        console.print(f"[red]Pricing calculation failed: {e}[/]")
-        utils.debug_print(f"Pricing error: {e}")
-        return 1
-
-
 def cmd_list_roles(args: Any) -> int:
     """List available or assigned IAM roles for an AWS organization."""
     from .commands.list_roles import ListRolesCommand
@@ -1366,40 +1248,6 @@ def _build_parser():
         help="Show ⚠ warning when credentials expire within N minutes (default: 15)",
     )
 
-    # watch
-    wp = sub.add_parser(
-        "watch",
-        help="Auto-refresh credentials before they expire",
-        description=(
-            "Run a background loop that checks token expiry every --interval seconds "
-            "and re-authenticates when less than --threshold seconds remain. "
-            "Run in a dedicated terminal pane or tmux window alongside long-running "
-            "Terraform operations. Press Ctrl+C to stop."
-        ),
-    )
-    wp.add_argument(
-        "org", nargs="?", help="Organisation to watch (defaults to active context)"
-    )
-    wp.add_argument(
-        "--interval",
-        type=int,
-        default=60,
-        metavar="SECS",
-        help="How often to check token expiry in seconds (default: 60)",
-    )
-    wp.add_argument(
-        "--threshold",
-        type=int,
-        default=900,
-        metavar="SECS",
-        help="Refresh when this many seconds remain on the token (default: 900 = 15m)",
-    )
-    wp.add_argument(
-        "--once",
-        action="store_true",
-        help="Check once and exit (useful for scripts and CI health checks)",
-    )
-
     # upgrade
     up = sub.add_parser("upgrade", help="Upgrade cloudctl (Artifactory or GitHub)")
     up.add_argument(
@@ -1497,48 +1345,6 @@ def _build_parser():
         help="Output format (default: text)",
     )
 
-    # pricing
-    price_p = sub.add_parser("pricing", help="Estimate cloud infrastructure costs")
-    price_p.add_argument(
-        "provider",
-        nargs="?",
-        choices=["aws", "azure", "gcp"],
-        help="Cloud provider (or omit for interactive selection)",
-    )
-    price_p.add_argument(
-        "--component",
-        required=False,
-        help="Component type (ec2, s3, rds, etc)",
-    )
-    price_p.add_argument(
-        "--region",
-        default="us-east-1",
-        help="Cloud region (default: us-east-1)",
-    )
-    price_p.add_argument(
-        "--compare",
-        action="store_true",
-        help="Compare cost across all providers",
-    )
-    price_p.add_argument(
-        "--currency",
-        default="USD",
-        choices=["USD", "EUR", "GBP", "JPY", "AUD"],
-        help="Currency for pricing (default: USD)",
-    )
-    price_p.add_argument(
-        "--period",
-        type=int,
-        default=1,
-        help="Estimation period in months (default: 1)",
-    )
-    price_p.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Show detailed cost breakdown",
-    )
-
     # setup
     sub.add_parser("setup", help="Run the setup wizard / merge defaults")
 
@@ -1601,9 +1407,7 @@ _DISPATCH = {
     "open": "cmd_open",
     "upgrade": "cmd_upgrade",
     "prompt": "cmd_prompt",
-    "watch": "cmd_watch",
     "completion": "cmd_completion",
-    "pricing": "cmd_pricing",
     "uninstall": "cmd_uninstall",
 }
 
