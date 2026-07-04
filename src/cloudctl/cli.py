@@ -1467,6 +1467,14 @@ def _build_parser():
             help='On failure, print a one-line JSON object {"error","code"} to '
             "stderr instead of prose (success path is unchanged).",
         )
+        parser.add_argument(
+            "--no-cache",
+            action="store_true",
+            dest="no_cache",
+            help="Never write the SSO token to disk; authenticate in-memory "
+            "(re-auths if no active session). Pair with -- bash -c '...' to run "
+            "many commands under one auth.",
+        )
         parser.add_argument("cmd", nargs="+", metavar="CMD")
 
     import argparse as _argparse

@@ -71,10 +71,38 @@ class CloudProvider(ABC):
 
     @abstractmethod
     def get_credentials(
-        self, org: Dict[str, Any], account: str, role: str, region: str
+        self,
+        org: Dict[str, Any],
+        account: str,
+        role: str,
+        region: str,
+        token: Optional[Any] = None,
     ) -> Dict[str, str]:
-        """Return env var dict suitable for subprocess injection or shell export."""
+        """Return env var dict suitable for subprocess injection or shell export.
+
+        ``token`` is an optional pre-obtained session token. When supplied (the
+        ``--no-cache`` in-memory path), the provider MUST use it directly and
+        skip any on-disk token lookup; when ``None`` it behaves exactly as
+        before (loads from the provider's own cache). Providers for which a
+        pre-obtained token is meaningless simply ignore it.
+        """
         ...
+
+    def authenticate_in_memory(self, org: Dict[str, Any]) -> Optional[Any]:
+        """Acquire a session token WITHOUT writing it to disk.
+
+        Returns an in-memory token object (exposing at least ``.accessToken``
+        and ``.expiresAt``) suitable to pass back into ``get_credentials(...,
+        token=...)``, so a full credential flow can run with nothing persisted
+        by cloudctl. This is the ``--no-cache`` acquisition path.
+
+        Default: not implemented. Providers whose tokens are owned by the
+        underlying cloud CLI (gcloud/az) — i.e. cloudctl never writes them —
+        have no in-memory token to hand back and leave this unimplemented.
+        """
+        raise NotImplementedError(
+            "This provider does not support in-memory (--no-cache) authentication."
+        )
 
     @abstractmethod
     def get_unsets(self) -> str:

@@ -237,8 +237,51 @@ class ExecCommand(BaseCommand):
                     f"cloudctl: pinned target with --subscription {account}.\n"
                 )
 
+        # --no-cache: this invocation must write NO SSO token to disk.
+        #   * AWS: try a READ-ONLY cache load first (using an already-active
+        #     session writes nothing); if there is none, authenticate IN MEMORY
+        #     via the device flow (still writing nothing) and pass that token
+        #     straight into get_credentials. Either way cloudctl persists nothing.
+        #   * GCP/Azure: a documented no-op — their tokens are owned by
+        #     gcloud/az, never written by cloudctl — so proceed normally.
+        no_cache = bool(getattr(args, "no_cache", False))
+        in_memory_token = None
+        if no_cache:
+            if provider_name == "aws":
+                try:
+                    existing = provider.load_token(org_data)
+                except Exception:
+                    existing = None
+                if existing and hasattr(existing, "accessToken"):
+                    # An active session already exists on disk; reuse it
+                    # read-only. cloudctl writes nothing this run.
+                    in_memory_token = existing
+                else:
+                    # No active session: acquire one purely in memory. The
+                    # device flow prints its URL/code to stderr and never hangs.
+                    try:
+                        in_memory_token = provider.authenticate_in_memory(org_data)
+                    except ProviderCredentialError as e:
+                        prose = self._prose_for(e)
+                        return self._fail(prose, e.message, e.code)
+                    except Exception as e:
+                        return self._fail(
+                            f"[red]In-memory authentication failed:[/] {e}",
+                            f"In-memory authentication failed: {e}",
+                            exit_codes.AUTH,
+                        )
+            else:
+                # GCP/Azure: nothing for cloudctl to avoid writing — one-line note.
+                sys.stderr.write(
+                    "cloudctl: note — --no-cache is a no-op for "
+                    f"{provider_name}; its token is managed by the provider CLI, "
+                    "not written to disk by cloudctl.\n"
+                )
+
         try:
-            creds = provider.get_credentials(org_data, account, role, region)
+            creds = provider.get_credentials(
+                org_data, account, role, region, token=in_memory_token
+            )
         except ProviderCredentialError as e:
             # FAITHFUL ERRORS: the provider classified the REAL cause and handed
             # up its code + message. A Forbidden now exits 4 (DENIED) with the

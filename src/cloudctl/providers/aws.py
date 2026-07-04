@@ -65,6 +65,47 @@ class AwsProvider(CloudProvider):
             return 1
 
     def _device_authorization_login(self, org: Dict[str, Any]) -> int:
+        """Interactive login that PERSISTS the SSO token to the cache.
+
+        Token ACQUISITION (the device flow) and token CACHING (the disk write)
+        are deliberately separated: acquisition lives in `_obtain_sso_token`
+        (returns the token in memory, writes nothing), and this method adds the
+        single disk write. That split is what lets `authenticate_in_memory`
+        reuse the exact same device flow WITHOUT touching disk (`--no-cache`).
+        """
+        from .. import utils as _utils
+
+        sso_region = org.get("sso_region", "")
+        start_url = org.get("sso_start_url", "")
+        name = org.get("name", "")
+
+        tok = self._obtain_sso_token(org)
+
+        write_sso_token(
+            OrgRef(name, start_url, sso_region),
+            access_token=tok["accessToken"],
+            expires_at=tok["expiresAt"],
+            client_id=tok.get("clientId", ""),
+            client_secret=tok.get("clientSecret", ""),
+            registration_expires_at=tok.get("registrationExpiresAt", ""),
+            refresh_token=tok.get("refreshToken"),
+        )
+        _utils.console.print("[green]SSO login complete.[/]")
+        return 0
+
+    def _obtain_sso_token(self, org: Dict[str, Any]) -> Dict[str, Any]:
+        """Run the SSO OIDC device flow and RETURN the token payload in memory.
+
+        This performs register_client → start_device_authorization → (open
+        browser + print URL/code to stderr) → poll create_token — honouring the
+        service `interval`/`SlowDownException` and a hard expiry deadline so it
+        NEVER hangs. It writes NOTHING to disk; the caller decides whether to
+        cache the returned payload (`login`) or keep it purely in memory
+        (`authenticate_in_memory`, i.e. `--no-cache`).
+
+        Returns a dict with keys: accessToken, expiresAt (ISO-8601 UTC),
+        clientId, clientSecret, registrationExpiresAt, refreshToken.
+        """
         import time
         from datetime import datetime, timedelta, timezone
 
@@ -75,7 +116,6 @@ class AwsProvider(CloudProvider):
 
         sso_region = org.get("sso_region", "")
         start_url = org.get("sso_start_url", "")
-        name = org.get("name", "")
 
         if not sso_region or not start_url:
             raise RuntimeError(
@@ -149,19 +189,45 @@ class AwsProvider(CloudProvider):
             datetime.now(timezone.utc) + timedelta(seconds=expires_in_token)
         ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        write_sso_token(
-            OrgRef(name, start_url, sso_region),
-            access_token=access_token,
-            expires_at=expires_at,
-            client_id=client_id,
-            client_secret=client_secret,
-            registration_expires_at=self._iso_from_epoch(
+        return {
+            "accessToken": access_token,
+            "expiresAt": expires_at,
+            "clientId": client_id,
+            "clientSecret": client_secret,
+            "registrationExpiresAt": self._iso_from_epoch(
                 reg.get("clientSecretExpiresAt")
             ),
-            refresh_token=tok.get("refreshToken"),
-        )
-        _utils.console.print("[green]SSO login complete.[/]")
-        return 0
+            "refreshToken": tok.get("refreshToken"),
+        }
+
+    def authenticate_in_memory(self, org: Dict[str, Any]) -> Any:
+        """Acquire an SSO token via the device flow WITHOUT writing to disk.
+
+        This is the `--no-cache` acquisition path: it runs the same device flow
+        as `login`, but returns a lightweight in-memory token object exposing
+        `.accessToken` and `.expiresAt` (the same surface `get_credentials` and
+        the whoami/expiry consumers expect of a cached SsoToken) instead of
+        persisting the token to `~/.aws/sso/cache`. Nothing is written to disk.
+        """
+        from datetime import datetime, timezone
+
+        from ..sso_cache import _parse_timestamp
+
+        tok = self._obtain_sso_token(org)
+        expires_at = _parse_timestamp(tok["expiresAt"]) or datetime.now(timezone.utc)
+
+        class _InMemorySsoToken:
+            """Minimal in-memory token — same duck-type as SsoToken for the
+            fields consumers read (accessToken/expiresAt), never persisted."""
+
+            def __init__(self, access_token: str, expires_at_dt: datetime):
+                self.accessToken = access_token
+                self.expiresAt = expires_at_dt
+
+            def is_expired(self) -> bool:
+                return datetime.now(timezone.utc) >= self.expiresAt
+
+        return _InMemorySsoToken(tok["accessToken"], expires_at)
 
     @staticmethod
     def _iso_from_epoch(epoch: Any) -> str:
@@ -277,11 +343,20 @@ class AwsProvider(CloudProvider):
         return ProviderCredentialError(exit_codes.ERROR, summary)
 
     def get_credentials(
-        self, org: Dict[str, Any], account: str, role: str, region: str
+        self,
+        org: Dict[str, Any],
+        account: str,
+        role: str,
+        region: str,
+        token: Optional[Any] = None,
     ) -> Dict[str, str]:
-        # Load the cached SSO access token — required for get-role-credentials.
-        # A missing/absent token is unambiguously AUTH: no local session at all.
-        token = self.load_token(org)
+        # SSO access token — required for get-role-credentials. When a
+        # pre-obtained token is passed (the `--no-cache` in-memory path), use it
+        # directly and SKIP the cache read entirely, so no disk lookup/write is
+        # involved. Otherwise fall back to loading it from the cache exactly as
+        # before. A missing/absent token is unambiguously AUTH: no session at all.
+        if token is None:
+            token = self.load_token(org)
         if not token or not hasattr(token, "accessToken"):
             # Do NOT print prose here — the exec/CLI layer renders the message
             # from the raised code (avoids a double line under --json-errors).

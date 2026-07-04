@@ -239,8 +239,15 @@ class GcpProvider(CloudProvider):
         return list(org.get("roles", ["roles/viewer", "roles/editor", "roles/owner"]))
 
     def get_credentials(
-        self, org: Dict[str, Any], account: str, role: str, region: str
+        self,
+        org: Dict[str, Any],
+        account: str,
+        role: str,
+        region: str,
+        token: Optional[Any] = None,
     ) -> Dict[str, str]:
+        # `token` is accepted for interface parity with the --no-cache path but
+        # is unused here: GCP tokens are owned by gcloud (ADC), not cloudctl.
         # Side-effect free: project/region are selected *per invocation* through
         # CLOUDSDK_* env vars below. We deliberately do NOT run
         # `gcloud config set project ...` — mutating the user's global gcloud

@@ -255,8 +255,15 @@ class AzureProvider(CloudProvider):
             return ["Contributor"]
 
     def get_credentials(
-        self, org: Dict[str, Any], account: str, role: str, region: str
+        self,
+        org: Dict[str, Any],
+        account: str,
+        role: str,
+        region: str,
+        token: Optional[Any] = None,
     ) -> Dict[str, str]:
+        # `token` is accepted for interface parity with the --no-cache path but
+        # is unused here: Azure tokens are owned by `az`, not cloudctl.
         # Side-effect free: we do NOT run `az account set` (which would mutate
         # the user's global default subscription and race across concurrent
         # invocations). Subscription selection is passed per-invocation: the
