@@ -1107,7 +1107,7 @@ def _upgrade_via_github(args: Any) -> int:
 
 
 def cmd_setup(args: Any = None) -> int:
-    """Run the setup wizard / merge defaults."""
+    """Merge sample defaults into orgs.yaml (non-interactive)."""
     return core.cmd_setup()
 
 
@@ -1273,12 +1273,14 @@ def _build_parser():
     )
 
     # init
-    ip = sub.add_parser("init", help="Initialize configuration wizard")
+    ip = sub.add_parser(
+        "init", help="Initialize configuration (non-interactive)"
+    )
     ip.add_argument(
         "--shell-only",
         action="store_true",
         dest="shell_only",
-        help="Install shell integration only (no wizard)",
+        help="Install shell integration only (skip config setup)",
     )
 
     # prompt
@@ -1428,7 +1430,7 @@ def _build_parser():
     )
 
     # setup
-    sub.add_parser("setup", help="Run the setup wizard / merge defaults")
+    sub.add_parser("setup", help="Merge sample defaults into orgs.yaml")
 
     # whoami
     wp = sub.add_parser("whoami", help="Show current user and account details")

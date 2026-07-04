@@ -149,7 +149,7 @@ def get_choices(registry_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for org in registry_data:
         label = org.get("label", org.get("name"))
         desc = org.get("description", "")
-        # [Contract] Match exact Rich markup used in wizard tests
+        # [Contract] Rich markup format for registry choice labels
         name = f"{label} — [dim]{desc}[/]" if desc else label
         choices.append({"name": name, "value": org})
     return choices

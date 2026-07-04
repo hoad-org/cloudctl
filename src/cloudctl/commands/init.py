@@ -1,10 +1,9 @@
 # src/cloudctl/commands/init.py
 from cloudctl.commands.base import BaseCommand
-from cloudctl.wizard import run_wizard
 
 
 def _install_shell_only() -> int:
-    """Install the shell wrapper for the detected shell without running the full wizard."""
+    """Install the shell wrapper for the detected shell (no interactive prompts)."""
     from cloudctl.env_detection import detect_shell
     from cloudctl import shell, utils
 
@@ -29,13 +28,45 @@ def _install_shell_only() -> int:
 
 
 class InitCommand(BaseCommand):
-    """Initializes the cloudctl configuration and installs shell integration."""
+    """Non-interactive config initializer + shell integration installer.
+
+    ``cloudctl init`` NEVER prompts. It:
+      1. Creates/merges ``~/.config/cloudctl/orgs.yaml`` from the sample template
+         (via ``core.cmd_setup`` — the same merge-defaults path as ``setup``).
+      2. Installs the shell integration for the detected shell.
+      3. Prints a short message telling the user to edit orgs.yaml.
+
+    ``--shell-only`` installs just the shell integration and skips config setup.
+    """
 
     def configure_parser(self, subparsers):
-        subparsers.add_parser("init", help="Run the setup wizard")
+        p = subparsers.add_parser(
+            "init", help="Initialize configuration (non-interactive)"
+        )
+        p.add_argument(
+            "--shell-only",
+            action="store_true",
+            dest="shell_only",
+            help="Install shell integration only (skip config setup)",
+        )
 
     def execute(self, args) -> int:
-        shell_only = getattr(args, "shell_only", False)
-        if shell_only:
+        from cloudctl import config, core, utils
+
+        if getattr(args, "shell_only", False):
             return _install_shell_only()
-        return 0 if run_wizard() else 1
+
+        # 1. Create/merge orgs.yaml from the sample template (idempotent).
+        rc = core.cmd_setup()
+
+        # 2. Install shell integration.
+        _install_shell_only()
+
+        # 3. Point the user at the config to edit. Never prompt.
+        orgs_path = config.get_orgs_path(ensure=False)
+        utils.console.print(
+            f"Configuration ready at [bold]{orgs_path}[/bold].\n"
+            f"Edit it to add your organisations, then run "
+            f"[bold]cloudctl login <org>[/bold]."
+        )
+        return rc
