@@ -3,17 +3,16 @@
 # https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 
 # Default owner for everything in the repo
-*                                   @BT-IT-Infrastructure-CloudOps/cloudops
+*                                   @rhyscraig
 
-# Workflow files — require CloudOps team review
-.github/workflows/                  @BT-IT-Infrastructure-CloudOps/cloudops
+# Workflow files
+.github/workflows/                  @rhyscraig
 
-# Security-sensitive paths — credential handling, shell export, guardrails
-.github/SECURITY.md                 @BT-IT-Infrastructure-CloudOps/cloudops
-src/awsctl/providers/               @BT-IT-Infrastructure-CloudOps/cloudops
-src/awsctl/guardrails.py            @BT-IT-Infrastructure-CloudOps/cloudops
-src/awsctl/use_exports.py           @BT-IT-Infrastructure-CloudOps/cloudops
-src/awsctl/cli.py                   @BT-IT-Infrastructure-CloudOps/cloudops
-src/awsctl/shell.py                 @BT-IT-Infrastructure-CloudOps/cloudops
-src/awsctl/registry_loader.py       @BT-IT-Infrastructure-CloudOps/cloudops
-src/awsctl/schema.py                @BT-IT-Infrastructure-CloudOps/cloudops
+# Security-sensitive paths — credential handling, providers, guardrails
+.github/SECURITY.md                 @rhyscraig
+src/cloudctl/providers/             @rhyscraig
+src/cloudctl/guardrails.py          @rhyscraig
+src/cloudctl/use_exports.py         @rhyscraig
+src/cloudctl/cli.py                 @rhyscraig
+src/cloudctl/core.py                @rhyscraig
+src/cloudctl/config.py              @rhyscraig

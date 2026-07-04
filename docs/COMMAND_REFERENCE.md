@@ -1,316 +1,144 @@
-# CloudCtl Command Reference
+# cloudctl Command Reference
 
-Complete reference for all CloudCtl commands.
+All commands are invoked as `cloudctl <command>`. The full command set (from
+`cloudctl --help`): `login`, `switch`, `use`, `logout`, `cache-clear`, `exec`,
+`status`, `env`, `accounts`, `doctor`, `init`, `prompt`, `upgrade`, `org`,
+`list`, `uninstall`, `completion`, `list-roles`, `setup`, `whoami`, `open`,
+`orgs`.
 
-## Core Commands
+> Some verbs overlap (`login`/`switch`/`use`/`exec`, `status`/`env`/`whoami`).
+> `exec` is the canonical, stateless form for automation.
 
-### login
+## Core commands
 
-Create an authenticated session with AWS Identity Center.
+### `login <org>`
 
-```bash
-python3.12 -m cloudctl login --org <ORG> [--non-interactive]
-```
-
-**Options:**
-- `--org ORG` (required): Organization name (e.g., `bt-avm`)
-- `--non-interactive`: Skip prompts (required for automation)
-
-**Example:**
-```bash
-python3.12 -m cloudctl login --org bt-avm --non-interactive
-```
-
-**What it does:**
-1. Authenticates with SSO
-2. Creates ephemeral credentials
-3. Stores session locally (valid for 8-12 hours)
-
----
-
-### switch
-
-Assume a different role in an account.
+Authenticate an org's SSO session (opens a browser) and record it as the active
+context.
 
 ```bash
-python3.12 -m cloudctl switch <ORG> \
-  --account <ACCOUNT_ID> \
-  --role <ROLE_NAME> \
-  --region <REGION> \
-  [--non-interactive]
+cloudctl login myorg
 ```
 
-**Options:**
-- `ORG` (required): Organization name
-- `--account` (required): 12-digit account ID
-- `--role` (required): IAM role name
-- `--region` (required): AWS region (e.g., `us-east-1`)
-- `--non-interactive`: Skip prompts (required for automation)
+### `exec` — the canonical agent form
 
-**Example:**
-```bash
-python3.12 -m cloudctl switch bt-avm \
-  --account 235494790978 \
-  --role administrator \
-  --region us-east-1 \
-  --non-interactive
-```
-
----
-
-### exec
-
-Execute AWS commands with assumed role credentials. **PRIMARY COMMAND FOR AUTOMATION.**
+Run a command with credentials injected. Stateless: takes everything on the
+command line, needs no prior context. **Requires a literal `--`** before the
+child command.
 
 ```bash
-python3.12 -m cloudctl exec \
-  --org <ORG> \
-  --account <ACCOUNT_ID> \
-  --role <ROLE_NAME> \
-  --region <REGION> \
-  [--non-interactive] \
-  -- <COMMAND>
+cloudctl exec --org <ORG> --account <ID> --role <ROLE> --region <REGION> -- <command...>
 ```
 
-**Options:**
-- `--org` (required): Organization name
-- `--account` (required): 12-digit account ID
-- `--role` (required): IAM role name
-- `--region` (required): AWS region
-- `--non-interactive`: Skip prompts (required for automation)
-- `--`: Everything after this is the command to execute
-
-**Examples:**
-
-List S3 buckets:
-```bash
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role read-only \
-  --region us-east-1 \
-  --non-interactive \
-  -- aws s3 ls
-```
-
-Run Terraform:
-```bash
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role administrator \
-  --region us-east-1 \
-  --non-interactive \
-  -- terraform apply
-```
-
-Run complex bash command:
-```bash
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role read-only \
-  --region us-east-1 \
-  --non-interactive \
-  -- bash -c "aws s3 ls | grep -i prod"
-```
-
----
-
-### logout
-
-End current session and clear cached credentials.
+Options: `--org`, `--account`, `--role`, `--region`, `--json-errors` (emit
+errors as JSON).
 
 ```bash
-python3.12 -m cloudctl logout
+cloudctl exec --org myorg --account 123456789012 --role ReadOnly \
+  --region eu-west-2 -- aws s3 ls
+
+cloudctl exec --org myorg --account 123456789012 --role AdministratorAccess \
+  --region eu-west-2 -- terraform plan
 ```
 
-**What it does:**
-- Invalidates SSO session
-- Clears cached credentials
-- Requires re-authentication on next login
+Notes:
+- `--region` is the region the **child** runs in (injected as
+  `AWS_REGION`/`AWS_DEFAULT_REGION`). The SSO portal call uses the org's
+  `sso_region`.
+- No `AWS_PROFILE` is ever set.
 
----
+### `switch <org>` / `use <org>`
 
-## Utility Commands
-
-### doctor
-
-Check configuration and system health.
+Set a persistent context. `use` is an alias for `switch`. Emits export lines via
+the shell wrapper.
 
 ```bash
-python3.12 -m cloudctl doctor
+cloudctl switch myorg --account 123456789012 --role ReadOnly \
+  --region eu-west-2 --non-interactive
 ```
 
-**Output:**
-```
-✅ Python 3.12 available
-✅ CloudCtl package installed
-✅ orgs.yaml found
-✅ orgs.yaml YAML syntax valid
-✅ orgs.yaml schema valid
-✅ SSO session active
-```
+In a non-TTY / CI context, `switch` will **not** prompt — it fails fast asking
+for explicit `--account/--role/--region`.
 
-All checks must pass (✅) for CloudCtl to function.
+### `logout`
 
----
-
-### accounts
-
-List all accounts in an organization.
+Clear the active context and provider session.
 
 ```bash
-python3.12 -m cloudctl accounts --org <ORG>
+cloudctl logout
 ```
 
-**Example:**
-```bash
-python3.12 -m cloudctl accounts --org bt-avm
-```
+### `cache-clear`
 
-**Output:**
-```
-Account ID       Account Name
-235494790978     production
-123456789012     staging
-987654321098     development
-```
+Clear cached SSO tokens / account data.
 
----
+## Discovery commands
 
-### list-roles
+### `accounts <org>`
 
-List available or assigned IAM roles.
+List accessible accounts. Supports `--format json`, `--sync` (refresh from
+provider).
 
 ```bash
-# List all available roles
-python3.12 -m cloudctl list-roles --org <ORG> --account <ACCOUNT_ID>
-
-# List roles assigned to current user
-python3.12 -m cloudctl list-roles --org <ORG> --assigned
+cloudctl accounts myorg --format json
 ```
 
-**Examples:**
+### `list-roles <org> [--account <id>]`
 
-All available roles:
-```bash
-python3.12 -m cloudctl list-roles --org bt-avm --account 235494790978
-```
-
-Your assigned roles:
-```bash
-python3.12 -m cloudctl list-roles --org bt-avm --assigned
-```
-
----
-
-### org
-
-Show organization configuration.
+List IAM roles you can assume. Supports `--format json`.
 
 ```bash
-python3.12 -m cloudctl org --org <ORG>
+cloudctl list-roles myorg --account 123456789012 --format json
 ```
 
-**Example:**
-```bash
-python3.12 -m cloudctl org --org bt-avm
-```
+### `orgs` / `org list`
 
----
+List configured orgs.
 
-### status
+## Context / identity
 
-Show current session status.
+### `status` / `env`
 
-```bash
-python3.12 -m cloudctl status
-```
-
-**Output:**
-```
-Organization: bt-avm
-Account: 235494790978
-Role: administrator
-Region: us-east-1
-Session expires in: 2 hours
-```
-
----
-
-### init
-
-Initialize default configuration.
+Show the active context. Both support `--format json`.
 
 ```bash
-python3.12 -m cloudctl init
+cloudctl status --format json
 ```
 
-Creates `~/.config/cloudctl/orgs.yaml` with guided setup wizard.
+### `whoami`
 
----
+Show the active identity. Supports `--format json`.
 
-## Exit Codes
+## Setup / maintenance
 
-| Code | Meaning | Action |
-|------|---------|--------|
-| 0 | Success | Operation completed |
-| 1 | General error | Check error message |
-| 2 | Argument error | Check command syntax |
-| 30 | Network timeout | Retry operation |
-| 124 | Command timeout | Operation exceeded timeout |
+### `init` / `setup`
 
----
+Create (`init`) or merge sample defaults into (`setup`) `orgs.yaml`.
 
-## Common Patterns
+### `doctor`
 
-### Automation/CI-CD Pattern
-
-Always use this pattern for automation:
+Diagnose the install and config.
 
 ```bash
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role administrator \
-  --region us-east-1 \
-  --non-interactive \
-  -- <YOUR_COMMAND_HERE>
+cloudctl doctor
 ```
 
-### Interactive Pattern (Local Development)
+### `open`
 
-```bash
-# 1. Login
-python3.12 -m cloudctl login --org bt-avm
+Open the cloud provider console in a browser.
 
-# 2. Switch to desired role
-python3.12 -m cloudctl switch bt-avm \
-  --account 235494790978 \
-  --role developer \
-  --region us-east-1
+### `upgrade`, `uninstall`, `completion`, `prompt`, `list`
 
-# 3. Run commands
-python3.12 -m cloudctl exec ... -- aws s3 ls
-```
+Maintenance / helper commands (`completion` emits shell completion; `prompt`
+prints an agent-oriented usage prompt).
 
-### One-off Operations
+## Exit codes
 
-```bash
-# All in one command
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role read-only \
-  --region us-east-1 \
-  -- aws ec2 describe-instances
-```
+See [Exit Codes](EXIT_CODES.md). Summary: `0` OK, `1` ERROR, `2` AUTH,
+`3` NOT_FOUND, `4` DENIED, `5` USAGE.
 
----
+## Next steps
 
-## Next Steps
-
-- [Quick Start](QUICK_START.md) — Your first commands
-- [Troubleshooting](TROUBLESHOOTING.md) — Resolve errors
-- [Error Reference](ERROR_REFERENCE.md) — Error message index
+- [Quick Start](QUICK_START.md)
+- [Troubleshooting](TROUBLESHOOTING.md)
+- [Error Reference](ERROR_REFERENCE.md)

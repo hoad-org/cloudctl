@@ -1,283 +1,62 @@
-# CloudCtl Security Guide
+# cloudctl Security Notes
 
-Security best practices and compliance information for CloudCtl.
+`cloudctl` is a personal multi-cloud credential runner. This describes its actual
+security posture — no compliance claims are made.
 
-## Core Security Model
+## Credential model
 
-CloudCtl uses **ephemeral, ephemeral tokens**:
-- Temporary credentials generated on-demand
-- Automatic cleanup when expired
-- Never stored on disk
-- Unique to each operation
+- **Short-lived only.** cloudctl vends short-lived credentials on demand (AWS STS
+  keys via IAM Identity Center; a GCP access token; Azure `ARM_*` env). It does
+  **not** manage or store long-lived static credentials.
+- **Injected into a child process, not your shell.** `exec` sets the credential
+  environment only for the child command it spawns:
 
-This is **more secure** than long-lived credentials because:
-- Reduced exposure window (minutes to hours, not months)
-- Automatic lifecycle management
-- No manual credential rotation needed
-- Perfect audit trail of all credential usage
+  ```bash
+  cloudctl exec --org myorg --account 123456789012 --role ReadOnly \
+    --region eu-west-2 -- aws s3 ls
+  ```
 
-## What CloudCtl Logs
+- **No `AWS_PROFILE` is ever set.** The injected STS keys are self-contained; a
+  profile name would shadow them.
+- **SSO portal calls use the org's `sso_region`.** Command execution uses your
+  `--region`. The two are independent.
 
-CloudCtl maintains audit trail of:
-- Login/logout events (who, when, from where)
-- Role assumption operations (which account, which role)
-- Success and failure outcomes
-- Approval requests and responses
+## What is stored on disk
 
-Audit log location: `~/.cloudctl/audit.log`
+| Path | Contents |
+|------|----------|
+| `~/.config/cloudctl/orgs.yaml` | Org config: SSO start URLs (public), regions, provider settings. **No secrets.** |
+| `~/.config/cloudctl/current_context.json` | Active org/account/role/region pointer. **No credentials.** |
+| `~/.aws/sso/cache/` | Standard AWS SSO token cache (managed by AWS tooling). |
 
-### What CloudCtl Does NOT Log
+`orgs.yaml` is written with `0o600` permissions. cloudctl never writes STS keys
+or access tokens to its own files.
 
-**Secrets NEVER logged:**
-- AWS credentials (access keys, secret keys)
-- Session tokens
-- MFA codes
-- Password values
-- API keys
+> Note: an earlier `encryption.py` that AES-encrypted the (public) SSO start URLs
+> was removed — it was security theatre that could silently swallow config on a
+> decrypt failure.
 
-**AWS operations NOT logged:**
-- AWS command outputs (not CloudCtl's responsibility)
-- Data accessed via AWS CLI
-- Infrastructure changes made by your commands
+## Guardrails and break-glass
 
-This ensures audit trail is useful for compliance without exposing sensitive data.
+- **Never hangs.** In a non-TTY / CI / agent context the tool fails fast instead
+  of prompting.
+- **Sensitive roles** can be gated by `guardrails.py`. In a non-interactive
+  context, the justification for a sensitive-role assumption is read from the
+  `CLOUDCTL_BREAK_GLASS_REASON` environment variable rather than a prompt.
 
----
+## Good practice
 
-## Credential Exposure Prevention
+- Use `cloudctl exec` so credentials stay in the child process and out of your
+  shell history.
+- Don't export STS keys into your interactive shell or write them to files.
+- `cloudctl logout` / `cloudctl cache-clear` when you're done on a shared host.
 
-### DO ✅
+## Reporting
 
-- Use `cloudctl exec` for all AWS operations
-- Let CloudCtl manage credentials internally
-- Let ephemeral tokens auto-cleanup
-- Use `--non-interactive` for automation
+This is a personal repo; report issues via the repository's GitHub issues
+(`hoad-org/cloudctl`). Do not include real credentials in a report.
 
-### DO NOT ❌
+## Next steps
 
-- Save credentials to files
-- Print credentials to console
-- Put credentials in shell history
-- Export credentials to environment variables
-- Share credential strings
-- Store credentials in config files
-
----
-
-## Authentication & Authorization
-
-### SSO (Single Sign-On)
-
-CloudCtl uses AWS Identity Center (SSO) for all authentication:
-- Multi-factor authentication (MFA) support
-- Federated identity support
-- Automatic session management
-- Audit trail integration
-
-### Approval Gates
-
-Sensitive roles (admin, security, devops) require human approval:
-- 1-2 approvers (configurable per role)
-- Up to 30-second review time
-- Denial possible (user contact required)
-- Full audit trail
-
-### Role-Based Access Control (RBAC)
-
-Access controlled by:
-- SSO group membership
-- IAM role assumptions
-- Approval gate configuration
-- Region/partition restrictions
-
----
-
-## Audit & Compliance
-
-### Audit Trail
-
-```bash
-# View audit log
-cat ~/.cloudctl/audit.log
-
-# Sample entry:
-# 2026-06-03T13:45:12 [login] user=choad org=bt-avm status=success
-# 2026-06-03T13:46:00 [switch] user=choad org=bt-avm account=235494790978 role=admin status=success
-```
-
-### Retention
-
-- Local audit log: kept indefinitely
-- CloudCtl session cache: 12-hour TTL
-- Credentials: auto-destroyed on expiration
-- Platform audit logs: per organization policy
-
----
-
-## Security Configuration
-
-### Approval Gates
-
-```yaml
-approval_gate_roles:
-  admin: 2        # Requires 2 approvers
-  security: 2     # Requires 2 approvers
-  devops: 1       # Requires 1 approver
-```
-
-Sensitive roles automatically trigger approval gates. Non-sensitive roles don't.
-
-### MFA Requirements
-
-```yaml
-mfa_required_roles:
-  - admin
-  - security
-```
-
-Specified roles require MFA verification (TOTP, SMS, or WebAuthn).
-
----
-
-## Alternative Authentication Methods
-
-### NOT Recommended ❌
-
-**DO NOT use:**
-- AWS access keys manually entered
-- Long-lived IAM user credentials
-- Service principal secrets
-- Static AWS credentials in env vars
-
-**Why not:**
-- Long-lived = higher risk if leaked
-- Manual management = forget to rotate
-- Audit gaps = compliance issues
-- Defeats CloudCtl security model
-
-### Recommended ✅
-
-**DO use:**
-- CloudCtl (ephemeral tokens)
-- AWS Identity Center (SSO)
-- STS temporary credentials
-- MFA verification
-
----
-
-## Network Security
-
-### Encryption
-
-All CloudCtl-to-SSO communication is encrypted:
-- TLS 1.2+ required
-- Certificate validation enforced
-- No downgrade attacks possible
-
-### Credential Injection
-
-Credentials injected into subprocess environment only:
-- Parent shell does NOT have access
-- Subprocess auto-cleanup on exit
-- No shell history exposure
-
-Example:
-```bash
-python3.12 -m cloudctl exec ... -- aws s3 ls
-# aws s3 ls can see credentials
-# But your shell cannot access them
-```
-
----
-
-## Operational Security
-
-### Shared Systems
-
-On shared systems (CI/CD, shared servers):
-- Each user gets isolated CloudCtl session
-- Credentials not visible across users
-- Audit trail tracks all access
-- No credential file sharing
-
-### Local Development
-
-On your local machine:
-- Keep CloudCtl updated
-- Review `~/.cloudctl/audit.log` periodically
-- Logout (`cloudctl logout`) when done
-- Use unique roles per project
-
----
-
-## Security Incident Response
-
-If you suspect credential exposure:
-
-1. **Immediately logout:**
-   ```bash
-   python3.12 -m cloudctl logout
-   ```
-
-2. **Inform platform team** with:
-   - Timestamp of suspected exposure
-   - Which role/account was affected
-   - Suspected exposure method
-
-3. **Platform team will:**
-   - Revoke credentials
-   - Audit what was accessed
-   - Advise on remediation
-   - Rotate long-lived credentials if needed
-
----
-
-## Compliance
-
-CloudCtl supports:
-- **FedRAMP High** (GovCloud deployments)
-- **NIST 800-53** (federal compliance)
-- **SOC 2 Type II** (data security)
-- **PCI-DSS** (payment systems)
-- **HIPAA** (healthcare data)
-
-CloudCtl maintains:
-- Complete audit trail
-- Encryption in transit
-- Ephemeral credentials
-- MFA enforcement
-- Role-based access control
-
----
-
-## Security Checklist
-
-Before production use:
-
-- [ ] Configured approval gates for sensitive roles
-- [ ] MFA required for admin roles
-- [ ] Audit log review process established
-- [ ] Team trained on credential handling
-- [ ] No credentials stored in files or history
-- [ ] Using `cloudctl exec` for all AWS operations
-- [ ] CloudCtl updated to latest version
-- [ ] Regular security updates applied
-
----
-
-## Reporting Security Issues
-
-Found a security vulnerability? Report it:
-
-1. **Do NOT** create public GitHub issue
-2. Email security team with details
-3. Include: affected version, reproduction steps, impact
-4. Platform team will acknowledge within 24 hours
-
----
-
-## Next Steps
-
-- [Configuration](CONFIGURATION.md) — Set up approval gates and MFA
-- [Command Reference](COMMAND_REFERENCE.md) — Safe command patterns
-- [Troubleshooting](TROUBLESHOOTING.md) — Incident response
+- [Configuration](CONFIGURATION.md)
+- [Command Reference](COMMAND_REFERENCE.md)

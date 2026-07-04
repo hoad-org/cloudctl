@@ -1,114 +1,83 @@
-# CloudCtl Quick Start Guide
+# cloudctl Quick Start
 
-Get up and running with CloudCtl in 5 minutes.
+Get running in a few minutes. This describes the tool as it actually behaves
+(version `1.0.0b0`, beta).
 
-## 1. Install CloudCtl
+## 1. Install
 
-```bash
-python3.12 -m pip install cloudctl
-```
-
-## 2. Initialize Configuration
+Editable install from a clone of this repo:
 
 ```bash
-python3.12 -m cloudctl init
+python3.12 -m pip install -e .
+cloudctl doctor        # sanity-check the install and config
 ```
 
-This creates `~/.config/cloudctl/orgs.yaml` with prompts for your organization.
+## 2. Configure
 
-## 3. Verify Setup
+Config lives at `~/.config/cloudctl/orgs.yaml`. Create or merge it:
 
 ```bash
-python3.12 -m cloudctl doctor
+cloudctl init          # create / merge orgs.yaml
 ```
 
-All checks should show ✅.
+Configured orgs on a typical setup:
 
-## 4. Your First Command
+| Org | Provider | Notes |
+|-----|----------|-------|
+| `myorg` | AWS | IAM Identity Center, SSO region `eu-west-2` |
+| `gcp-terrorgems` | GCP | ADC auth |
+| `azure-craighoad` | Azure | subscription/tenant configured |
 
-### List Available Accounts
+## 3. Authenticate
 
 ```bash
-python3.12 -m cloudctl accounts --org bt-avm
+cloudctl login myorg          # opens a browser to complete SSO
 ```
 
-Output:
-```
-Account ID       Account Name
-235494790978     production
-123456789012     staging
-```
-
-### List Your Roles
+## 4. Discover accounts and roles
 
 ```bash
-python3.12 -m cloudctl list-roles --org bt-avm --assigned
+cloudctl accounts myorg --format json
+cloudctl list-roles myorg --account 123456789012 --format json
 ```
 
-Output:
-```
-✓ Your assigned roles in bt-avm:
-  - administrator
-  - developer
-  - read-only
-```
+## 5. Run a command with credentials injected
 
-## 5. Execute AWS Commands
+`exec` is the canonical, stateless form for automation. It needs a literal `--`
+before the child command:
 
 ```bash
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role read-only \
-  --region us-east-1 \
-  --non-interactive \
-  -- aws s3 ls
+cloudctl exec --org myorg --account 123456789012 --role ReadOnly \
+  --region eu-west-2 -- aws sts get-caller-identity
 ```
 
-## Common First Tasks
+More examples:
 
-### List S3 Buckets
 ```bash
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role read-only \
-  --region us-east-1 \
-  --non-interactive \
-  -- aws s3 ls
+# List S3 buckets
+cloudctl exec --org myorg --account 123456789012 --role ReadOnly \
+  --region eu-west-2 -- aws s3 ls
+
+# Terraform plan with injected short-lived creds
+cloudctl exec --org myorg --account 123456789012 --role AdministratorAccess \
+  --region eu-west-2 -- terraform plan
 ```
 
-### Describe EC2 Instances
-```bash
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role read-only \
-  --region us-east-1 \
-  --non-interactive \
-  -- aws ec2 describe-instances
-```
+## Things to know (the agent contract)
 
-### Run Terraform
-```bash
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role administrator \
-  --region us-east-1 \
-  --non-interactive \
-  -- terraform plan
-```
+1. **`exec` needs a literal `--`** before the child command, or argparse will
+   consume flags like `--query`/`--output` meant for the child.
+2. **`--region` is the region the child command runs in.** It is injected as
+   `AWS_REGION`/`AWS_DEFAULT_REGION`. The SSO portal call internally uses the
+   org's own `sso_region` (e.g. `eu-west-2`) — the two are not the same value.
+3. **No `AWS_PROFILE` is ever set.** Injected STS keys are self-contained.
+4. **Never hangs.** In a non-TTY / CI / agent context, `switch` fails fast
+   asking for explicit `--account/--role/--region` instead of showing a picker.
 
-## Critical Rules
+## Next steps
 
-1. **Use `--non-interactive`** — Required for automation
-2. **Put everything in ONE command** — Don't split across multiple calls
-3. **Discover roles first** — Always run `list-roles` before exec
-4. **Check `doctor` output** — All checks must pass
-
-## Next Steps
-
-- [Configuration](CONFIGURATION.md) — Advanced setup
-- [Command Reference](COMMAND_REFERENCE.md) — All commands
-- [Troubleshooting](TROUBLESHOOTING.md) — Error solutions
+- [Installation](INSTALLATION.md) — full install guide
+- [Command Reference](COMMAND_REFERENCE.md) — all commands
+- [Configuration](CONFIGURATION.md) — orgs.yaml and context
+- [Exit Codes](EXIT_CODES.md) — agent-facing exit codes
+- [Troubleshooting](TROUBLESHOOTING.md) — common problems
