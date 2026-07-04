@@ -446,32 +446,15 @@ def cmd_switch(args: Any) -> int:
             # (SSO might not be initialized yet, or token unavailable)
             utils.console.print(f"[dim]Note: Could not pre-validate role: {e}[/]")
 
-        # RBAC validation: check the user is authorized to access this role
-        # (allowed-roles allowlist, break-glass, approval gate, MFA gate).
+        # RBAC validation: check the user is authorized to access this role.
+        # cloudctl enforces exactly two real controls here — the allowed-roles
+        # allowlist (denies) and the break-glass audit for sensitive roles
+        # (records a justification). No MFA/approval theatre.
         allowed, message = validate_role_access(org_data, role, account)
         if not allowed:
             utils.console.print(f"[bold red]Access Denied:[/] {message}")
             # Guardrail rejection is a permission-denied condition.
             return exit_codes.DENIED
-
-        # Handle approval gates and MFA requirements
-        if message == "approval_required":
-            utils.console.print(
-                f"[bold yellow]⚠ Approval Required:[/] "
-                f"Role [cyan]{role}[/] requires approval before access."
-            )
-            utils.console.print(
-                "[yellow]Contact your organization administrator for approval.[/]"
-            )
-            return 1
-        elif message == "mfa_required":
-            utils.console.print(
-                f"[bold yellow]⚠ MFA Required:[/] "
-                f"Role [cyan]{role}[/] requires multi-factor authentication."
-            )
-            # In a real implementation, this would trigger MFA flow
-            # For now, just inform the user
-            return 1
 
         export_str = _self.emit_exports(org_data, account, role, region)
         _emit_eval_exports(export_str)

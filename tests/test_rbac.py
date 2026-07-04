@@ -1,9 +1,12 @@
 """Tests for the native RBAC orchestration in cloudctl.guardrails.
 
-Covers validate_role_access (allowed-roles allowlist, break-glass, approval and
-MFA gates), validate_multi_cloud_access (provider role-format checks),
-get_rbac_policy_summary, and the native audit-log query helpers. They live in
-guardrails and write to the single native audit log (~/.cloudctl/audit.log).
+Covers validate_role_access — the two REAL controls cloudctl enforces:
+the allowed-roles allowlist (denies) and the break-glass audit for sensitive
+roles (records a justification). There is no MFA or approval enforcement, so
+there are no tests for it. Also covers validate_multi_cloud_access (provider
+role-format checks), get_rbac_policy_summary, and the native audit-log query
+helpers. They live in guardrails and write to the single native audit log
+(~/.cloudctl/audit.log).
 """
 
 from pathlib import Path
@@ -49,23 +52,41 @@ class TestValidateRoleAccess:
         assert message == ""
         mock_break_glass.assert_called_once_with(org, "Admin")
 
-    @patch("cloudctl.guardrails.check_approval_required")
-    def test_approval_gate_returns_pending(self, mock_check_approval):
-        mock_check_approval.return_value = (True, 2)
-        org = {"name": "test-org", "allowed_roles": ["ReadOnly", "Admin"]}
-        allowed, message = rbac.validate_role_access(org, "Admin", "123456789012")
-        assert allowed is True
-        assert message == "approval_required"
+    def test_disallowed_role_writes_denied_audit_entry(self, tmp_path):
+        """A role NOT in allowed_roles is denied AND the denial is audited."""
+        org = {"name": "test-org", "allowed_roles": ["ReadOnly"]}
+        with patch.object(rbac, "AUDIT_LOG", tmp_path / "audit.log"):
+            allowed, message = rbac.validate_role_access(org, "Admin", "123456789012")
+            assert allowed is False
+            assert "not allowed" in message.lower()
+            content = (tmp_path / "audit.log").read_text()
+            assert "DENIED" in content
+            assert "not_in_allowed_roles" in content
+            assert "Admin" in content
 
-    @patch("cloudctl.guardrails.check_mfa_required")
-    @patch("cloudctl.guardrails.check_approval_required")
-    def test_mfa_gate_returns_pending(self, mock_check_approval, mock_check_mfa):
-        mock_check_approval.return_value = (False, 0)
-        mock_check_mfa.return_value = (True, "totp")
-        org = {"name": "test-org", "allowed_roles": ["ReadOnly", "Admin"]}
-        allowed, message = rbac.validate_role_access(org, "Admin", "123456789012")
-        assert allowed is True
-        assert message == "mfa_required"
+    def test_sensitive_role_break_glass_reason_writes_audit_entry(
+        self, tmp_path, monkeypatch
+    ):
+        """A sensitive role with CLOUDCTL_BREAK_GLASS_REASON is allowed and audited.
+
+        This drives the real (no-TTY) break-glass path end to end: the env var
+        supplies the justification and a GRANTED break_glass entry is written.
+        """
+        org = {
+            "name": "test-org",
+            "allowed_roles": ["Admin"],
+            "sensitive_roles": ["Admin"],
+        }
+        monkeypatch.setenv("CLOUDCTL_BREAK_GLASS_REASON", "prod incident #42")
+        monkeypatch.setenv("CI", "1")  # force the no-TTY branch, never prompt
+        with patch.object(rbac, "AUDIT_LOG", tmp_path / "audit.log"):
+            allowed, message = rbac.validate_role_access(org, "Admin", "123456789012")
+            assert allowed is True
+            assert message == ""
+            content = (tmp_path / "audit.log").read_text()
+            # Break-glass justification recorded, plus the GRANTED break_glass entry.
+            assert "prod incident #42" in content
+            assert "break_glass" in content
 
 
 class TestInputValidation:
@@ -165,40 +186,6 @@ class TestSensitiveRolesValidation:
             rbac.validate_role_access(org, "Admin", "123456789012")
 
 
-class TestApprovalGateValidation:
-    @patch("cloudctl.guardrails.check_approval_required")
-    def test_approval_required_returns_invalid_tuple(self, mock_check):
-        mock_check.return_value = "invalid"
-        org = {"name": "test-org"}
-        with pytest.raises((TypeError, ValueError)):
-            rbac.validate_role_access(org, "Admin", "123456789012")
-
-    @patch("cloudctl.guardrails.check_approval_required")
-    def test_approval_required_negative_approvers(self, mock_check):
-        mock_check.return_value = (True, -5)
-        org = {"name": "test-org"}
-        allowed, msg = rbac.validate_role_access(org, "Admin", "123456789012")
-        assert allowed is True
-        assert msg == "approval_required"
-
-
-class TestMFAGateValidation:
-    @patch("cloudctl.guardrails.check_mfa_required")
-    def test_mfa_required_returns_invalid_tuple(self, mock_check):
-        mock_check.return_value = "invalid"
-        org = {"name": "test-org"}
-        with pytest.raises((TypeError, ValueError)):
-            rbac.validate_role_access(org, "Admin", "123456789012")
-
-    @patch("cloudctl.guardrails.check_mfa_required")
-    def test_mfa_required_empty_method(self, mock_check):
-        mock_check.return_value = (True, "")
-        org = {"name": "test-org"}
-        allowed, msg = rbac.validate_role_access(org, "Admin", "123456789012")
-        assert allowed is True
-        assert msg == "mfa_required"
-
-
 class TestMultiCloudValidation:
     def test_validate_aws_role(self):
         org = {"name": "test-org", "allowed_roles": ["ReadOnly", "PowerUser"]}
@@ -256,36 +243,20 @@ class TestRBACPolicySummary:
             "name": "test-org",
             "allowed_roles": ["ReadOnly", "PowerUser"],
             "sensitive_roles": ["Admin"],
-            "approval_gate_roles": {"Admin": 2},
-            "mfa_required_roles": ["Admin", "SecurityAdmin"],
         }
         summary = rbac.get_rbac_policy_summary(org)
         assert "test-org" in summary
         assert "ReadOnly" in summary
         assert "break-glass" in summary
-        assert "Approval" in summary
-        assert "MFA" in summary
+        # No MFA/approval theatre is claimed in the policy summary.
+        assert "Approval" not in summary
+        assert "MFA" not in summary
 
     def test_summary_empty_org(self):
         org = {"name": "empty-org"}
         summary = rbac.get_rbac_policy_summary(org)
         assert "empty-org" in summary
         assert "Allowed Roles: None" in summary
-
-    def test_summary_with_non_dict_approval_gates(self):
-        org = {"name": "test-org", "approval_gate_roles": "not-a-dict"}
-        with pytest.raises(AttributeError):
-            rbac.get_rbac_policy_summary(org)
-
-    def test_summary_with_invalid_approval_count_type(self):
-        org = {"name": "test-org", "approval_gate_roles": {"Admin": "two approvers"}}
-        with pytest.raises(TypeError):
-            rbac.get_rbac_policy_summary(org)
-
-    def test_summary_with_zero_approvers(self):
-        org = {"name": "test-org", "approval_gate_roles": {"Admin": 0}}
-        summary = rbac.get_rbac_policy_summary(org)
-        assert "requires 0 approver" in summary
 
     def test_summary_with_unsorted_roles(self):
         org = {"name": "test-org", "allowed_roles": ["Zebra", "Alpha", "Beta"]}

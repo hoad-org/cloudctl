@@ -239,8 +239,6 @@ def sample_orgs_yaml(mock_home):
                 "sso_start_url": "https://beyondtrust.awsapps.com/start",
                 "sso_region": "us-east-1",
                 "sensitive_roles": ["admin", "devops", "security"],
-                "approval_gate_roles": {"admin": 2, "devops": 1},
-                "mfa_required_roles": ["admin", "security"],
             },
             "fdr-gvc": {
                 "provider": "aws",
@@ -248,7 +246,6 @@ def sample_orgs_yaml(mock_home):
                 "sso_start_url": "https://beyondtrust-govcloud.awsapps.com/start",
                 "sso_region": "us-gov-east-1",
                 "sensitive_roles": ["admin"],
-                "approval_gate_roles": {"admin": 2},
             },
         },
     }

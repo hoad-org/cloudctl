@@ -148,60 +148,6 @@ def check_break_glass(org: Dict[str, Any], role: str) -> None:
     _audit_log(org.get("name", "unknown"), role, reason)
 
 
-def check_approval_required(org: Dict[str, Any], role: str) -> tuple[bool, int]:
-    """Check if a role requires approval before switching.
-
-    Args:
-        org: Organization config dict
-        role: Role name being accessed
-
-    Returns:
-        (required: bool, num_approvers: int)
-        Secure default: unknown roles require approval (fail-closed)
-    """
-    approval_gates = org.get("approval_gate_roles", {})
-
-    # If role in approval gate config, use configured approver count
-    if role in approval_gates:
-        return True, approval_gates[role]
-
-    # If approval_gate_roles is defined but role not in it, no approval needed
-    # (explicit allowlist)
-    if approval_gates:
-        return False, 0
-
-    # No approval gates configured → no approval required (backward compatible)
-    return False, 0
-
-
-def check_mfa_required(org: Dict[str, Any], role: str) -> tuple[bool, str]:
-    """Check if a role requires MFA enforcement.
-
-    Args:
-        org: Organization config dict
-        role: Role name being accessed
-
-    Returns:
-        (required: bool, method: str)
-        method: "totp" | "webauthn" | "sms" (default: "totp")
-        Secure default: unknown roles require MFA if list is defined
-    """
-    mfa_roles = org.get("mfa_required_roles", [])
-
-    # If role in MFA required list, enforce MFA
-    if role in mfa_roles:
-        method = org.get("mfa_method", "totp")  # Default to TOTP
-        return True, method
-
-    # If mfa_required_roles is defined but role not in it, no MFA needed
-    # (explicit allowlist)
-    if mfa_roles:
-        return False, ""
-
-    # No MFA list configured → no MFA required (backward compatible)
-    return False, ""
-
-
 def validate_role_access(
     org: Dict[str, Any],
     role_name: str,
@@ -210,20 +156,27 @@ def validate_role_access(
     """Validate whether a role may be accessed in an organization.
 
     The single integration point for `cloudctl switch`'s authorization gate.
-    Orchestrates the native guardrail primitives (allowed-roles allowlist,
-    break-glass, approval gates, MFA) and records decisions to the native audit
-    log (``~/.cloudctl/audit.log``).
+    This is the *honest* contract: cloudctl enforces exactly two native
+    controls and claims no more.
+
+    1. **Allowed-roles allowlist.** When ``org["allowed_roles"]`` is set and the
+       requested role is not in it, access is DENIED. This actually blocks.
+    2. **Break-glass audit** for ``org["sensitive_roles"]``. Accessing a
+       sensitive role requires a justification (TTY prompt or
+       ``CLOUDCTL_BREAK_GLASS_REASON``) and records a real entry to the native
+       audit log (``~/.cloudctl/audit.log``). This actually records.
+
+    There is no MFA or approval enforcement: cloudctl has no approver system and
+    no MFA flow, so it does not pretend to gate on them.
 
     Returns:
         (allowed, message)
-        - (True, "")                 access granted (no further gate)
-        - (False, "<reason>")        access denied
-        - (True, "approval_required") gated on approval
-        - (True, "mfa_required")      gated on MFA
+        - (True, "")            access granted (allowed and audited)
+        - (False, "<reason>")   access denied (allowlist rejection or bad config)
     """
     org_name = org.get("name", "unknown")
 
-    # 1. Allowed-roles allowlist (when configured).
+    # 1. Allowed-roles allowlist (when configured). This is a real, blocking gate.
     allowed_roles = org.get("allowed_roles", [])
     if allowed_roles is None:
         allowed_roles = []
@@ -247,25 +200,7 @@ def validate_role_access(
         _audit_log(org_name, role_name, f"GRANTED account={account_id} break_glass")
         return True, ""
 
-    # 3. Approval gate.
-    approval_required, num_approvers = check_approval_required(org, role_name)
-    if approval_required:
-        _audit_log(
-            org_name,
-            role_name,
-            f"PENDING_APPROVAL account={account_id} approvers={num_approvers}",
-        )
-        return True, "approval_required"
-
-    # 4. MFA gate.
-    mfa_required, mfa_method = check_mfa_required(org, role_name)
-    if mfa_required:
-        _audit_log(
-            org_name, role_name, f"PENDING_MFA account={account_id} method={mfa_method}"
-        )
-        return True, "mfa_required"
-
-    # 5. Plain grant.
+    # 3. Plain grant (audited).
     _audit_log(org_name, role_name, f"GRANTED account={account_id}")
     return True, ""
 
@@ -300,8 +235,6 @@ def get_rbac_policy_summary(org: Dict[str, Any]) -> str:
     org_name = org.get("name", "unknown")
     allowed_roles = org.get("allowed_roles", [])
     sensitive_roles = org.get("sensitive_roles", [])
-    approval_gate_roles = org.get("approval_gate_roles", {})
-    mfa_required_roles = org.get("mfa_required_roles", [])
 
     lines = [f"RBAC Policy for org '{org_name}':", ""]
 
@@ -314,22 +247,6 @@ def get_rbac_policy_summary(org: Dict[str, Any]) -> str:
         lines.append(
             f"  Sensitive Roles (break-glass): {', '.join(sorted(sensitive_roles))}"
         )
-
-    if approval_gate_roles:
-        approvals = []
-        for role, count in sorted(approval_gate_roles.items()):
-            if not isinstance(count, int):
-                raise TypeError(
-                    f"Invalid approval_gate_roles configuration: '{role}' has count "
-                    f"'{count}' (type {type(count).__name__}), must be int"
-                )
-            approvals.append(
-                f"{role} (requires {count} approver{'s' if count != 1 else ''})"
-            )
-        lines.append(f"  Approval-Gated Roles: {', '.join(approvals)}")
-
-    if mfa_required_roles:
-        lines.append(f"  MFA-Required Roles: {', '.join(sorted(mfa_required_roles))}")
 
     lines.append("")
     return "\n".join(lines)
