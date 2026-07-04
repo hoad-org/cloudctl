@@ -4,17 +4,15 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
-from cloudctl import config, core, sso_cache, utils
+import pytest  # noqa: F401 — kept for test decorators/fixtures
+from cloudctl import config, core, sso_cache, utils  # noqa: F401
 
-
-@pytest.fixture()
-def mock_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(config, "HOME", tmp_path)
-    monkeypatch.setattr(core, "AWS_DIR", tmp_path / ".aws")
-    monkeypatch.setattr(core, "SSO_CACHE_DIR", tmp_path / ".aws" / "sso" / "cache")
-    return tmp_path
+# NOTE: the local `mock_home` fixture that used to live here shadowed the
+# hermetic autouse fixture in conftest.py and only redirected *some* of the
+# frozen path constants — it left CONFIG_DIR / CONTEXT_FILE / aws.SSO_CACHE_DIR
+# pointing at the real ~/.config and ~/.aws, so these tests deleted the user's
+# real context file and SSO token cache. Removed so all tests use the fully
+# isolated conftest fixture.
 
 
 def test_cmd_cache_clear(mock_home, mock_rich_console):

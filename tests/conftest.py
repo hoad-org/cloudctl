@@ -36,6 +36,39 @@ def mock_home(tmp_path, monkeypatch):
     (home / ".cloudctl").mkdir(exist_ok=True)
     (home / ".config" / "cloudctl").mkdir(parents=True, exist_ok=True)
 
+    # CRITICAL isolation: CONFIG_DIR / CONTEXT_FILE / AWS dirs are computed from
+    # Path.home() at *import* time, so setting the HOME env var above is not
+    # enough — the frozen module-level constants still point at the real
+    # ~/.config/cloudctl, and tests that save/clear context would clobber the
+    # user's live context file. Redirect every frozen path constant to the
+    # hermetic tmp home.
+    cfg_dir = home / ".config" / "cloudctl"
+    ctx_file = cfg_dir / "current_context.json"
+    import cloudctl.config as _config
+    import cloudctl.context_manager as _ctxmgr
+    import cloudctl.aws as _aws
+    import cloudctl.core as _core
+
+    aws_dir = home / ".aws"
+    sso_cache = aws_dir / "sso" / "cache"
+    monkeypatch.setattr(_config, "HOME", home, raising=False)
+    monkeypatch.setattr(_config, "CONFIG_DIR", cfg_dir, raising=False)
+    monkeypatch.setattr(_ctxmgr, "CONFIG_DIR", cfg_dir, raising=False)
+    monkeypatch.setattr(_ctxmgr, "CONTEXT_FILE", ctx_file, raising=False)
+    monkeypatch.setattr(_aws, "AWS_DIR", aws_dir, raising=False)
+    monkeypatch.setattr(_aws, "SSO_CACHE_DIR", sso_cache, raising=False)
+    # core re-binds these at import (AWS_DIR = aws.AWS_DIR), so patching aws
+    # alone leaves core's frozen copies pointing at the real ~/.aws — which is
+    # how a cache-clear test wiped the user's real SSO token cache.
+    monkeypatch.setattr(_core, "AWS_DIR", aws_dir, raising=False)
+    monkeypatch.setattr(_core, "SSO_CACHE_DIR", sso_cache, raising=False)
+    try:
+        import cloudctl.cli as _cli
+
+        monkeypatch.setattr(_cli, "CONTEXT_FILE", ctx_file, raising=False)
+    except Exception:
+        pass
+
     # Global browser mock to prevent tests from launching real windows
     import webbrowser
 
