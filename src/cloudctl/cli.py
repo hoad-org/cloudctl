@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 
-from . import core, utils
+from . import context_manager, core, utils
 from .use_exports import emit_exports  # noqa: F401 — re-exported for monkeypatch seam
 from .errors import CloudCtlError
 from .error_formatter import format_error
@@ -33,7 +33,11 @@ from .error_formatter import format_error
 console = utils.console
 stdout_console = utils.stdout_console
 
-CONTEXT_FILE = Path.home() / ".cloudctl" / "context.json"
+# Single source of truth for the active context. Previously this pointed at
+# ~/.cloudctl/context.json — a file that NOTHING wrote (switch/status/exec all
+# use context_manager's ~/.config/cloudctl/current_context.json), so `whoami`
+# and login-inference silently read an empty/stale file. Alias the real one.
+CONTEXT_FILE = context_manager.CONTEXT_FILE
 
 
 def _emit_eval_exports(export_str: str) -> None:
@@ -451,7 +455,21 @@ def cmd_exec(args: Any) -> int:
 
 
 def cmd_status(args: Any) -> int:
-    from .context_manager import print_status
+    from .context_manager import load_context, print_status
+
+    if getattr(args, "format", None) == "json":
+        ctx = load_context()
+        payload = {
+            "status": "active" if ctx else "no_context",
+            "org": (ctx.get("current_org") or ctx.get("org")) if ctx else None,
+            "account": ctx.get("account") if ctx else None,
+            "role": ctx.get("role") if ctx else None,
+            "region": ctx.get("region") if ctx else None,
+            "provider": ctx.get("provider", "aws") if ctx else None,
+        }
+        # Data goes to stdout so an agent can pipe it; never Rich-decorated.
+        stdout_console.print_json(data=payload)
+        return 0
 
     print_status()
     return 0

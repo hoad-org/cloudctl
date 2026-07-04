@@ -57,12 +57,32 @@ def cmd_login(org_name: str, force: bool = False) -> int:
                     utils.console.print("[green]Already authenticated.[/]")
             except Exception:
                 utils.console.print("[green]Already authenticated.[/]")
+            _record_login_context(org)
             return 0
 
     rc = provider.login(org)
     if rc == 0:
+        _record_login_context(org)
         utils.console.print("[green]Login Successful.[/]")
     return rc
+
+
+def _record_login_context(org: dict) -> None:
+    """Persist the authenticated org into the active context.
+
+    `login` establishes an SSO session but historically wrote NO context, so
+    `status` reported "No active context found" immediately after a successful
+    login — a silent lie to any agent that trusted the "Login Successful"
+    message. We record the org (and provider) now; account/role/region are
+    filled in by a later `switch` or supplied inline to `exec`.
+    """
+    try:
+        context_manager.save_context_update(
+            org=org.get("name", ""),
+            provider=org.get("provider", "aws"),
+        )
+    except Exception as e:
+        utils.debug_print(f"Could not record login context: {e}")
 
 
 def cmd_logout_str() -> str:

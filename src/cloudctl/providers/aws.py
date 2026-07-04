@@ -99,6 +99,17 @@ class AwsProvider(CloudProvider):
             console.print("[red]No valid SSO session. Run 'cloudctl login <org>'.[/]")
             sys.exit(1)
 
+        # The get-role-credentials call is an IAM Identity Center (SSO) portal
+        # API. It MUST be made in the SSO instance region (org.sso_region), NOT
+        # the region the user wants the *executed command* to run in. Conflating
+        # the two is the classic failure: an SSO instance in eu-west-2 vending
+        # creds for a command that targets us-east-1 would otherwise send the
+        # portal call to the wrong endpoint and fail with "session token not
+        # found or invalid". (list_accounts/list_roles already do this right.)
+        sso_region = (
+            org.get("sso_region") if isinstance(org, dict) else org.sso_region
+        )
+
         args = [
             "sso",
             "get-role-credentials",
@@ -109,7 +120,7 @@ class AwsProvider(CloudProvider):
             "--access-token",
             token.accessToken,
             "--region",
-            region,
+            sso_region,
         ]
         res = run_aws(args)
         if res.get("returncode") != 0:
@@ -127,13 +138,21 @@ class AwsProvider(CloudProvider):
             console.print("[red]No credentials returned from AWS STS.[/]")
             sys.exit(1)
 
-        name = org.get("name", "cloudctl") if isinstance(org, dict) else org.name
-        return {
+        # Return ONLY the short-lived STS keys, plus the region the executed
+        # command should target. Do NOT set AWS_PROFILE: these keys are
+        # self-contained, and a profile name that doesn't exist in
+        # ~/.aws/config takes precedence over the keys and makes the child
+        # command fail with "config profile could not be found". Profile
+        # management is exactly what this tool exists to avoid.
+        out = {
             "AWS_ACCESS_KEY_ID": creds["accessKeyId"],
             "AWS_SECRET_ACCESS_KEY": creds["secretAccessKey"],
             "AWS_SESSION_TOKEN": creds["sessionToken"],
-            "AWS_PROFILE": f"{name}-{account}-{role}",
         }
+        if region:
+            out["AWS_REGION"] = region
+            out["AWS_DEFAULT_REGION"] = region
+        return out
 
     def get_unsets(self) -> str:
         return "\n".join(f"unset {v}" for v in self._ENV_VARS)

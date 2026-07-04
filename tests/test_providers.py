@@ -463,3 +463,76 @@ class TestGcpProvider:
 
         monkeypatch.setattr(provider, "_gcloud", fake_gcloud)
         assert provider.logout(org) != 0
+
+
+# ---------------------------------------------------------------------------
+# AWS provider credential correctness (regression: region + no phantom profile)
+# ---------------------------------------------------------------------------
+
+
+class TestAwsProviderCredentials:
+    """Locks in the two credential-injection fixes for AwsProvider.
+
+    Before the fix, get_credentials sent the *command* region to the SSO
+    portal call (breaking cross-region use) and injected a phantom AWS_PROFILE
+    that shadowed the real STS keys. Neither behaviour had a direct test.
+    """
+
+    def _make(self, monkeypatch, captured):
+        from cloudctl.providers.aws import AwsProvider
+        import cloudctl.providers.aws as aws_mod
+
+        provider = AwsProvider()
+
+        class _Tok:
+            accessToken = "tok-xyz"
+
+        monkeypatch.setattr(provider, "load_token", lambda org: _Tok())
+
+        def fake_run_aws(args):
+            captured.append(args)
+            return {
+                "returncode": 0,
+                "stdout": json.dumps(
+                    {
+                        "roleCredentials": {
+                            "accessKeyId": "AKIA_TEST",
+                            "secretAccessKey": "secret",
+                            "sessionToken": "session",
+                        }
+                    }
+                ),
+                "stderr": "",
+            }
+
+        monkeypatch.setattr(aws_mod, "run_aws", fake_run_aws)
+        return provider
+
+    def test_portal_call_uses_sso_region_not_command_region(self, monkeypatch):
+        captured = []
+        provider = self._make(monkeypatch, captured)
+        org = {"name": "myorg", "sso_region": "eu-west-2"}
+
+        provider.get_credentials(org, "111122223333", "Admin", "us-east-1")
+
+        args = captured[0]
+        assert "--region" in args
+        region_arg = args[args.index("--region") + 1]
+        # The portal call must target the SSO instance region, never the
+        # region the executed command should run in.
+        assert region_arg == "eu-west-2"
+        assert region_arg != "us-east-1"
+
+    def test_no_phantom_aws_profile_and_region_injected(self, monkeypatch):
+        captured = []
+        provider = self._make(monkeypatch, captured)
+        org = {"name": "myorg", "sso_region": "eu-west-2"}
+
+        creds = provider.get_credentials(org, "111122223333", "Admin", "us-east-1")
+
+        # STS keys are self-contained; a profile name would shadow them.
+        assert "AWS_PROFILE" not in creds
+        assert creds["AWS_ACCESS_KEY_ID"] == "AKIA_TEST"
+        # The command region is injected so the child targets the right region.
+        assert creds["AWS_REGION"] == "us-east-1"
+        assert creds["AWS_DEFAULT_REGION"] == "us-east-1"
