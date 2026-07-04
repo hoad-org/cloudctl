@@ -4,7 +4,8 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
-from .base import CloudProvider
+from .. import exit_codes
+from .base import CloudProvider, ProviderCredentialError
 
 
 class AzureProvider(CloudProvider):
@@ -20,13 +21,23 @@ class AzureProvider(CloudProvider):
     Requires: Azure CLI (az) installed and on PATH.
 
     Credential injection contract (exec) — IMPORTANT SCOPE NOTE:
-        The `az` CLI cannot cleanly consume a raw bearer token from an
-        environment variable; it always uses its own `az login` session. Env
-        injection here therefore targets Terraform / OpenTofu (the azurerm
-        provider) and Azure SDK consumers, NOT the bare `az` CLI. We emit the
-        full ARM_* set (ARM_SUBSCRIPTION_ID, ARM_TENANT_ID, ARM_ACCESS_TOKEN)
-        and set ARM_USE_CLI=false whenever a token is present so azurerm uses
-        the injected token instead of the ambient CLI login.
+        The `az` CLI cannot consume a raw *bearer token* from an environment
+        variable; it always uses its own `az login` session. A raw ARM_ACCESS_
+        TOKEN therefore targets Terraform / OpenTofu (the azurerm provider) and
+        Azure SDK consumers, NOT the bare `az` CLI. We emit the full ARM_* set
+        (ARM_SUBSCRIPTION_ID, ARM_TENANT_ID, ARM_ACCESS_TOKEN) and set
+        ARM_USE_CLI=false whenever a token is present so azurerm uses the
+        injected token instead of the ambient CLI login.
+
+        HOWEVER: `az` (and azure-identity's EnvironmentCredential) DO honor
+        AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID (service-
+        principal login). So when the org config supplies SP creds
+        (client_id + client_secret + tenant_id), get_credentials ALSO emits
+        those three vars — and only then does a bare `az` command actually run
+        under the injected identity rather than the ambient login.
+        ``az_uses_injected_identity(org)`` reports exactly this: True iff SP
+        creds are configured. cloudctl does NOT invent credentials — with no SP
+        config, only the ARM_* set is emitted and the method returns False.
 
         get_credentials() is side-effect free: it never runs `az account set`
         (which would mutate the user's global default subscription and race
@@ -48,6 +59,8 @@ class AzureProvider(CloudProvider):
     _ENV_VARS = [
         "AZURE_SUBSCRIPTION_ID",
         "AZURE_TENANT_ID",
+        "AZURE_CLIENT_ID",
+        "AZURE_CLIENT_SECRET",
         "ARM_SUBSCRIPTION_ID",
         "ARM_TENANT_ID",
         "ARM_ACCESS_TOKEN",
@@ -102,6 +115,55 @@ class AzureProvider(CloudProvider):
         except (json.JSONDecodeError, ValueError):
             return None
 
+    @staticmethod
+    def _sp_creds(org: Dict[str, Any]) -> Optional[Dict[str, str]]:
+        """Return {client_id, client_secret, tenant_id} iff the org config
+        supplies a COMPLETE service-principal credential set, else None.
+        Never invents values."""
+        if not isinstance(org, dict):
+            return None
+        client_id = org.get("client_id")
+        client_secret = org.get("client_secret")
+        tenant_id = org.get("tenant_id")
+        if client_id and client_secret and tenant_id:
+            return {
+                "client_id": str(client_id),
+                "client_secret": str(client_secret),
+                "tenant_id": str(tenant_id),
+            }
+        return None
+
+    def az_uses_injected_identity(self, org: Dict[str, Any]) -> bool:
+        """True only when SP creds are configured — the sole case where a bare
+        `az` command runs under the injected identity (via AZURE_CLIENT_*)
+        rather than the ambient login."""
+        return self._sp_creds(org) is not None
+
+    def get_identity(self, org: Dict[str, Any]) -> Optional[Dict[str, str]]:
+        """LIVE identity via `az account show`. Returns
+        {"user","subscription_id","tenant_id"} or None if it cannot be
+        verified. Never fabricates from stored context."""
+        result = self._az(["account", "show", "--output", "json"])
+        if result["returncode"] != 0:
+            return None
+        try:
+            data = json.loads(result["stdout"] or "{}")
+        except (json.JSONDecodeError, ValueError):
+            return None
+        sub_id = data.get("id")
+        tenant_id = data.get("tenantId", "")
+        user = ""
+        user_obj = data.get("user")
+        if isinstance(user_obj, dict):
+            user = user_obj.get("name", "") or ""
+        if not sub_id:
+            return None
+        return {
+            "user": user,
+            "subscription_id": sub_id,
+            "tenant_id": tenant_id or "",
+        }
+
     def get_token_expiry(self, org: Dict[str, Any]) -> "Optional[Any]":
         """
         Return token expiry by calling 'az account get-access-token'.
@@ -126,12 +188,35 @@ class AzureProvider(CloudProvider):
     def list_accounts(self, org: Dict[str, Any], token: Any) -> List[Dict[str, str]]:
         result = self._az(["account", "list", "--output", "json"])
         if result["returncode"] != 0:
-            return []
+            # Do not swallow a command failure as an empty success. A nonzero rc
+            # (not logged in, expired) is AUTH, not "zero subscriptions".
+            stderr = result.get("stderr", "") or ""
+            low = stderr.lower()
+            _auth_markers = (
+                "az login",
+                "not logged in",
+                "please run",
+                "no subscription found",  # az emits this when the session is gone
+                "expired",
+            )
+            if any(m in low for m in _auth_markers):
+                raise ProviderCredentialError(
+                    exit_codes.AUTH,
+                    "Authentication required: run 'cloudctl login <org>'.",
+                )
+            raise ProviderCredentialError(
+                exit_codes.ERROR,
+                stderr.strip() or "az account list failed.",
+            )
         try:
-            subs = json.loads(result["stdout"])
+            subs = json.loads(result["stdout"] or "[]")
+            # A real, successful empty list → genuinely zero subscriptions.
             return [{"id": s["id"], "name": s["name"]} for s in subs]
         except (json.JSONDecodeError, KeyError, ValueError):
-            return []
+            raise ProviderCredentialError(
+                exit_codes.ERROR,
+                "Unexpected response from az account list.",
+            )
 
     def list_roles(self, org: Dict[str, Any], token: Any, account_id: str) -> List[str]:
         # Prefer a static configured list — RBAC queries can be very slow and noisy.
@@ -190,21 +275,20 @@ class AzureProvider(CloudProvider):
             ]
         )
         if token_result["returncode"] != 0:
-            from ..utils import console
-
-            console.print(
-                "[red]Failed to get Azure access token. Re-run 'cloudctl login <org>'.[/]"
+            # Do NOT print prose — the exec/CLI layer renders from the code.
+            raise ProviderCredentialError(
+                exit_codes.AUTH,
+                "Authentication required: run 'cloudctl login <org>'.",
             )
-            sys.exit(1)
 
         try:
             token_data = json.loads(token_result["stdout"])
             access_token = token_data["accessToken"]
         except (json.JSONDecodeError, KeyError):
-            from ..utils import console
-
-            console.print("[red]Unexpected token response from Azure CLI.[/]")
-            sys.exit(1)
+            raise ProviderCredentialError(
+                exit_codes.ERROR,
+                "Unexpected token response from Azure CLI.",
+            )
 
         tenant_id = org.get("tenant_id", token_data.get("tenant", ""))
 
@@ -218,6 +302,18 @@ class AzureProvider(CloudProvider):
             "ARM_TENANT_ID": tenant_id,
             "ARM_ACCESS_TOKEN": access_token,
         }
+
+        # Honest injection: only when the org config supplies a COMPLETE
+        # service-principal credential set do we emit the AZURE_CLIENT_* vars
+        # that `az` and azure-identity's EnvironmentCredential actually honor —
+        # this is what makes a bare `az` command run under the injected identity
+        # instead of the ambient login. We NEVER invent SP creds.
+        sp = self._sp_creds(org)
+        if sp:
+            creds["AZURE_CLIENT_ID"] = sp["client_id"]
+            creds["AZURE_CLIENT_SECRET"] = sp["client_secret"]
+            creds["AZURE_TENANT_ID"] = sp["tenant_id"]
+            creds["ARM_TENANT_ID"] = sp["tenant_id"]
 
         # When a token is present, tell azurerm to use it directly rather than
         # shelling out to the ambient `az` CLI login (which would be the wrong

@@ -1,8 +1,8 @@
 import json
-import sys
 from typing import Any, Dict, List, Optional
 
-from .base import CloudProvider
+from .. import exit_codes
+from .base import CloudProvider, ProviderCredentialError
 from ..aws import (
     run_aws,
 )
@@ -206,16 +206,89 @@ class AwsProvider(CloudProvider):
         except Exception:
             return []
 
+    def get_identity(self, org: Dict[str, Any]) -> Optional[Dict[str, str]]:
+        """LIVE identity via `sts get-caller-identity`.
+
+        Returns {"account","arn","user_id"} on success, or None if the call
+        fails for ANY reason (no session, denied, network). Never fabricates —
+        an unverifiable identity is None, not a guess echoed from context.
+        """
+        res = run_aws(["sts", "get-caller-identity", "--output", "json"])
+        if res.get("returncode") != 0:
+            return None
+        try:
+            data = json.loads(res.get("stdout", "") or "{}")
+        except (json.JSONDecodeError, ValueError):
+            return None
+        account = data.get("Account")
+        arn = data.get("Arn")
+        user_id = data.get("UserId")
+        if not (account and arn and user_id):
+            return None
+        return {"account": account, "arn": arn, "user_id": user_id}
+
+    @staticmethod
+    def _classify_aws_failure(stderr: str) -> ProviderCredentialError:
+        """Map an AWS CLI stderr / failure condition to a faithful
+        ProviderCredentialError. This is the fix for DENIED being misreported
+        as AUTH: a Forbidden/AccessDenied is code 4, not code 2."""
+        low = (stderr or "").lower()
+
+        # AUTH (2): the SSO session is missing/expired — re-login fixes it.
+        if (
+            "expiredtoken" in low
+            or "expired token" in low
+            or "no valid sso" in low
+            or "session token not found or invalid" in low
+            or "token has expired" in low
+            or "session is invalid" in low
+        ):
+            return ProviderCredentialError(
+                exit_codes.AUTH,
+                "Authentication required: run 'cloudctl login <org>'.",
+            )
+
+        # DENIED (4): the identity is valid but not authorized — relay the real
+        # reason so the user sees the truth, not a phantom "no SSO session".
+        if (
+            "accessdenied" in low
+            or "access denied" in low
+            or "forbidden" in low
+            or "not authorized" in low
+            or "no access" in low
+            or "unauthorizedexception" in low
+        ):
+            reason = stderr.strip() or "Access denied."
+            return ProviderCredentialError(exit_codes.DENIED, reason)
+
+        # NOT_FOUND (3): the account/role doesn't exist or isn't assigned.
+        if (
+            "not found" in low
+            or "resourcenotfound" in low
+            or "no role" in low
+            or "invalid account" in low
+            or "does not exist" in low
+        ):
+            reason = stderr.strip() or "Account or role not found."
+            return ProviderCredentialError(exit_codes.NOT_FOUND, reason)
+
+        # ERROR (1): genuinely uncategorised.
+        summary = stderr.strip() or "Failed to obtain AWS credentials."
+        return ProviderCredentialError(exit_codes.ERROR, summary)
+
     def get_credentials(
         self, org: Dict[str, Any], account: str, role: str, region: str
     ) -> Dict[str, str]:
-        # Load the cached SSO access token — required for get-role-credentials
+        # Load the cached SSO access token — required for get-role-credentials.
+        # A missing/absent token is unambiguously AUTH: no local session at all.
         token = self.load_token(org)
         if not token or not hasattr(token, "accessToken"):
-            # Messaging is owned by commands/exec.py, which catches this
-            # SystemExit and emits a single actionable AUTH/ERROR line
-            # (avoids a double message under `run --json-errors`).
-            sys.exit(1)
+            # Do NOT print prose here — the exec/CLI layer renders the message
+            # from the raised code (avoids a double line under --json-errors).
+            raise ProviderCredentialError(
+                exit_codes.AUTH,
+                "Authentication required: run 'cloudctl login <org>'.",
+            )
 
         # The get-role-credentials call is an IAM Identity Center (SSO) portal
         # API. It MUST be made in the SSO instance region (org.sso_region), NOT
@@ -240,14 +313,25 @@ class AwsProvider(CloudProvider):
         ]
         res = run_aws(args)
         if res.get("returncode") != 0:
-            # commands/exec.py owns the user-facing message (see above).
-            sys.exit(1)
+            # Classify the REAL cause from stderr so a Forbidden/AccessDenied is
+            # reported as DENIED (4), an expired token as AUTH (2), etc. — never
+            # a blanket "no valid SSO session".
+            raise self._classify_aws_failure(res.get("stderr", ""))
 
-        data = json.loads(res.get("stdout", "{}"))
+        try:
+            data = json.loads(res.get("stdout", "{}") or "{}")
+        except (json.JSONDecodeError, ValueError):
+            raise ProviderCredentialError(
+                exit_codes.ERROR,
+                "Unexpected response from AWS SSO get-role-credentials.",
+            )
         creds = data.get("roleCredentials", {})
         if not creds:
-            # commands/exec.py owns the user-facing message (see above).
-            sys.exit(1)
+            # rc==0 but no credentials in the payload — uncategorised failure.
+            raise ProviderCredentialError(
+                exit_codes.ERROR,
+                "AWS SSO returned no role credentials.",
+            )
 
         # Return ONLY the short-lived STS keys, plus the region the executed
         # command should target. Do NOT set AWS_PROFILE: these keys are

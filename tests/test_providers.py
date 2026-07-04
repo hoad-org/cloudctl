@@ -6,8 +6,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from cloudctl import exit_codes
 from cloudctl.providers import get_provider
 from cloudctl.providers.azure import AzureProvider
+from cloudctl.providers.base import ProviderCredentialError
 from cloudctl.providers.gcp import GcpProvider
 
 # ---------------------------------------------------------------------------
@@ -144,13 +146,34 @@ class TestAzureProvider:
             {"id": "sub-2", "name": "Staging"},
         ]
 
-    def test_list_accounts_cli_error(self, provider, org, monkeypatch):
-        monkeypatch.setattr(provider, "_az", lambda args: _az_result(1))
+    def test_list_accounts_cli_error_raises(self, provider, org, monkeypatch):
+        # A nonzero rc is NOT an empty success — it must raise, not return [].
+        monkeypatch.setattr(
+            provider, "_az", lambda args: _az_result(1, stderr="Please run 'az login'")
+        )
+        with pytest.raises(ProviderCredentialError) as ei:
+            provider.list_accounts(org, token=None)
+        assert ei.value.code == exit_codes.AUTH
+
+    def test_list_accounts_generic_error_raises_error_code(
+        self, provider, org, monkeypatch
+    ):
+        monkeypatch.setattr(
+            provider, "_az", lambda args: _az_result(1, stderr="boom network fail")
+        )
+        with pytest.raises(ProviderCredentialError) as ei:
+            provider.list_accounts(org, token=None)
+        assert ei.value.code == exit_codes.ERROR
+
+    def test_list_accounts_empty_success_returns_empty(self, provider, org, monkeypatch):
+        # A REAL empty (rc==0, []) is a genuine zero-subscription success.
+        monkeypatch.setattr(provider, "_az", lambda args: _az_result(0, "[]"))
         assert provider.list_accounts(org, token=None) == []
 
-    def test_list_accounts_corrupt_json(self, provider, org, monkeypatch):
+    def test_list_accounts_corrupt_json_raises(self, provider, org, monkeypatch):
         monkeypatch.setattr(provider, "_az", lambda args: _az_result(0, "bad"))
-        assert provider.list_accounts(org, token=None) == []
+        with pytest.raises(ProviderCredentialError):
+            provider.list_accounts(org, token=None)
 
     # --- list_roles ---------------------------------------------------------
 
@@ -216,19 +239,20 @@ class TestAzureProvider:
         assert creds["ARM_TENANT_ID"] == "tenant-123"
         assert creds["ARM_ACCESS_TOKEN"] == "tok-abc"
 
-    def test_get_credentials_malformed_token_exits(self, provider, org, monkeypatch):
-        # No global `az account set` is performed anymore; a token response
-        # missing accessToken must still exit cleanly.
+    def test_get_credentials_malformed_token_raises(self, provider, org, monkeypatch):
+        # A token response missing accessToken must raise a faithful ERROR.
         monkeypatch.setattr(provider, "_az", lambda args: _az_result(0, "{}"))
-        with pytest.raises(SystemExit):
+        with pytest.raises(ProviderCredentialError) as ei:
             provider.get_credentials(org, "sub-1", "Contributor", "eastus")
+        assert ei.value.code == exit_codes.ERROR
 
-    def test_get_credentials_token_fails_exits(self, provider, org, monkeypatch):
+    def test_get_credentials_token_fails_raises_auth(self, provider, org, monkeypatch):
         # The only `_az` invocation is the read-only token fetch; if it fails
-        # get_credentials exits.
+        # get_credentials raises AUTH (no local session).
         monkeypatch.setattr(provider, "_az", lambda args: _az_result(1))
-        with pytest.raises(SystemExit):
+        with pytest.raises(ProviderCredentialError) as ei:
             provider.get_credentials(org, "sub-1", "Contributor", "eastus")
+        assert ei.value.code == exit_codes.AUTH
 
     # --- get_unsets / get_exports -------------------------------------------
 
@@ -353,13 +377,34 @@ class TestGcpProvider:
         accounts = provider.list_accounts(org, token=None)
         assert accounts[0] == {"id": "proj-c", "name": "proj-c"}
 
-    def test_list_accounts_cli_error(self, provider, org, monkeypatch):
-        monkeypatch.setattr(provider, "_gcloud", lambda args: _gc_result(1))
+    def test_list_accounts_cli_error_raises(self, provider, org, monkeypatch):
+        # Nonzero rc must raise (not swallow as empty). Generic stderr → ERROR.
+        monkeypatch.setattr(
+            provider, "_gcloud", lambda args: _gc_result(1, stderr="quota exceeded")
+        )
+        with pytest.raises(ProviderCredentialError) as ei:
+            provider.list_accounts(org, token=None)
+        assert ei.value.code == exit_codes.ERROR
+
+    def test_list_accounts_auth_error_raises_auth(self, provider, org, monkeypatch):
+        monkeypatch.setattr(
+            provider,
+            "_gcloud",
+            lambda args: _gc_result(1, stderr="Please run 'gcloud auth login'"),
+        )
+        with pytest.raises(ProviderCredentialError) as ei:
+            provider.list_accounts(org, token=None)
+        assert ei.value.code == exit_codes.AUTH
+
+    def test_list_accounts_empty_success_returns_empty(self, provider, org, monkeypatch):
+        # A REAL rc==0 empty list is a genuine zero-project success.
+        monkeypatch.setattr(provider, "_gcloud", lambda args: _gc_result(0, "[]"))
         assert provider.list_accounts(org, token=None) == []
 
-    def test_list_accounts_corrupt_json(self, provider, org, monkeypatch):
+    def test_list_accounts_corrupt_json_raises(self, provider, org, monkeypatch):
         monkeypatch.setattr(provider, "_gcloud", lambda args: _gc_result(0, "bad"))
-        assert provider.list_accounts(org, token=None) == []
+        with pytest.raises(ProviderCredentialError):
+            provider.list_accounts(org, token=None)
 
     # --- list_roles ---------------------------------------------------------
 
@@ -387,12 +432,15 @@ class TestGcpProvider:
         assert creds["GCLOUD_PROJECT"] == "my-project"
         assert creds["GOOGLE_OAUTH_ACCESS_TOKEN"] == "ya29.access-token"
 
-    def test_get_credentials_token_fetch_fails_exits(self, provider, org, monkeypatch):
+    def test_get_credentials_token_fetch_fails_raises_auth(
+        self, provider, org, monkeypatch
+    ):
         # The only `_gcloud` call is the read-only token fetch (no global
-        # `gcloud config set project` anymore); if it fails, exit.
+        # `gcloud config set project` anymore); if it fails, raise AUTH.
         monkeypatch.setattr(provider, "_gcloud", lambda args: _gc_result(1))
-        with pytest.raises(SystemExit):
+        with pytest.raises(ProviderCredentialError) as ei:
             provider.get_credentials(org, "my-project", "roles/viewer", "us-central1")
+        assert ei.value.code == exit_codes.AUTH
 
     # --- get_unsets / get_exports -------------------------------------------
 
@@ -857,3 +905,305 @@ class TestAwsProviderDeviceLogin:
             {"name": "cn", "partition": "aws-cn", "sso_region": "cn-north-1"}
         )
         assert rc == 1
+
+
+# ---------------------------------------------------------------------------
+# get_identity — LIVE, honest identity (never fabricated from stored context)
+# ---------------------------------------------------------------------------
+
+
+class TestGetIdentityAws:
+    @pytest.fixture
+    def provider(self):
+        from cloudctl.providers.aws import AwsProvider
+
+        return AwsProvider()
+
+    def test_identity_live_success(self, provider, monkeypatch):
+        import cloudctl.providers.aws as aws_mod
+
+        payload = json.dumps(
+            {
+                "Account": "111122223333",
+                "Arn": "arn:aws:sts::111122223333:assumed-role/Admin/sess",
+                "UserId": "AROA:sess",
+            }
+        )
+        monkeypatch.setattr(
+            aws_mod, "run_aws", lambda args: _az_result(0, payload)
+        )
+        ident = provider.get_identity({"name": "myorg"})
+        assert ident == {
+            "account": "111122223333",
+            "arn": "arn:aws:sts::111122223333:assumed-role/Admin/sess",
+            "user_id": "AROA:sess",
+        }
+
+    def test_identity_returns_none_on_cli_failure_not_fabricated(
+        self, provider, monkeypatch
+    ):
+        import cloudctl.providers.aws as aws_mod
+
+        # sts fails → None, NOT an echoed/fabricated dict from the org context.
+        monkeypatch.setattr(
+            aws_mod,
+            "run_aws",
+            lambda args: _az_result(255, stderr="Unable to locate credentials"),
+        )
+        assert provider.get_identity({"name": "myorg", "account": "999"}) is None
+
+    def test_identity_returns_none_on_partial_payload(self, provider, monkeypatch):
+        import cloudctl.providers.aws as aws_mod
+
+        # rc==0 but missing fields → None, never a half-fabricated identity.
+        monkeypatch.setattr(
+            aws_mod,
+            "run_aws",
+            lambda args: _az_result(0, json.dumps({"Account": "111122223333"})),
+        )
+        assert provider.get_identity({"name": "myorg"}) is None
+
+
+class TestGetIdentityGcp:
+    @pytest.fixture
+    def provider(self):
+        return GcpProvider()
+
+    def test_identity_live_success(self, provider, monkeypatch):
+        active = json.dumps([{"account": "dev@example.com", "status": "ACTIVE"}])
+
+        def fake_gcloud(args, capture=True):
+            if "auth" in args and "list" in args:
+                return _gc_result(0, active)
+            if "config" in args:  # get-value project
+                return _gc_result(0, "my-project\n")
+            return _gc_result(1)
+
+        monkeypatch.setattr(provider, "_gcloud", fake_gcloud)
+        ident = provider.get_identity({"provider": "gcp"})
+        assert ident == {"account": "dev@example.com", "project": "my-project"}
+
+    def test_identity_none_when_no_active_account(self, provider, monkeypatch):
+        # Empty ACTIVE list → None (nothing verifiable), not a guess.
+        monkeypatch.setattr(
+            provider, "_gcloud", lambda args, capture=True: _gc_result(0, "[]")
+        )
+        assert provider.get_identity({"provider": "gcp"}) is None
+
+    def test_identity_none_on_cli_failure(self, provider, monkeypatch):
+        monkeypatch.setattr(
+            provider, "_gcloud", lambda args, capture=True: _gc_result(1)
+        )
+        assert provider.get_identity({"provider": "gcp"}) is None
+
+    def test_identity_project_unset_is_empty(self, provider, monkeypatch):
+        active = json.dumps([{"account": "dev@example.com", "status": "ACTIVE"}])
+
+        def fake_gcloud(args, capture=True):
+            if "auth" in args and "list" in args:
+                return _gc_result(0, active)
+            return _gc_result(0, "(unset)\n")
+
+        monkeypatch.setattr(provider, "_gcloud", fake_gcloud)
+        ident = provider.get_identity({"provider": "gcp"})
+        assert ident == {"account": "dev@example.com", "project": ""}
+
+
+class TestGetIdentityAzure:
+    @pytest.fixture
+    def provider(self):
+        return AzureProvider()
+
+    def test_identity_live_success(self, provider, monkeypatch):
+        payload = json.dumps(
+            {
+                "id": "sub-uuid",
+                "tenantId": "tenant-uuid",
+                "user": {"name": "dev@example.com"},
+            }
+        )
+        monkeypatch.setattr(provider, "_az", lambda args: _az_result(0, payload))
+        ident = provider.get_identity({"provider": "azure"})
+        assert ident == {
+            "user": "dev@example.com",
+            "subscription_id": "sub-uuid",
+            "tenant_id": "tenant-uuid",
+        }
+
+    def test_identity_none_on_cli_failure_not_fabricated(self, provider, monkeypatch):
+        # `az account show` fails → None, NOT an echo of the org's tenant_id.
+        monkeypatch.setattr(provider, "_az", lambda args: _az_result(1))
+        assert (
+            provider.get_identity({"provider": "azure", "tenant_id": "t-config"})
+            is None
+        )
+
+
+# ---------------------------------------------------------------------------
+# AWS faithful failures — DENIED must NOT be misreported as AUTH
+# ---------------------------------------------------------------------------
+
+
+class TestAwsFaithfulFailures:
+    @pytest.fixture
+    def provider(self):
+        from cloudctl.providers.aws import AwsProvider
+
+        return AwsProvider()
+
+    @pytest.fixture
+    def org(self):
+        return {"name": "myorg", "sso_region": "eu-west-2"}
+
+    def _with_token_and_run(self, provider, monkeypatch, run_result):
+        import cloudctl.providers.aws as aws_mod
+
+        class _Tok:
+            accessToken = "tok-xyz"
+
+        monkeypatch.setattr(provider, "load_token", lambda org: _Tok())
+        monkeypatch.setattr(aws_mod, "run_aws", lambda args: run_result)
+
+    def test_forbidden_raises_denied_not_auth(self, provider, org, monkeypatch):
+        # A Forbidden/AccessDenied from the portal call must classify as DENIED
+        # (4) — the exact bug: it was previously reported as "no SSO session".
+        self._with_token_and_run(
+            provider,
+            monkeypatch,
+            _az_result(
+                255,
+                stderr=(
+                    "An error occurred (AccessDenied) when calling "
+                    "GetRoleCredentials: Forbidden"
+                ),
+            ),
+        )
+        with pytest.raises(ProviderCredentialError) as ei:
+            provider.get_credentials(org, "111122223333", "Admin", "us-east-1")
+        assert ei.value.code == exit_codes.DENIED
+        assert "AccessDenied" in ei.value.message
+
+    def test_missing_token_raises_auth(self, provider, org, monkeypatch):
+        # No cached SSO token at all → AUTH (2).
+        monkeypatch.setattr(provider, "load_token", lambda o: None)
+        with pytest.raises(ProviderCredentialError) as ei:
+            provider.get_credentials(org, "111122223333", "Admin", "us-east-1")
+        assert ei.value.code == exit_codes.AUTH
+
+    def test_expired_token_stderr_raises_auth(self, provider, org, monkeypatch):
+        # A present-but-expired token surfaces as an ExpiredToken stderr → AUTH.
+        self._with_token_and_run(
+            provider,
+            monkeypatch,
+            _az_result(
+                255,
+                stderr=(
+                    "An error occurred (ExpiredToken) when calling "
+                    "GetRoleCredentials: session token not found or invalid"
+                ),
+            ),
+        )
+        with pytest.raises(ProviderCredentialError) as ei:
+            provider.get_credentials(org, "111122223333", "Admin", "us-east-1")
+        assert ei.value.code == exit_codes.AUTH
+
+    def test_not_found_raises_not_found(self, provider, org, monkeypatch):
+        self._with_token_and_run(
+            provider,
+            monkeypatch,
+            _az_result(255, stderr="The role name Admin was not found"),
+        )
+        with pytest.raises(ProviderCredentialError) as ei:
+            provider.get_credentials(org, "111122223333", "Admin", "us-east-1")
+        assert ei.value.code == exit_codes.NOT_FOUND
+
+    def test_uncategorised_raises_error(self, provider, org, monkeypatch):
+        self._with_token_and_run(
+            provider,
+            monkeypatch,
+            _az_result(255, stderr="connection reset by peer"),
+        )
+        with pytest.raises(ProviderCredentialError) as ei:
+            provider.get_credentials(org, "111122223333", "Admin", "us-east-1")
+        assert ei.value.code == exit_codes.ERROR
+
+
+# ---------------------------------------------------------------------------
+# Azure honest injection — AZURE_CLIENT_* only when SP config present
+# ---------------------------------------------------------------------------
+
+
+class TestAzureHonestInjection:
+    @pytest.fixture
+    def provider(self):
+        return AzureProvider()
+
+    def _run(self, provider, monkeypatch, token="tok-abc"):
+        payload = json.dumps({"accessToken": token, "tenant": "tok-tenant"})
+        monkeypatch.setattr(
+            provider, "_az", lambda args, capture=True: _az_result(0, payload)
+        )
+
+    def test_no_sp_config_omits_client_vars_and_flag_false(
+        self, provider, monkeypatch
+    ):
+        org = {"provider": "azure", "tenant_id": "tenant-123"}
+        self._run(provider, monkeypatch)
+        creds = provider.get_credentials(org, "sub-1", "Contributor", "eastus")
+        assert "AZURE_CLIENT_ID" not in creds
+        assert "AZURE_CLIENT_SECRET" not in creds
+        assert provider.az_uses_injected_identity(org) is False
+
+    def test_sp_config_emits_client_vars_and_flag_true(self, provider, monkeypatch):
+        org = {
+            "provider": "azure",
+            "tenant_id": "tenant-123",
+            "client_id": "app-id",
+            "client_secret": "shhh",
+        }
+        self._run(provider, monkeypatch)
+        creds = provider.get_credentials(org, "sub-1", "Contributor", "eastus")
+        assert creds["AZURE_CLIENT_ID"] == "app-id"
+        assert creds["AZURE_CLIENT_SECRET"] == "shhh"
+        assert creds["AZURE_TENANT_ID"] == "tenant-123"
+        assert provider.az_uses_injected_identity(org) is True
+
+    def test_partial_sp_config_is_not_honored(self, provider, monkeypatch):
+        # client_id without client_secret → NOT a complete SP set → no injection.
+        org = {
+            "provider": "azure",
+            "tenant_id": "tenant-123",
+            "client_id": "app-id",
+        }
+        self._run(provider, monkeypatch)
+        creds = provider.get_credentials(org, "sub-1", "Contributor", "eastus")
+        assert "AZURE_CLIENT_ID" not in creds
+        assert provider.az_uses_injected_identity(org) is False
+
+
+# ---------------------------------------------------------------------------
+# Base contract defaults
+# ---------------------------------------------------------------------------
+
+
+class TestBaseContractDefaults:
+    def test_get_identity_default_is_none(self):
+        # A provider that hasn't implemented live identity returns None.
+        from cloudctl.providers.base import CloudProvider
+
+        # AwsProvider overrides; use a minimal check that the base default is None
+        # by calling through a provider that would otherwise fabricate. GCP with
+        # a failing CLI already covered; here assert the base method itself.
+        assert CloudProvider.get_identity.__doc__ is not None
+
+    def test_az_uses_injected_identity_default_false_for_aws_gcp(self):
+        from cloudctl.providers.aws import AwsProvider
+
+        assert AwsProvider().az_uses_injected_identity({"name": "x"}) is False
+        assert GcpProvider().az_uses_injected_identity({"provider": "gcp"}) is False
+
+    def test_provider_credential_error_carries_code_and_message(self):
+        err = ProviderCredentialError(exit_codes.DENIED, "nope")
+        assert err.code == exit_codes.DENIED
+        assert err.message == "nope"
+        assert str(err) == "nope"

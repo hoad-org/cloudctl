@@ -4,7 +4,8 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
-from .base import CloudProvider
+from .. import exit_codes
+from .base import CloudProvider, ProviderCredentialError
 
 
 class GcpProvider(CloudProvider):
@@ -25,10 +26,22 @@ class GcpProvider(CloudProvider):
     Credential injection contract (exec):
         get_credentials() is side-effect free. Project and region selection are
         passed *per invocation* via CLOUDSDK_* env vars — cloudctl never mutates
-        the user's global gcloud config (no `gcloud config set`). Both the gcloud
-        CLI (CLOUDSDK_AUTH_ACCESS_TOKEN, CLOUDSDK_CORE_PROJECT,
-        CLOUDSDK_COMPUTE_REGION) and Google client libraries / ADC
-        (GOOGLE_OAUTH_ACCESS_TOKEN, GOOGLE_CLOUD_PROJECT) are covered.
+        the user's global gcloud config (no `gcloud config set`).
+
+        What each injected var ACTUALLY does (honest accounting):
+          - CLOUDSDK_AUTH_ACCESS_TOKEN: honored by the `gcloud` CLI itself, which
+            runs the child gcloud command under this bearer token. NOTE: `gsutil`
+            does NOT honor this var — it authenticates via the boto/gcloud config
+            it inherits, so a bare `gsutil` may still run under the ambient login.
+          - CLOUDSDK_CORE_PROJECT / CLOUDSDK_COMPUTE_REGION: gcloud CLI project /
+            region selection, per-invocation.
+          - GOOGLE_OAUTH_ACCESS_TOKEN: this is NOT a standard Application Default
+            Credentials variable — google-auth / ADC do not read it. It is
+            honored by Terraform's Google provider (google/google-beta), which
+            reads GOOGLE_OAUTH_ACCESS_TOKEN as a static access token. Standard
+            client libraries using ADC are NOT covered by env injection here.
+          - GOOGLE_CLOUD_PROJECT / GCLOUD_PROJECT: project id read by many
+            client libraries and third-party tools.
 
     Requires: gcloud CLI installed and on PATH.
 
@@ -144,18 +157,76 @@ class GcpProvider(CloudProvider):
         # No real expiry available — conservative fallback (see docstring).
         return datetime.now(timezone.utc) + timedelta(hours=1)
 
+    def get_identity(self, org: Dict[str, Any]) -> Optional[Dict[str, str]]:
+        """LIVE identity via gcloud: the ACTIVE account email + configured
+        project. Returns {"account","project"} or None if the active account
+        cannot be verified. Never fabricates from stored context.
+        """
+        acct_res = self._gcloud(
+            ["auth", "list", "--filter=status:ACTIVE", "--format=json"]
+        )
+        if acct_res["returncode"] != 0:
+            return None
+        try:
+            accounts = json.loads(acct_res["stdout"] or "[]")
+        except (json.JSONDecodeError, ValueError):
+            return None
+        email = ""
+        if accounts:
+            email = accounts[0].get("account", "") or ""
+        if not email:
+            # No active account → nothing verifiable. Do not guess.
+            return None
+
+        proj_res = self._gcloud(["config", "get-value", "project"])
+        project = ""
+        if proj_res["returncode"] == 0:
+            project = proj_res["stdout"].strip()
+            # gcloud emits the literal "(unset)" when no project is configured.
+            if project in ("(unset)", ""):
+                project = ""
+        return {"account": email, "project": project}
+
     def list_accounts(self, org: Dict[str, Any], token: Any) -> List[Dict[str, str]]:
         result = self._gcloud(["projects", "list", "--format=json"])
         if result["returncode"] != 0:
-            return []
+            # STOP swallowing failure as empty: a nonzero rc (wrong identity,
+            # revoked token, network) is NOT "zero projects". Distinguish the
+            # two so `accounts` never reports command-failure as an empty
+            # success. Classify as AUTH when the stderr says re-auth is needed,
+            # otherwise ERROR.
+            stderr = result.get("stderr", "") or ""
+            low = stderr.lower()
+            _auth_markers = (
+                "reauth",
+                "credentials",
+                "not logged in",
+                "please run",
+                "unauthorized",
+                "invalid_grant",
+                "login",
+            )
+            if any(m in low for m in _auth_markers):
+                raise ProviderCredentialError(
+                    exit_codes.AUTH,
+                    "Authentication required: run 'cloudctl login <org>'.",
+                )
+            raise ProviderCredentialError(
+                exit_codes.ERROR,
+                stderr.strip() or "gcloud projects list failed.",
+            )
         try:
-            projects = json.loads(result["stdout"])
+            projects = json.loads(result["stdout"] or "[]")
+            # A real, successful empty result → genuinely zero projects.
             return [
                 {"id": p["projectId"], "name": p.get("name", p["projectId"])}
                 for p in projects
             ]
         except (json.JSONDecodeError, KeyError, ValueError):
-            return []
+            raise ProviderCredentialError(
+                exit_codes.ERROR,
+                "Unexpected response from gcloud projects list.",
+            )
 
     def list_roles(self, org: Dict[str, Any], token: Any, account_id: str) -> List[str]:
         # NOTE: `--role` is NOT a functional credential selector on GCP. Unlike
@@ -179,13 +250,12 @@ class GcpProvider(CloudProvider):
         # Fetch a fresh access token (read-only; no global state change).
         token_result = self._gcloud(["auth", "print-access-token"])
         if token_result["returncode"] != 0:
-            from ..utils import console
-
-            console.print(
-                "[red]Failed to get GCP access token. "
-                "Re-run 'cloudctl login <org>'.[/]"
+            # Do NOT print prose here — the exec/CLI layer renders from the code.
+            # A failed token print means the local session is gone/expired: AUTH.
+            raise ProviderCredentialError(
+                exit_codes.AUTH,
+                "Authentication required: run 'cloudctl login <org>'.",
             )
-            sys.exit(1)
 
         access_token = token_result["stdout"].strip()
 
@@ -196,11 +266,14 @@ class GcpProvider(CloudProvider):
             # tools use GCLOUD_PROJECT.
             "CLOUDSDK_CORE_PROJECT": account,
             "GCLOUD_PROJECT": account,
-            # The gcloud CLI honors CLOUDSDK_AUTH_ACCESS_TOKEN — this is what
-            # makes the child `gcloud`/`gsutil` run under the injected identity
-            # instead of the ambient login.
+            # The gcloud CLI honors CLOUDSDK_AUTH_ACCESS_TOKEN — this makes the
+            # child `gcloud` command run under the injected identity. NOTE:
+            # `gsutil` does NOT read this var, so a bare gsutil may still use the
+            # ambient login.
             "CLOUDSDK_AUTH_ACCESS_TOKEN": access_token,
-            # Google client libraries / ADC honor GOOGLE_OAUTH_ACCESS_TOKEN.
+            # GOOGLE_OAUTH_ACCESS_TOKEN is read by Terraform's Google provider as
+            # a static access token. It is NOT a standard ADC variable —
+            # google-auth / client-library ADC do not read it.
             "GOOGLE_OAUTH_ACCESS_TOKEN": access_token,
         }
 
