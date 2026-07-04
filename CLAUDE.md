@@ -116,11 +116,12 @@ direct test, which is why they survived. See
   `list-roles`; `whoami` and `exec` have no JSON mode yet. Console output still
   goes to stdout in places it should go to stderr.
 - **Exit codes**: the documented 2/3/4/5 scheme is only partially emitted.
-- **Bloat still present**: `encryption.py` (AES-256 over public SSO start URLs —
-  security theatre, wired into `config.py` load/save) and `wizard/` (~863 LOC,
-  tied to `init`) are candidates for removal but are entangled with critical
-  paths; cut them carefully with tests.
-- Removed already: dead `skills/` tree, `pricing`, `watch`, `okta` plugin.
+- **Bloat still present**: `wizard/` (~863 LOC, tied to `init`) is a candidate
+  for removal but is entangled with critical paths; cut it carefully with tests.
+- Removed already: dead `skills/` tree, `pricing`, `watch`, `okta` plugin, and
+  `encryption.py` (AES-256 over public SSO start URLs — security theatre that
+  was wired into `config.py` load/save; its decrypt-on-load could silently
+  swallow config).
 
 ## Golden rules when changing this tool
 

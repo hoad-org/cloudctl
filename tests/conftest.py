@@ -349,23 +349,6 @@ def validate_error_types():
     return _validate
 
 
-@pytest.fixture
-def validate_encryption_roundtrip():
-    """Helper to test encryption/decryption roundtrips.
-
-    Used for testing config encryption module.
-    """
-
-    def _validate(encrypt_fn, decrypt_fn, plaintext):
-        """Test that encrypt->decrypt returns original plaintext."""
-        ciphertext = encrypt_fn(plaintext)
-        assert ciphertext != plaintext, "Encryption should not return plaintext"
-        decrypted = decrypt_fn(ciphertext)
-        assert decrypted == plaintext, "Decryption should return original plaintext"
-
-    return _validate
-
-
 # ============================================================================
 # MARKER-BASED TEST CATEGORIZATION
 # ============================================================================
@@ -389,9 +372,6 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers",
         "error_handling: Mark test as testing error handling and edge cases",
-    )
-    config.addinivalue_line(
-        "markers", "encryption: Mark test as testing encryption/decryption"
     )
     config.addinivalue_line(
         "markers", "role_validation: Mark test as testing role validation"
