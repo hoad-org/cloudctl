@@ -191,11 +191,14 @@ verify against a real `cloudctl` invocation.
 
 ## Honest limitations
 
-- **The SSO access token is the one credential written to disk** — the standard
-  `~/.aws/sso/cache/` file (mode `0o600`), the same file the AWS CLI itself
-  writes. The *vended* STS keys are never written to disk. A truly "no
-  credentials on disk" mode (in-memory only / `--no-cache`) is **not yet
-  implemented**.
+- **Credential storage is opt-out.** By default the SSO access token is cached
+  in the standard `~/.aws/sso/cache/` (mode `0o600`, the same file the AWS CLI
+  writes) so sessions can be reused; the *vended* STS keys are never written to
+  disk. For **zero credentials on disk**, use `run --no-cache`: cloudctl
+  authenticates in memory and vends creds without ever writing the SSO token.
+  Combine with `-- bash -c '...'` to run many commands under one in-memory auth.
+  (`--no-cache` is AWS-specific — GCP/Azure tokens are owned by `gcloud`/`az`,
+  which cloudctl never writes.)
 - **GCP service-account impersonation** and a **machine-readable capabilities
   index** are deliberately out of scope for now — cloudctl stays a thin wrapper.
 - The human-oriented `switch` path still depends on the shell-function wrapper

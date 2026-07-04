@@ -162,13 +162,18 @@ pattern.
   right sites; usage errors are `5`, not `2`.
 - **Value/vocab help** — `run --help` and top-level help state the benefit and
   the `--account`/`--role` vocabulary map.
+- **Zero-disk `--no-cache` mode** — `run --no-cache` authenticates in memory and
+  vends STS without cloudctl ever writing the SSO token. AWS token acquisition
+  (`_obtain_sso_token`) is split from caching; `authenticate_in_memory()` +
+  `get_credentials(token=…)` power the path. GCP/Azure: no-op (their tokens are
+  owned by gcloud/az).
 
 ### Open / known limits
 
-- **The SSO access token is the one credential written to disk** — standard
-  `~/.aws/sso/cache/` (mode `0o600`), the same file the AWS CLI writes. Vended
-  STS keys are never persisted. A truly "no creds on disk" mode (in-memory /
-  `--no-cache`) is **not yet implemented**.
+- **Credential storage is opt-out, not absent.** By default the SSO access token
+  is cached in the standard `~/.aws/sso/cache/` (`0o600`, same file the AWS CLI
+  writes) for session reuse; the vended STS keys are never persisted. Use
+  `run --no-cache` for zero credentials on disk (in-memory auth).
 - **GCP service-account impersonation** and a **machine-readable capabilities
   index** are deliberately **out of the thin-wrapper scope** for now.
 - **Verb redundancy** — `login`/`switch`/`use` + the read verbs still overlap; a
