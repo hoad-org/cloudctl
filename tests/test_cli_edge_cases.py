@@ -95,10 +95,24 @@ def test_cmd_login_chaining_exceptions(monkeypatch: pytest.MonkeyPatch) -> None:
     assert mock_switch.called
 
 
+def _force_tty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make cli._non_interactive see an interactive TTY (no CI/agent env),
+    so the interactive-picker code path under test is actually reached."""
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("CLAUDECODE", raising=False)
+
+    class _T:
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr("cloudctl.cli.sys.stdin", _T())
+
+
 def test_cmd_switch_keyboard_interrupt(
     monkeypatch: pytest.MonkeyPatch, mock_rich_console: Any
 ) -> None:
     """Verify that Ctrl+C in interactive mode returns a clean error."""
+    _force_tty(monkeypatch)
     monkeypatch.setattr("cloudctl.cli.load_context", lambda: {})
     monkeypatch.setattr(
         "cloudctl.interactive.run_interactive_use",
@@ -120,6 +134,7 @@ def test_cmd_switch_generic_exception(
     monkeypatch: pytest.MonkeyPatch, mock_rich_console: Any
 ) -> None:
     """Verify that unexpected failures in the switch logic are caught."""
+    _force_tty(monkeypatch)
     monkeypatch.setattr("cloudctl.cli.load_context", lambda: {})
     monkeypatch.setattr(
         "cloudctl.interactive.run_interactive_use",

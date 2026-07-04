@@ -14,9 +14,21 @@ class GcpProvider(CloudProvider):
     Concepts mapped to cloudctl's cloud-agnostic model:
         account  → GCP Project (id = projectId, name = display name)
         role     → IAM role (e.g. roles/viewer, roles/editor)
-                   GCP has no runtime role-switching via SSO; roles are IAM bindings.
-                   The "selected role" is stored in context for audit purposes.
+                   GCP has NO runtime role-switching the way AWS SSO permission
+                   sets do; roles are static IAM bindings on the project. `--role`
+                   is therefore NOT a functional credential selector on GCP — the
+                   effective permissions come entirely from the IAM policy bound
+                   to the authenticated identity. The selected role is retained
+                   only for display/audit; see list_roles().
         region   → GCP region (e.g. us-central1, europe-west1)
+
+    Credential injection contract (exec):
+        get_credentials() is side-effect free. Project and region selection are
+        passed *per invocation* via CLOUDSDK_* env vars — cloudctl never mutates
+        the user's global gcloud config (no `gcloud config set`). Both the gcloud
+        CLI (CLOUDSDK_AUTH_ACCESS_TOKEN, CLOUDSDK_CORE_PROJECT,
+        CLOUDSDK_COMPUTE_REGION) and Google client libraries / ADC
+        (GOOGLE_OAUTH_ACCESS_TOKEN, GOOGLE_CLOUD_PROJECT) are covered.
 
     Requires: gcloud CLI installed and on PATH.
 
@@ -38,8 +50,10 @@ class GcpProvider(CloudProvider):
     _ENV_VARS = [
         "GOOGLE_CLOUD_PROJECT",
         "CLOUDSDK_CORE_PROJECT",
+        "CLOUDSDK_COMPUTE_REGION",
         "GCLOUD_PROJECT",
         "GOOGLE_OAUTH_ACCESS_TOKEN",
+        "CLOUDSDK_AUTH_ACCESS_TOKEN",
     ]
 
     # ------------------------------------------------------------------ helpers
@@ -92,17 +106,42 @@ class GcpProvider(CloudProvider):
 
     def get_token_expiry(self, org: Dict[str, Any]) -> "Optional[Any]":
         """
-        GCP access tokens issued by gcloud expire in ~1 hour; gcloud refreshes
-        them automatically.  We estimate expiry as now+1h when a valid token
-        exists, so cloudctl watch can proactively re-auth near the threshold.
+        Return the expiry of the active gcloud access token.
+
+        Prefer the real expiry when gcloud exposes it: `gcloud auth
+        print-access-token --format=json` emits a ``token_expiry`` field
+        (RFC3339). If that is available we parse and return it.
+
+        Fallback: older gcloud builds (and the plain, non-JSON token print)
+        do not surface an issue/expiry time. GCP OAuth access tokens live
+        exactly 3600 s and gcloud refreshes them transparently, so when no
+        real expiry is readable we conservatively estimate now + 1 h — this is
+        only used by `cloudctl watch` to proactively re-auth near the
+        threshold, so over-estimating expiry would be the only harmful
+        direction, and now+1h never does that.
         """
         from datetime import datetime, timezone, timedelta
+
+        # Try to read a real expiry from the JSON token output first.
+        json_result = self._gcloud(["auth", "print-access-token", "--format=json"])
+        if json_result["returncode"] == 0 and json_result["stdout"].strip():
+            try:
+                data = json.loads(json_result["stdout"])
+                expiry_raw = data.get("token_expiry") or data.get("expiry")
+                if expiry_raw:
+                    # RFC3339, e.g. "2024-03-15T10:30:00Z" or with offset.
+                    normalized = expiry_raw.replace("Z", "+00:00")
+                    dt = datetime.fromisoformat(normalized)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
+            except (json.JSONDecodeError, ValueError, KeyError):
+                pass
 
         token = self.load_token(org)
         if not token:
             return None
-        # GCP ADC tokens last exactly 3600 s; we can't read the exact issue time
-        # without parsing gcloud's credential cache, so we estimate conservatively.
+        # No real expiry available — conservative fallback (see docstring).
         return datetime.now(timezone.utc) + timedelta(hours=1)
 
     def list_accounts(self, org: Dict[str, Any], token: Any) -> List[Dict[str, str]]:
@@ -119,23 +158,25 @@ class GcpProvider(CloudProvider):
             return []
 
     def list_roles(self, org: Dict[str, Any], token: Any, account_id: str) -> List[str]:
-        # GCP roles are IAM bindings, not runtime-switchable.
-        # We use the configured list for display/audit; the actual permissions
-        # are determined by IAM policies on the project.
+        # NOTE: `--role` is NOT a functional credential selector on GCP. Unlike
+        # AWS SSO permission sets, GCP has no runtime role assumption — the
+        # effective permissions are fixed by the IAM policy bound to the
+        # authenticated identity on the project. This returns the static
+        # configured list purely for display/audit in the picker; selecting a
+        # different entry here does NOT change the credentials that
+        # get_credentials() emits.
         return list(org.get("roles", ["roles/viewer", "roles/editor", "roles/owner"]))
 
     def get_credentials(
         self, org: Dict[str, Any], account: str, role: str, region: str
     ) -> Dict[str, str]:
-        # Set the active project (side-effect on gcloud config).
-        set_result = self._gcloud(["config", "set", "project", account])
-        if set_result["returncode"] != 0:
-            from ..utils import console
+        # Side-effect free: project/region are selected *per invocation* through
+        # CLOUDSDK_* env vars below. We deliberately do NOT run
+        # `gcloud config set project ...` — mutating the user's global gcloud
+        # config violates exec's "without changing context" contract and races
+        # across concurrent invocations.
 
-            console.print(f"[red]Failed to set GCP project {account}[/]")
-            sys.exit(1)
-
-        # Fetch a fresh access token.
+        # Fetch a fresh access token (read-only; no global state change).
         token_result = self._gcloud(["auth", "print-access-token"])
         if token_result["returncode"] != 0:
             from ..utils import console
@@ -148,14 +189,27 @@ class GcpProvider(CloudProvider):
 
         access_token = token_result["stdout"].strip()
 
-        return {
+        creds = {
             "GOOGLE_CLOUD_PROJECT": account,
-            # gcloud SDK reads CLOUDSDK_CORE_PROJECT; many third-party tools use GCLOUD_PROJECT
+            # gcloud CLI reads CLOUDSDK_CORE_PROJECT for project selection
+            # per-invocation (no `gcloud config set` needed); many third-party
+            # tools use GCLOUD_PROJECT.
             "CLOUDSDK_CORE_PROJECT": account,
             "GCLOUD_PROJECT": account,
-            # Terraform google provider / SDKs use this to skip re-fetching a token
+            # The gcloud CLI honors CLOUDSDK_AUTH_ACCESS_TOKEN — this is what
+            # makes the child `gcloud`/`gsutil` run under the injected identity
+            # instead of the ambient login.
+            "CLOUDSDK_AUTH_ACCESS_TOKEN": access_token,
+            # Google client libraries / ADC honor GOOGLE_OAUTH_ACCESS_TOKEN.
             "GOOGLE_OAUTH_ACCESS_TOKEN": access_token,
         }
+
+        # Region is optional; only inject it when provided so we don't force a
+        # region on tools that don't need one.
+        if region:
+            creds["CLOUDSDK_COMPUTE_REGION"] = region
+
+        return creds
 
     def get_unsets(self) -> str:
         return "\n".join(f"unset {v}" for v in self._ENV_VARS)

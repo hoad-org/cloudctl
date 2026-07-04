@@ -1,3 +1,4 @@
+import os
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -116,6 +117,25 @@ def check_break_glass(org: Dict[str, Any], role: str) -> None:
         f"[bold yellow]⚠ SENSITIVE ROLE ACCESS:[/] "
         f"Role [red]{role}[/] requires a justification reason."
     )
+
+    # Never hang on a prompt without a TTY. An agent supplies the required
+    # justification via CLOUDCTL_BREAK_GLASS_REASON; absent that, fail fast
+    # (exit 2 = auth/authorization gate) rather than blocking forever.
+    _no_tty = os.environ.get("CI") or os.environ.get("CLAUDECODE")
+    try:
+        _no_tty = _no_tty or not sys.stdin.isatty()
+    except Exception:
+        _no_tty = True
+    if _no_tty:
+        reason = os.environ.get("CLOUDCTL_BREAK_GLASS_REASON")
+        if not reason:
+            utils.console.print(
+                "[red]Sensitive role requires a justification but no TTY is "
+                "available.[/] Set [bold]CLOUDCTL_BREAK_GLASS_REASON[/bold]."
+            )
+            sys.exit(2)
+        _audit_log(org.get("name", "unknown"), role, reason)
+        return
 
     try:
         reason = inquirer.text(

@@ -19,6 +19,22 @@ class AzureProvider(CloudProvider):
 
     Requires: Azure CLI (az) installed and on PATH.
 
+    Credential injection contract (exec) — IMPORTANT SCOPE NOTE:
+        The `az` CLI cannot cleanly consume a raw bearer token from an
+        environment variable; it always uses its own `az login` session. Env
+        injection here therefore targets Terraform / OpenTofu (the azurerm
+        provider) and Azure SDK consumers, NOT the bare `az` CLI. We emit the
+        full ARM_* set (ARM_SUBSCRIPTION_ID, ARM_TENANT_ID, ARM_ACCESS_TOKEN)
+        and set ARM_USE_CLI=false whenever a token is present so azurerm uses
+        the injected token instead of the ambient CLI login.
+
+        get_credentials() is side-effect free: it never runs `az account set`
+        (which would mutate the user's global default subscription and race
+        across concurrent invocations). Subscription selection is passed
+        per-invocation via env (AZURE_SUBSCRIPTION_ID / ARM_SUBSCRIPTION_ID),
+        and any child `az` command cloudctl runs itself passes `--subscription`
+        explicitly rather than relying on global state.
+
     Org config keys:
         provider:        "azure"
         tenant_id:       Azure AD tenant UUID (optional — az login prompts if absent)
@@ -35,6 +51,7 @@ class AzureProvider(CloudProvider):
         "ARM_SUBSCRIPTION_ID",
         "ARM_TENANT_ID",
         "ARM_ACCESS_TOKEN",
+        "ARM_USE_CLI",
     ]
 
     # ------------------------------------------------------------------ helpers
@@ -155,13 +172,11 @@ class AzureProvider(CloudProvider):
     def get_credentials(
         self, org: Dict[str, Any], account: str, role: str, region: str
     ) -> Dict[str, str]:
-        # Set the active subscription context (side-effect on az CLI state).
-        set_result = self._az(["account", "set", "--subscription", account])
-        if set_result["returncode"] != 0:
-            from ..utils import console
-
-            console.print(f"[red]Failed to set Azure subscription {account}[/]")
-            sys.exit(1)
+        # Side-effect free: we do NOT run `az account set` (which would mutate
+        # the user's global default subscription and race across concurrent
+        # invocations). Subscription selection is passed per-invocation: the
+        # `--subscription` flag on this read-only token fetch, and the
+        # (ARM|AZURE)_SUBSCRIPTION_ID env vars returned below.
 
         # Fetch a short-lived access token for the subscription.
         token_result = self._az(
@@ -193,14 +208,24 @@ class AzureProvider(CloudProvider):
 
         tenant_id = org.get("tenant_id", token_data.get("tenant", ""))
 
-        return {
+        creds = {
             "AZURE_SUBSCRIPTION_ID": account,
             "AZURE_TENANT_ID": tenant_id,
-            # Terraform / OpenTofu use ARM_* prefix
+            # Terraform / OpenTofu use the ARM_* prefix. These target the
+            # azurerm provider and Azure SDKs, NOT the bare `az` CLI (see the
+            # class docstring's scope note).
             "ARM_SUBSCRIPTION_ID": account,
             "ARM_TENANT_ID": tenant_id,
             "ARM_ACCESS_TOKEN": access_token,
         }
+
+        # When a token is present, tell azurerm to use it directly rather than
+        # shelling out to the ambient `az` CLI login (which would be the wrong
+        # identity for exec-style injection).
+        if access_token:
+            creds["ARM_USE_CLI"] = "false"
+
+        return creds
 
     def get_unsets(self) -> str:
         return "\n".join(f"unset {v}" for v in self._ENV_VARS)

@@ -92,6 +92,25 @@ def load_context():
         return {}
 
 
+def _non_interactive(args: Any = None) -> bool:
+    """True when we must NOT show an interactive prompt.
+
+    An agent (or any script) driving the binary has no TTY to answer a picker,
+    so prompting would hang forever. Treat as non-interactive when the flag is
+    set, stdin is not a TTY, or a known CI/agent env var is present. Every
+    interactive site must gate on this and fail fast with an actionable error
+    instead of blocking.
+    """
+    if getattr(args, "non_interactive", False):
+        return True
+    try:
+        if not sys.stdin.isatty():
+            return True
+    except Exception:
+        return True
+    return any(os.environ.get(v) for v in ("CI", "CLAUDECODE", "AWSCTL_HEADLESS"))
+
+
 # ---------------------------------------------------------------------------
 # Version helpers
 # ---------------------------------------------------------------------------
@@ -305,6 +324,12 @@ def cmd_switch(args: Any) -> int:
                     org_data = get_org(org_name)
                 except Exception:
                     org_data = {"name": org_name, "provider": "aws"}
+            elif _non_interactive(args):
+                utils.console.print(
+                    "[red]Multiple organizations configured and no TTY to "
+                    "prompt.[/] Pass [bold]--org <name>[/bold] explicitly."
+                )
+                return 5
             else:
                 try:
                     from InquirerPy import inquirer
@@ -328,14 +353,19 @@ def cmd_switch(args: Any) -> int:
             except SystemExit:
                 return 1
 
-        # Handle --non-interactive mode: require all arguments, skip prompts
-        non_interactive = getattr(args, "non_interactive", False)
+        # Non-interactive when the flag is set OR there's no TTY / we're in a
+        # CI/agent context. In that case require all args and NEVER prompt —
+        # prompting would hang an agent forever.
+        non_interactive = _non_interactive(args)
         if non_interactive:
             if not all([account_arg, role_arg, region_arg]):
                 utils.console.print(
-                    "[red]--non-interactive requires --account, --role, and --region[/]"
+                    "[red]No TTY to prompt: --account, --role and --region are "
+                    "required here.[/] "
+                    "e.g. [bold]cloudctl switch <org> --account <id> --role "
+                    "<role> --region <region>[/bold]"
                 )
-                return 1
+                return 5
             account, role, region = account_arg, role_arg, region_arg
         else:
             # Interactive mode: use run_interactive_use for prompts

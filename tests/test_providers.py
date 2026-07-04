@@ -206,13 +206,9 @@ class TestAzureProvider:
 
     def test_get_credentials_success(self, provider, org, monkeypatch):
         token_payload = json.dumps({"accessToken": "tok-abc", "tenant": "tenant-123"})
-
-        def fake_az(args):
-            if "set" in args:
-                return _az_result(0)
-            return _az_result(0, token_payload)
-
-        monkeypatch.setattr(provider, "_az", fake_az)
+        monkeypatch.setattr(
+            provider, "_az", lambda args: _az_result(0, token_payload)
+        )
         creds = provider.get_credentials(org, "sub-1", "Contributor", "eastus")
 
         assert creds["AZURE_SUBSCRIPTION_ID"] == "sub-1"
@@ -221,23 +217,17 @@ class TestAzureProvider:
         assert creds["ARM_TENANT_ID"] == "tenant-123"
         assert creds["ARM_ACCESS_TOKEN"] == "tok-abc"
 
-    def test_get_credentials_set_fails_exits(self, provider, org, monkeypatch):
-        def fake_az(args):
-            if "set" in args:
-                return _az_result(1)
-            return _az_result(0, "{}")
-
-        monkeypatch.setattr(provider, "_az", fake_az)
+    def test_get_credentials_malformed_token_exits(self, provider, org, monkeypatch):
+        # No global `az account set` is performed anymore; a token response
+        # missing accessToken must still exit cleanly.
+        monkeypatch.setattr(provider, "_az", lambda args: _az_result(0, "{}"))
         with pytest.raises(SystemExit):
             provider.get_credentials(org, "sub-1", "Contributor", "eastus")
 
     def test_get_credentials_token_fails_exits(self, provider, org, monkeypatch):
-        def fake_az(args):
-            if "set" in args:
-                return _az_result(0)
-            return _az_result(1)
-
-        monkeypatch.setattr(provider, "_az", fake_az)
+        # The only `_az` invocation is the read-only token fetch; if it fails
+        # get_credentials exits.
+        monkeypatch.setattr(provider, "_az", lambda args: _az_result(1))
         with pytest.raises(SystemExit):
             provider.get_credentials(org, "sub-1", "Contributor", "eastus")
 
@@ -250,13 +240,9 @@ class TestAzureProvider:
 
     def test_get_exports_format(self, provider, org, monkeypatch):
         token_payload = json.dumps({"accessToken": "tok-xyz", "tenant": "t-1"})
-
-        def fake_az(args):
-            if "set" in args:
-                return _az_result(0)
-            return _az_result(0, token_payload)
-
-        monkeypatch.setattr(provider, "_az", fake_az)
+        monkeypatch.setattr(
+            provider, "_az", lambda args: _az_result(0, token_payload)
+        )
         exports = provider.get_exports(org, "sub-1", "Contributor", "eastus")
         for line in exports.splitlines():
             assert line.startswith("export ")
@@ -392,15 +378,9 @@ class TestGcpProvider:
     # --- get_credentials ----------------------------------------------------
 
     def test_get_credentials_success(self, provider, org, monkeypatch):
-        calls = []
-
-        def fake_gcloud(args):
-            calls.append(args)
-            if "set" in args:
-                return _gc_result(0)
-            return _gc_result(0, "ya29.access-token\n")
-
-        monkeypatch.setattr(provider, "_gcloud", fake_gcloud)
+        monkeypatch.setattr(
+            provider, "_gcloud", lambda args: _gc_result(0, "ya29.access-token\n")
+        )
         creds = provider.get_credentials(
             org, "my-project", "roles/viewer", "us-central1"
         )
@@ -410,21 +390,10 @@ class TestGcpProvider:
         assert creds["GCLOUD_PROJECT"] == "my-project"
         assert creds["GOOGLE_OAUTH_ACCESS_TOKEN"] == "ya29.access-token"
 
-    def test_get_credentials_set_project_fails_exits(self, provider, org, monkeypatch):
-        monkeypatch.setattr(provider, "_gcloud", lambda args: _gc_result(1))
-        with pytest.raises(SystemExit):
-            provider.get_credentials(org, "my-project", "roles/viewer", "us-central1")
-
     def test_get_credentials_token_fetch_fails_exits(self, provider, org, monkeypatch):
-        call_count = [0]
-
-        def fake_gcloud(args):
-            call_count[0] += 1
-            if "set" in args:
-                return _gc_result(0)
-            return _gc_result(1)  # token fetch fails
-
-        monkeypatch.setattr(provider, "_gcloud", fake_gcloud)
+        # The only `_gcloud` call is the read-only token fetch (no global
+        # `gcloud config set project` anymore); if it fails, exit.
+        monkeypatch.setattr(provider, "_gcloud", lambda args: _gc_result(1))
         with pytest.raises(SystemExit):
             provider.get_credentials(org, "my-project", "roles/viewer", "us-central1")
 
@@ -436,12 +405,9 @@ class TestGcpProvider:
             assert f"unset {var}" in unsets
 
     def test_get_exports_format(self, provider, org, monkeypatch):
-        def fake_gcloud(args):
-            if "set" in args:
-                return _gc_result(0)
-            return _gc_result(0, "ya29.tok\n")
-
-        monkeypatch.setattr(provider, "_gcloud", fake_gcloud)
+        monkeypatch.setattr(
+            provider, "_gcloud", lambda args: _gc_result(0, "ya29.tok\n")
+        )
         exports = provider.get_exports(org, "my-project", "roles/viewer", "us-central1")
         for line in exports.splitlines():
             assert line.startswith("export ")
@@ -536,3 +502,185 @@ class TestAwsProviderCredentials:
         # The command region is injected so the child targets the right region.
         assert creds["AWS_REGION"] == "us-east-1"
         assert creds["AWS_DEFAULT_REGION"] == "us-east-1"
+
+
+# ---------------------------------------------------------------------------
+# GCP credential-injection correctness
+# (regression: no global `gcloud config set`, gcloud-honored token var, region)
+# ---------------------------------------------------------------------------
+
+
+class TestGcpCredentialInjection:
+    """Locks in the side-effect-free, correct-identity GCP credential fixes.
+
+    Before the fix, get_credentials mutated the user's global gcloud config
+    (`gcloud config set project`) and only emitted GOOGLE_OAUTH_ACCESS_TOKEN,
+    which the gcloud/gsutil CLIs do NOT read — so a child `gcloud` silently ran
+    under the ambient login (wrong identity).
+    """
+
+    @pytest.fixture
+    def provider(self):
+        return GcpProvider()
+
+    @pytest.fixture
+    def org(self):
+        return {"provider": "gcp", "allowed_regions": ["us-central1"]}
+
+    def _capture(self, provider, monkeypatch):
+        calls = []
+
+        def fake_gcloud(args, capture=True):
+            calls.append(args)
+            return _gc_result(0, "ya29.access-token\n")
+
+        monkeypatch.setattr(provider, "_gcloud", fake_gcloud)
+        return calls
+
+    def test_no_global_config_set_project(self, provider, org, monkeypatch):
+        calls = self._capture(provider, monkeypatch)
+        provider.get_credentials(org, "my-project", "roles/viewer", "us-central1")
+
+        # The user's global gcloud config must never be mutated.
+        for args in calls:
+            assert not (
+                "config" in args and "set" in args
+            ), f"get_credentials invoked global `gcloud config set`: {args}"
+
+    def test_sets_gcloud_honored_access_token(self, provider, org, monkeypatch):
+        self._capture(provider, monkeypatch)
+        creds = provider.get_credentials(
+            org, "my-project", "roles/viewer", "us-central1"
+        )
+
+        # The gcloud CLI honors CLOUDSDK_AUTH_ACCESS_TOKEN — this is what makes
+        # a child `gcloud`/`gsutil` run under the injected identity.
+        assert creds["CLOUDSDK_AUTH_ACCESS_TOKEN"] == "ya29.access-token"
+        # Client-library / ADC var is still emitted for SDK consumers.
+        assert creds["GOOGLE_OAUTH_ACCESS_TOKEN"] == "ya29.access-token"
+
+    def test_project_selected_via_env_only(self, provider, org, monkeypatch):
+        self._capture(provider, monkeypatch)
+        creds = provider.get_credentials(
+            org, "my-project", "roles/viewer", "us-central1"
+        )
+        # gcloud reads CLOUDSDK_CORE_PROJECT per-invocation — no config mutation.
+        assert creds["CLOUDSDK_CORE_PROJECT"] == "my-project"
+
+    def test_region_injected_when_provided(self, provider, org, monkeypatch):
+        self._capture(provider, monkeypatch)
+        creds = provider.get_credentials(
+            org, "my-project", "roles/viewer", "europe-west1"
+        )
+        assert creds["CLOUDSDK_COMPUTE_REGION"] == "europe-west1"
+
+    def test_region_omitted_when_empty(self, provider, org, monkeypatch):
+        self._capture(provider, monkeypatch)
+        creds = provider.get_credentials(org, "my-project", "roles/viewer", "")
+        assert "CLOUDSDK_COMPUTE_REGION" not in creds
+
+    def test_get_token_expiry_uses_real_expiry_when_available(
+        self, provider, org, monkeypatch
+    ):
+        from datetime import datetime, timezone
+
+        payload = json.dumps(
+            {"token": "ya29.tok", "token_expiry": "2030-01-01T00:00:00Z"}
+        )
+
+        def fake_gcloud(args, capture=True):
+            if "--format=json" in args:
+                return _gc_result(0, payload)
+            return _gc_result(0, "ya29.tok\n")
+
+        monkeypatch.setattr(provider, "_gcloud", fake_gcloud)
+        expiry = provider.get_token_expiry(org)
+        assert expiry == datetime(2030, 1, 1, tzinfo=timezone.utc)
+
+    def test_get_token_expiry_falls_back_to_estimate(self, provider, org, monkeypatch):
+        # JSON output unavailable (older gcloud) — fall back to now+1h estimate.
+        def fake_gcloud(args, capture=True):
+            if "--format=json" in args:
+                return _gc_result(1)
+            return _gc_result(0, "ya29.tok\n")
+
+        monkeypatch.setattr(provider, "_gcloud", fake_gcloud)
+        expiry = provider.get_token_expiry(org)
+        assert expiry is not None  # estimated, not None
+
+
+# ---------------------------------------------------------------------------
+# Azure credential-injection correctness
+# (regression: no global `az account set`, ARM token handling)
+# ---------------------------------------------------------------------------
+
+
+class TestAzureCredentialInjection:
+    """Locks in the side-effect-free Azure credential fixes.
+
+    Before the fix, get_credentials mutated the user's global default
+    subscription via `az account set`, racing across concurrent invocations.
+    Token consumers (azurerm) also weren't told to prefer the injected token
+    over the ambient CLI login.
+    """
+
+    @pytest.fixture
+    def provider(self):
+        return AzureProvider()
+
+    @pytest.fixture
+    def org(self):
+        return {"provider": "azure", "tenant_id": "tenant-123"}
+
+    def _capture(self, provider, monkeypatch, token="tok-abc"):
+        calls = []
+        payload = json.dumps({"accessToken": token, "tenant": "tenant-123"})
+
+        def fake_az(args, capture=True):
+            calls.append(args)
+            return _az_result(0, payload)
+
+        monkeypatch.setattr(provider, "_az", fake_az)
+        return calls
+
+    def test_no_global_account_set(self, provider, org, monkeypatch):
+        calls = self._capture(provider, monkeypatch)
+        provider.get_credentials(org, "sub-1", "Contributor", "eastus")
+
+        # The user's global default subscription must never be mutated.
+        for args in calls:
+            assert not (
+                "account" in args and "set" in args
+            ), f"get_credentials invoked global `az account set`: {args}"
+
+    def test_token_fetch_scopes_subscription_explicitly(
+        self, provider, org, monkeypatch
+    ):
+        calls = self._capture(provider, monkeypatch)
+        provider.get_credentials(org, "sub-1", "Contributor", "eastus")
+
+        # Any az invocation must pass --subscription explicitly rather than
+        # relying on mutated global state.
+        assert calls, "expected at least one az invocation"
+        for args in calls:
+            assert "--subscription" in args
+            assert "sub-1" in args
+
+    def test_arm_use_cli_false_when_token_present(self, provider, org, monkeypatch):
+        self._capture(provider, monkeypatch, token="tok-abc")
+        creds = provider.get_credentials(org, "sub-1", "Contributor", "eastus")
+
+        # With a token present, azurerm must be told to use it, not the ambient
+        # `az` CLI login.
+        assert creds["ARM_USE_CLI"] == "false"
+        assert creds["ARM_ACCESS_TOKEN"] == "tok-abc"
+        assert creds["ARM_SUBSCRIPTION_ID"] == "sub-1"
+
+    def test_arm_use_cli_omitted_when_no_token(self, provider, org, monkeypatch):
+        # Empty accessToken → don't force ARM_USE_CLI=false (nothing to use).
+        payload = json.dumps({"accessToken": "", "tenant": "tenant-123"})
+        monkeypatch.setattr(
+            provider, "_az", lambda args, capture=True: _az_result(0, payload)
+        )
+        creds = provider.get_credentials(org, "sub-1", "Contributor", "eastus")
+        assert "ARM_USE_CLI" not in creds
