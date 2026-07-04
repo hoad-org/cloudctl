@@ -23,7 +23,7 @@ import sys
 from typing import Any, List, Optional
 
 
-from . import context_manager, core, utils
+from . import context_manager, core, exit_codes, utils
 from .use_exports import emit_exports  # noqa: F401 — re-exported for monkeypatch seam
 from .errors import CloudCtlError
 from .error_formatter import format_error
@@ -316,7 +316,7 @@ def cmd_switch(args: Any) -> int:
                 utils.console.print(
                     "[red]No organizations configured.[/] Run [bold]cloudctl init[/bold] or [bold]cloudctl org add[/bold]."
                 )
-                return 1
+                return exit_codes.USAGE
             if len(orgs) == 1:
                 org_name = orgs[0]
                 try:
@@ -425,7 +425,8 @@ def cmd_switch(args: Any) -> int:
         allowed, message = validate_role_access(org_data, role, account)
         if not allowed:
             utils.console.print(f"[bold red]Access Denied:[/] {message}")
-            return 1
+            # Guardrail rejection is a permission-denied condition.
+            return exit_codes.DENIED
 
         # Handle approval gates and MFA requirements
         if message == "approval_required":
@@ -542,13 +543,22 @@ def cmd_whoami(args: Any = None) -> int:
 
     Falls back to AWS STS when no context exists (backward-compat with
     tests and scripts that call whoami without a prior switch).
+
+    With ``--format json`` the identity is emitted as a single JSON object on
+    STDOUT (never Rich-decorated) so an agent can parse it:
+        {provider, org, account, role, region, identity}
+    For AWS, ``identity`` holds the STS get-caller-identity fields; for
+    gcp/azure it holds whatever context we know.
     """
+    import json
+
     ctx = load_context()
     provider = ctx.get("provider", "aws") if ctx else "aws"
     org_name = ctx.get("current_org", "") if ctx else ""
     account = ctx.get("account", "") if ctx else ""
     role = ctx.get("role", "") if ctx else ""
     region = ctx.get("region", "") if ctx else ""
+    as_json = getattr(args, "format", None) == "json"
 
     if provider == "aws":
         from . import aws
@@ -556,15 +566,80 @@ def cmd_whoami(args: Any = None) -> int:
         try:
             result = aws.run_aws(["sts", "get-caller-identity"])
             if result.get("returncode") != 0:
-                utils.console.print(
-                    f"Failed to get identity: {result.get('stderr', '')}"
+                stderr = result.get("stderr", "")
+                if as_json:
+                    stdout_console.print_json(
+                        data={
+                            "provider": provider,
+                            "org": org_name,
+                            "account": account,
+                            "role": role,
+                            "region": region,
+                            "identity": None,
+                            "error": f"Failed to get identity: {stderr}",
+                        }
+                    )
+                else:
+                    utils.console.print(f"Failed to get identity: {stderr}")
+                # No valid STS identity => SSO session is missing/expired.
+                return exit_codes.AUTH
+            if as_json:
+                # Parse STS caller-identity JSON into the `identity` field.
+                identity: Any
+                try:
+                    identity = json.loads(result.get("stdout", "") or "{}")
+                except Exception:
+                    identity = result.get("stdout", "")
+                stdout_console.print_json(
+                    data={
+                        "provider": provider,
+                        "org": org_name,
+                        "account": account,
+                        "role": role,
+                        "region": region,
+                        "identity": identity,
+                    }
                 )
-                return 1
-            utils.console.print(result.get("stdout", ""))
+            else:
+                utils.console.print(result.get("stdout", ""))
         except Exception as e:
-            utils.console.print(str(e))
-            return 1
-    elif provider == "azure":
+            if as_json:
+                stdout_console.print_json(
+                    data={
+                        "provider": provider,
+                        "org": org_name,
+                        "account": account,
+                        "role": role,
+                        "region": region,
+                        "identity": None,
+                        "error": str(e),
+                    }
+                )
+            else:
+                utils.console.print(str(e))
+            return exit_codes.ERROR
+        return exit_codes.OK
+
+    # Non-AWS providers: identity is whatever context we hold.
+    if as_json:
+        stdout_console.print_json(
+            data={
+                "provider": provider,
+                "org": org_name,
+                "account": account,
+                "role": role,
+                "region": region,
+                "identity": {
+                    "org": org_name,
+                    "account": account,
+                    "role": role,
+                    "region": region,
+                },
+            }
+        )
+        return exit_codes.OK
+
+    if provider == "azure":
         utils.console.print(
             f"[bold]Azure[/bold]  org={org_name}  "
             f"subscription={account}  role={role}  region={region}"
@@ -579,7 +654,7 @@ def cmd_whoami(args: Any = None) -> int:
             f"[bold]{provider}[/bold]  org={org_name}  "
             f"account={account}  role={role}  region={region}"
         )
-    return 0
+    return exit_codes.OK
 
 
 def cmd_open(args: Any = None) -> int:
@@ -1144,6 +1219,13 @@ def _build_parser():
     ep.add_argument("--account", dest="exec_account", help="Account/project ID")
     ep.add_argument("--role", dest="exec_role", help="Role/permission-set")
     ep.add_argument("--region", dest="exec_region", help="Region")
+    ep.add_argument(
+        "--json-errors",
+        action="store_true",
+        dest="json_errors",
+        help='On failure, print a one-line JSON object {"error","code"} to '
+        "stderr instead of prose (success path is unchanged).",
+    )
     ep.add_argument("cmd", nargs="+", metavar="CMD")
 
     # status / env (alias)
@@ -1349,7 +1431,13 @@ def _build_parser():
     sub.add_parser("setup", help="Run the setup wizard / merge defaults")
 
     # whoami
-    sub.add_parser("whoami", help="Show current user and account details")
+    wp = sub.add_parser("whoami", help="Show current user and account details")
+    wp.add_argument(
+        "--format",
+        choices=["table", "json"],
+        default="table",
+        help="Output format (default: table)",
+    )
 
     # open
     open_p = sub.add_parser("open", help="Open cloud provider console in browser")

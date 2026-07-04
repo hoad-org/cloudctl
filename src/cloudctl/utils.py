@@ -9,8 +9,15 @@ from typing import Any, Dict, List, Optional
 
 from rich.console import Console
 
-# Contract: console must not be bound to stderr=True or the test mock fails to intercept.
-console = Console()
+# Stdout/stderr discipline (agent + shell-wrapper contract):
+#   * `console`        → STDERR. All human/status/error chatter goes here so it
+#                        never corrupts the stdout stream that the shell wrapper
+#                        sources (`export K=V`) or that an agent parses (JSON).
+#   * `stdout_console` → STDOUT. Reserved for machine-readable data only:
+#                        JSON payloads and shell `export`/`unset` eval lines.
+# Tests intercept via the `mock_rich_console` fixture, which replaces BOTH of
+# these, so the split above does not affect captured-output assertions.
+console = Console(stderr=True)
 stdout_console = Console()
 which = shutil.which
 

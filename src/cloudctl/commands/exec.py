@@ -1,9 +1,11 @@
+import json
 import os
 import subprocess
 import sys
 from cloudctl.commands.base import BaseCommand
 from cloudctl.context_manager import load_context
 from cloudctl.config import get_org
+from cloudctl import exit_codes
 
 
 class ExecCommand(BaseCommand):
@@ -13,6 +15,15 @@ class ExecCommand(BaseCommand):
     Retrieves short-lived credentials from the appropriate cloud provider
     (AWS STS, Azure token, or GCP ADC) and passes them as environment
     variables to the child process.  Nothing is written to disk.
+
+    Failure discipline (agent contract):
+        * Every failure exits NON-ZERO with a documented code (see exit_codes)
+          and prints an actionable message to STDERR.
+        * The success path is untouched: the child owns stdout/stderr and its
+          return code is propagated verbatim.
+        * With ``--json-errors`` those failures print a single-line JSON object
+          ``{"error": "...", "code": <int>}`` to STDERR instead of prose, so an
+          agent can parse the reason without scraping formatted text.
 
     Examples:
         # Use active context (set by cloudctl switch)
@@ -48,9 +59,32 @@ class ExecCommand(BaseCommand):
             dest="exec_region",
             help="Region (defaults to context)",
         )
+        parser.add_argument(
+            "--json-errors",
+            action="store_true",
+            dest="json_errors",
+            help="On failure, print a one-line JSON error object to stderr",
+        )
         parser.add_argument("cmd", nargs="+", help="Command to execute")
 
+    def _fail(self, prose: str, error: str, code: int) -> int:
+        """Emit a failure and return its exit code.
+
+        prose : Rich-markup message for humans (goes to self.console → stderr).
+        error : plain, single-line message used for the JSON form.
+        code  : the process exit code (also embedded in the JSON payload).
+        """
+        if self._json_errors:
+            # One line, machine-parseable, on STDERR. Never Rich-decorated.
+            sys.stderr.write(json.dumps({"error": error, "code": code}) + "\n")
+        else:
+            self.console.print(prose)
+        return code
+
     def execute(self, args) -> int:
+        # Whether failures should be emitted as JSON (opt-in, default prose).
+        self._json_errors = bool(getattr(args, "json_errors", False))
+
         ctx = load_context()
 
         # --org flag bypasses active context entirely
@@ -66,12 +100,14 @@ class ExecCommand(BaseCommand):
         )
 
         if not org_name:
-            self.console.print(
+            # No context and no --org: this is a missing-arguments condition.
+            return self._fail(
                 "[red]No org specified and no active context.[/]\n"
                 "Run [bold]cloudctl switch <org>[/bold] first, or use: "
-                "[bold]cloudctl exec --org <org> -- <command>[/bold]"
+                "[bold]cloudctl exec --org <org> -- <command>[/bold]",
+                "No org specified and no active context",
+                exit_codes.USAGE,
             )
-            return 1
 
         # When --org is given without --account/--role, account/role must be
         # resolved. cloudctl is built for agentic use, so never hang on an
@@ -83,17 +119,21 @@ class ExecCommand(BaseCommand):
             try:
                 org_data = get_org(org_name)
             except Exception:
-                self.console.print(f"[red]Org '{org_name}' not found in config.[/]")
-                return 1
+                return self._fail(
+                    f"[red]Org '{org_name}' not found in config.[/]",
+                    f"Org '{org_name}' not found in config",
+                    exit_codes.NOT_FOUND,
+                )
 
             if not sys.stdin.isatty():
-                self.console.print(
+                return self._fail(
                     "[red]Incomplete 'exec' invocation in a non-interactive context.[/]\n"
                     "Provide all of --account, --role and --region explicitly, e.g.:\n"
                     "  [bold]cloudctl exec --org <org> --account <id> --role <role> "
-                    "--region <region> -- <command>[/bold]"
+                    "--region <region> -- <command>[/bold]",
+                    "Incomplete exec invocation: --account, --role and --region required",
+                    exit_codes.USAGE,
                 )
-                return 1
 
             import cloudctl.interactive as _interactive
 
@@ -101,13 +141,20 @@ class ExecCommand(BaseCommand):
                 org_data, account or None, role or None, region or None
             )
             if not all([account, role, region]):
-                return 1
+                return self._fail(
+                    "[red]Incomplete selection; aborting.[/]",
+                    "Incomplete account/role/region selection",
+                    exit_codes.USAGE,
+                )
 
         try:
             org_data = get_org(org_name)
         except Exception:
-            self.console.print(f"[red]Org '{org_name}' not found in config.[/]")
-            return 1
+            return self._fail(
+                f"[red]Org '{org_name}' not found in config.[/]",
+                f"Org '{org_name}' not found in config",
+                exit_codes.NOT_FOUND,
+            )
 
         from cloudctl.providers import get_provider
 
@@ -116,10 +163,20 @@ class ExecCommand(BaseCommand):
         try:
             creds = provider.get_credentials(org_data, account, role, region)
         except SystemExit:
-            return 1
+            # Providers raise SystemExit when the SSO session is missing/expired
+            # (auth required) — surface that as the AUTH exit code.
+            return self._fail(
+                "[red]Authentication required:[/] no valid SSO session. "
+                "Run [bold]cloudctl login <org>[/bold].",
+                "Authentication required: no valid SSO session",
+                exit_codes.AUTH,
+            )
         except Exception as e:
-            self.console.print(f"[red]Failed to get credentials:[/] {e}")
-            return 1
+            return self._fail(
+                f"[red]Failed to get credentials:[/] {e}",
+                f"Failed to get credentials: {e}",
+                exit_codes.ERROR,
+            )
 
         # Start from a clean slate: strip any credential env vars the parent
         # shell may have exported for a *different* provider/account (e.g. a
@@ -140,8 +197,12 @@ class ExecCommand(BaseCommand):
         env.update(creds)
 
         try:
+            # Success path: the child owns stdout/stderr; propagate its code.
             result = subprocess.run(args.cmd, env=env)
             return result.returncode
         except FileNotFoundError:
-            self.console.print(f"[red]Executable not found:[/] {args.cmd[0]}")
-            return 127
+            return self._fail(
+                f"[red]Executable not found:[/] {args.cmd[0]}",
+                f"Executable not found: {args.cmd[0]}",
+                127,
+            )

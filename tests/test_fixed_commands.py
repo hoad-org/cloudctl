@@ -218,8 +218,8 @@ def test_whoami_sts_error_handling(mock_rich_console, monkeypatch):
     # Execute whoami
     exit_code = cli.cmd_whoami(None)
 
-    # Should return error code
-    assert exit_code == 1
+    # A failed STS get-caller-identity means no valid SSO session → AUTH (2).
+    assert exit_code == 2
 
 
 # ============================================================================

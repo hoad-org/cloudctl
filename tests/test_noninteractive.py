@@ -8,6 +8,7 @@ flag ensures agents can run commands without prompts, or fail fast with clear er
 import pytest
 from unittest.mock import patch, MagicMock
 from cloudctl.commands.exec import ExecCommand
+from cloudctl import exit_codes
 
 
 class TestExecNonInteractive:
@@ -15,11 +16,13 @@ class TestExecNonInteractive:
 
     def test_exec_noninteractive_fails_missing_org(self):
         """
-        When --non-interactive and --org is missing, should fail with exit code 1.
+        When --org is missing and no context exists, exec fails with the USAGE
+        exit code (invalid arguments), not a generic error.
         """
         cmd = ExecCommand()
         args = MagicMock()
         args.non_interactive = True
+        args.json_errors = False
         args.exec_org = None
         args.exec_account = None
         args.exec_role = None
@@ -28,47 +31,53 @@ class TestExecNonInteractive:
 
         with patch("cloudctl.commands.exec.load_context", return_value={}):
             rc = cmd.execute(args)
-            assert rc == 1
+            assert rc == exit_codes.USAGE
 
     def test_exec_noninteractive_fails_missing_account(self):
         """
-        When --non-interactive and --account is missing, should fail with exit code 1.
+        When --account is missing in a non-TTY context, exec fails fast with the
+        USAGE exit code (cannot prompt for the missing argument).
         """
         cmd = ExecCommand()
         args = MagicMock()
         args.non_interactive = True
+        args.json_errors = False
         args.exec_org = "bt-avm"
         args.exec_account = None  # Missing
         args.exec_role = "admin"
         args.exec_region = "us-east-1"
         args.cmd = ["aws", "s3", "ls"]
 
-        with patch("cloudctl.commands.exec.load_context", return_value={}):
-            with patch(
-                "cloudctl.commands.exec.get_org", return_value={"name": "bt-avm"}
-            ):
-                rc = cmd.execute(args)
-                assert rc == 1
+        with patch("sys.stdin.isatty", return_value=False):
+            with patch("cloudctl.commands.exec.load_context", return_value={}):
+                with patch(
+                    "cloudctl.commands.exec.get_org", return_value={"name": "bt-avm"}
+                ):
+                    rc = cmd.execute(args)
+                    assert rc == exit_codes.USAGE
 
     def test_exec_noninteractive_fails_missing_role(self):
         """
-        When --non-interactive and --role is missing, should fail with exit code 1.
+        When --role is missing in a non-TTY context, exec fails fast with the
+        USAGE exit code (cannot prompt for the missing argument).
         """
         cmd = ExecCommand()
         args = MagicMock()
         args.non_interactive = True
+        args.json_errors = False
         args.exec_org = "bt-avm"
         args.exec_account = "235494790978"
         args.exec_role = None  # Missing
         args.exec_region = "us-east-1"
         args.cmd = ["aws", "s3", "ls"]
 
-        with patch("cloudctl.commands.exec.load_context", return_value={}):
-            with patch(
-                "cloudctl.commands.exec.get_org", return_value={"name": "bt-avm"}
-            ):
-                rc = cmd.execute(args)
-                assert rc == 1
+        with patch("sys.stdin.isatty", return_value=False):
+            with patch("cloudctl.commands.exec.load_context", return_value={}):
+                with patch(
+                    "cloudctl.commands.exec.get_org", return_value={"name": "bt-avm"}
+                ):
+                    rc = cmd.execute(args)
+                    assert rc == exit_codes.USAGE
 
     def test_exec_noninteractive_success_all_args(self):
         """

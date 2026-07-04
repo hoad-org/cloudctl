@@ -21,7 +21,8 @@ def test_whoami_error(monkeypatch: pytest.MonkeyPatch, mock_rich_console: Any) -
     # [FIX] Dispatcher calls aws.run_aws or core.run_aws. Patch at the utility level.
     monkeypatch.setattr("cloudctl.aws.run_aws", mock_run)
 
-    assert cli.cmd_whoami() == 1
+    # A failed STS call = no valid SSO session → AUTH exit code (2).
+    assert cli.cmd_whoami() == 2
     # Check unified console capture
     output = "".join(mock_rich_console.captured)
     assert "Failed to get identity" in output or "AccessDenied" in output

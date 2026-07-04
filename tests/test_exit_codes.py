@@ -5,6 +5,10 @@ All CloudCtl errors should return the correct exit code so agents can
 reliably detect success/failure and take appropriate action.
 """
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from cloudctl import cli, exit_codes
 from cloudctl.errors import (
     CloudCtlError,
     InvalidOrgError,
@@ -18,6 +22,57 @@ from cloudctl.errors import (
     NetworkError,
     ErrorType,
 )
+
+
+class TestExitCodeConstantsModule:
+    """The centralised exit_codes module carries the documented scheme."""
+
+    def test_constants_match_documented_scheme(self):
+        assert exit_codes.OK == 0
+        assert exit_codes.ERROR == 1
+        assert exit_codes.AUTH == 2
+        assert exit_codes.NOT_FOUND == 3
+        assert exit_codes.DENIED == 4
+        assert exit_codes.USAGE == 5
+
+
+class TestSwitchExitCodes:
+    """cmd_switch emits the documented codes at its obvious sites."""
+
+    def _args(self, **kw):
+        base = dict(
+            target="myorg",
+            org="myorg",
+            org_flag=None,
+            account="123456789012",
+            role="Admin",
+            region="us-east-1",
+            non_interactive=True,
+        )
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    def test_guardrail_denied_returns_four(self, mock_rich_console):
+        """A guardrail rejection (validate_role_access → False) → DENIED (4)."""
+        org_data = {"name": "myorg", "provider": "aws"}
+        with patch("cloudctl.config.get_org", return_value=org_data), patch(
+            "cloudctl.config.load_config", return_value={"orgs": [{"name": "myorg"}]}
+        ), patch("cloudctl.guardrails.validate_region", return_value=None), patch(
+            "cloudctl.guardrails.validate_role_access",
+            return_value=(False, "not allowed"),
+        ), patch(
+            "cloudctl.sso_cache.load_active_sso_token", return_value=None
+        ):
+            rc = cli.cmd_switch(self._args())
+        assert rc == exit_codes.DENIED
+
+    def test_no_orgs_configured_returns_usage(self, mock_rich_console):
+        """No orgs configured + no --org → USAGE (5)."""
+        with patch("cloudctl.config.get_org", side_effect=Exception("none")), patch(
+            "cloudctl.config.load_config", return_value={"orgs": []}
+        ):
+            rc = cli.cmd_switch(self._args(target=None, org=None))
+        assert rc == exit_codes.USAGE
 
 
 class TestExitCodeConstants:
