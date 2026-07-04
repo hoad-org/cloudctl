@@ -27,13 +27,26 @@ agent-driven use and fixes the credential spine that was silently broken.
 
 ### Added
 
-- **No-hang guards.** In a non-TTY / CI / agent context, `switch` fails fast
-  asking for explicit `--account/--role/--region` instead of showing a picker.
-  Sensitive-role justification is read from `CLOUDCTL_BREAK_GLASS_REASON`.
-- **Machine-readable output.** `--format json` on `status`/`env`/`accounts`/
-  `list-roles`/`whoami`; `--json-errors` on `exec`.
+- **Primary verbs `run` and `whoami`.** `run` is the canonical stateless form;
+  `whoami` shows the active identity. `exec`/`status`/`env`/`list-roles` remain
+  as hidden back-compat aliases.
+- **Real `whoami`.** Reports the LIVE, verified identity (`sts
+  get-caller-identity`, `gcloud auth list`, `az account show`) or
+  `identity: null` — never fabricated. `--format json` includes `expires_at`
+  and `expires_in_seconds`.
+- **Faithful provider errors.** AUTH / DENIED / NOT_FOUND are distinguished from
+  the provider's real failure, so a `Forbidden` is DENIED, not "no SSO session".
+- **Azure `az` safety.** With no service-principal creds, `run -- az …` warns
+  and pins `--subscription`; `AZURE_CLIENT_*` is injected only when SP creds are
+  configured.
+- **No-hang guards.** In a non-TTY / CI / agent context, `run`/`switch` fail
+  fast asking for explicit `--account/--role/--region` instead of showing a
+  picker. Sensitive-role justification is read from `CLOUDCTL_BREAK_GLASS_REASON`.
+- **Machine-readable output.** `--format json` on `whoami`/`accounts`/`roles`
+  (and their `status`/`env`/`list-roles` aliases); `--json-errors` on `run`.
 - **Documented exit codes.** `OK=0`, `ERROR=1`, `AUTH=2`, `NOT_FOUND=3`,
-  `DENIED=4`, `USAGE=5` (`src/cloudctl/exit_codes.py`).
+  `DENIED=4`, `USAGE=5` (`src/cloudctl/exit_codes.py`); usage/argparse errors
+  are `5`, not `2`.
 
 ### Removed
 

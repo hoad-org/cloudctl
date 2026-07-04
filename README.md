@@ -3,11 +3,20 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-`cloudctl` vends short-lived credentials for an org/account/role across **AWS,
-GCP, and Azure**, and injects them into a child process so you can run a CLI
-command or script — **without managing static SSO profiles**. It is built to be
-driven by AI agents and automation: non-interactive, flag-driven, and
-machine-parseable.
+**Injects short-lived credentials into a child process — no SSO profiles
+written, nothing stored on disk, one command shape for AWS/GCP/Azure — built to
+be driven by agents/scripts.**
+
+`cloudctl` vends short-lived credentials for an org/account/role across AWS,
+GCP, and Azure and runs your command with them injected as environment
+variables. It is non-interactive by nature, flag-driven, and machine-parseable.
+
+**Vocabulary map** (one shape, three clouds):
+
+| cloudctl flag | AWS | GCP | Azure |
+|---------------|-----|-----|-------|
+| `--account`   | account ID | project ID | subscription ID |
+| `--role`      | permission set (required) | **no-op** | **no-op** |
 
 > Status: `1.0.0b0` (beta). This README describes the tool as it actually
 > behaves. Features are only listed here if they work.
@@ -35,23 +44,25 @@ standard `~/.aws/sso/cache/`.
 # 1. Authenticate an org's SSO session (opens a browser)
 cloudctl login myorg
 
-# 2. See the active context (JSON for scripts/agents)
-cloudctl status --format json
+# 2. See the active identity (live query; JSON for scripts/agents)
+cloudctl whoami --format json
 
 # 3. Run a command with credentials injected — stateless, no prior switch
-cloudctl exec --org myorg --account 123456789012 --role AdministratorAccess \
+cloudctl run --org myorg --account 123456789012 --role AdministratorAccess \
   --region us-east-1 -- aws sts get-caller-identity
 ```
 
-`exec` is the canonical form for automation: it takes everything on the command
-line and needs no persisted context.
+`run` is the canonical form for automation: it takes everything on the command
+line and needs no persisted context. (`exec` is a hidden back-compat alias for
+`run`, and `status`/`env` for `whoami`; use `run`/`whoami` in new work.)
 
 ---
 
 ## The agent contract (things to know)
 
-- **`exec` needs a literal `--`** before the child command, or the parser will
-  consume flags like `--query`/`--output` meant for the child.
+- **`run` needs a literal `--`** before the child command, or the parser will
+  consume flags like `--query`/`--output` meant for the child. Everything after
+  `--` is passed to the child verbatim.
 - **`--region` is the region the *child command* runs in.** It is injected as
   `AWS_REGION`/`AWS_DEFAULT_REGION`. Internally the SSO `get-role-credentials`
   call uses the org's own `sso_region` — the two are not the same value and are
@@ -59,59 +70,88 @@ line and needs no persisted context.
   regions).
 - **No `AWS_PROFILE` is ever set.** The injected STS keys are self-contained; a
   profile name would shadow them and break the child command.
-- **Never hangs.** In a non-TTY / CI / agent context, `switch` fails fast asking
-  for explicit `--account/--role/--region` instead of showing a picker. A
-  sensitive-role justification is read from `CLOUDCTL_BREAK_GLASS_REASON`.
-
-### Profiles are for humans, not agents
-
-`cloudctl` has optional named **profiles** (`cloudctl profile save/load`) as a
-convenience for **humans** working interactively. They are **local-only** and
-not portable — a profile stores an org/account/role pointer (never credentials)
-on a single machine. **Agents should not use profiles**: pass the target
-explicitly and non-interactively so execution is reproducible anywhere.
-
-```bash
-# Human, interactive — reuse a saved pointer:
-cloudctl switch myorg --account 123456789012 --role ReadOnly --region eu-west-2
-
-# Agent, explicit and non-interactive (never prompts, never depends on a profile):
-cloudctl switch myorg --account 123456789012 --role ReadOnly \
-  --region eu-west-2 --non-interactive
-# ...or skip context entirely and just run:
-cloudctl exec --org myorg --account 123456789012 --role ReadOnly \
-  --region eu-west-2 -- aws s3 ls
-```
+- **Never hangs.** `run` is non-interactive by nature; in a non-TTY context it
+  fails fast asking for explicit `--account/--role/--region` instead of showing
+  a picker. A sensitive-role justification is read from
+  `CLOUDCTL_BREAK_GLASS_REASON`.
 
 ---
 
-## Multi-cloud behaviour
+## Multi-cloud behaviour (honest)
 
-| Cloud | How creds are injected |
-|-------|------------------------|
-| AWS   | STS keys from IAM Identity Center (`get-role-credentials` in the org's SSO region) |
-| GCP   | `CLOUDSDK_AUTH_ACCESS_TOKEN` (honored by `gcloud`) + `CLOUDSDK_CORE_PROJECT`; no global `gcloud config set`. `--role` is not a credential selector on GCP. |
-| Azure | `ARM_*` env with `ARM_USE_CLI=false` when a token is present (targets the Terraform azurerm provider / SDKs, not the bare `az` CLI); no global `az account set`. |
+| Cloud | What actually happens |
+|-------|-----------------------|
+| **AWS** | Real STS keys via SSO `get-role-credentials` (portal call in the org's `sso_region`). Errors are faithful: AUTH / DENIED / NOT_FOUND are distinguished (a `Forbidden` is DENIED, not "no SSO session"). `--json-errors` prints `{"error","code"}`. |
+| **GCP** | `run -- gcloud …` works: `CLOUDSDK_AUTH_ACCESS_TOKEN` makes the child `gcloud` run under the injected, non-mutating token (plus `CLOUDSDK_CORE_PROJECT`). **`gsutil`, `bq`, and standard ADC client libraries do NOT honor this token** — a bare `gsutil`/`bq` may still run under the ambient login. `--role` is a **no-op** on GCP (permissions come from the IAM policy bound to the identity). No global `gcloud config set`. |
+| **Azure** | `run -- terraform …` works via the `ARM_*` set (`ARM_USE_CLI=false` when a token is present). The **bare `az` CLI is only injected when the org config supplies service-principal creds** (`client_id` + `client_secret` + `tenant_id` → `AZURE_CLIENT_*`, which `az` honors). Without SP creds, `cloudctl` **WARNS** that bare `az` runs under your ambient `az login`, pins `--subscription <account>`, and lets `az` run under that ambient login. `--role` is a **no-op** on Azure. No global `az account set`. |
 
 ---
 
 ## Commands
 
 ```
-login <org>                 Authenticate SSO for an org (and record it as context)
+run   --org --account --role --region -- <cmd...>
+                            Run <cmd> with credentials injected (nothing on disk)
+login <org>                 Authenticate SSO for an org (records it as context)
 logout                      Clear the active context and provider session
+whoami [--format json]      Show the LIVE, verified identity (never fabricated)
 switch <org> [--account --role --region] [--non-interactive]
-                            Set a persistent context (emits export lines via the shell wrapper)
-exec  --org --account --role --region -- <cmd...>
-                            Run <cmd> with credentials injected (no persisted state)
-status | env [--format json]  Show the active context
-whoami                      Show the active identity
+                            Set a persistent context (human convenience)
 accounts <org> [--format json]      List accessible accounts
-list-roles <org> --account <id> [--format json]
+roles <org> --account <id> [--format json]   List assumable roles (AWS)
 orgs | org list             List configured orgs
-init | setup                Create / merge orgs.yaml
+init | config init          Create / merge orgs.yaml
 doctor                      Diagnose install and config
 ```
+
+Legacy aliases kept for back-compat: `exec` → `run`, `status`/`env` → `whoami`,
+`list-roles` → `roles`. Prefer the primary verbs.
+
+---
+
+## whoami reports real identity
+
+`cloudctl whoami` runs a **live** identity query for the active provider
+(`sts get-caller-identity`, `gcloud auth list` + project, `az account show`). It
+reports what the cloud actually says — or `identity: null` if the session is
+missing/expired. It **never** fabricates an identity by echoing stored context.
+
+```bash
+cloudctl whoami --format json
+```
+
+```json
+{
+  "provider": "aws",
+  "org": "myorg",
+  "account": "123456789012",
+  "role": "AdministratorAccess",
+  "region": "us-east-1",
+  "identity": { "account": "123456789012", "arn": "...", "user_id": "..." },
+  "expires_at": "2026-07-04T18:00:00Z",
+  "expires_in_seconds": 7200
+}
+```
+
+The JSON form always includes `expires_at` and `expires_in_seconds` (both may be
+`null` when the provider can't determine expiry).
+
+---
+
+## Exit codes
+
+`run` (and the read commands) use a documented, machine-checkable scheme:
+
+| Code | Meaning |
+|------|---------|
+| `0`  | success (the child's own exit code is propagated verbatim on the success path) |
+| `1`  | error (uncategorised failure) |
+| `2`  | AUTH — authentication required (missing/expired SSO session) |
+| `3`  | NOT_FOUND — invalid org / account / role |
+| `4`  | DENIED — permission/access denied (the real reason, not "auth") |
+| `5`  | USAGE — invalid arguments (argparse/usage errors, e.g. missing `--`) |
+
+Note that argparse/usage errors are `5` (USAGE), not `2`.
 
 ---
 
@@ -119,12 +159,19 @@ doctor                      Diagnose install and config
 
 ```bash
 # List S3 buckets in a specific account/role, no shell state
-cloudctl exec --org myorg --account 123456789012 --role ReadOnly \
+cloudctl run --org myorg --account 123456789012 --role ReadOnly \
   --region eu-west-2 -- aws s3api list-buckets --query 'Buckets[].Name'
 
 # Terraform against AWS with injected short-lived creds
-cloudctl exec --org myorg --account 123456789012 --role AdministratorAccess \
+cloudctl run --org myorg --account 123456789012 --role AdministratorAccess \
   --region eu-west-2 -- terraform plan
+
+# GCP: gcloud runs under the injected token (--role is a no-op)
+cloudctl run --org gcp-terrorgems --account my-project \
+  --region europe-west1 -- gcloud storage buckets list
+
+# Azure Terraform via ARM_* (--role is a no-op)
+cloudctl run --org azure-craighoad --account <subscription-id> -- terraform plan
 ```
 
 ---
@@ -144,14 +191,16 @@ verify against a real `cloudctl` invocation.
 
 ## Honest limitations
 
-- `login`/`switch`/`use`/`exec` and `status`/`env`/`whoami` overlap; a future
-  pass should collapse the verb set.
-- `--format json` works for `status`/`env`/`accounts`/`list-roles`; `whoami` and
-  `exec` don't have a JSON mode yet.
-- The documented exit-code scheme (2/3/4/5) is only partially implemented.
-- `switch` still depends on the shell-function wrapper to apply exports to your
-  interactive shell; `exec` is the wrapper-free path and the one agents should
-  use.
+- **The SSO access token is the one credential written to disk** — the standard
+  `~/.aws/sso/cache/` file (mode `0o600`), the same file the AWS CLI itself
+  writes. The *vended* STS keys are never written to disk. A truly "no
+  credentials on disk" mode (in-memory only / `--no-cache`) is **not yet
+  implemented**.
+- **GCP service-account impersonation** and a **machine-readable capabilities
+  index** are deliberately out of scope for now — cloudctl stays a thin wrapper.
+- The human-oriented `switch` path still depends on the shell-function wrapper
+  to apply exports to an interactive shell; `run` is the wrapper-free path and
+  the one agents should use.
 
 ## License
 
