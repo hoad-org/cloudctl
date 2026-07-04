@@ -206,9 +206,7 @@ class TestAzureProvider:
 
     def test_get_credentials_success(self, provider, org, monkeypatch):
         token_payload = json.dumps({"accessToken": "tok-abc", "tenant": "tenant-123"})
-        monkeypatch.setattr(
-            provider, "_az", lambda args: _az_result(0, token_payload)
-        )
+        monkeypatch.setattr(provider, "_az", lambda args: _az_result(0, token_payload))
         creds = provider.get_credentials(org, "sub-1", "Contributor", "eastus")
 
         assert creds["AZURE_SUBSCRIPTION_ID"] == "sub-1"
@@ -240,9 +238,7 @@ class TestAzureProvider:
 
     def test_get_exports_format(self, provider, org, monkeypatch):
         token_payload = json.dumps({"accessToken": "tok-xyz", "tenant": "t-1"})
-        monkeypatch.setattr(
-            provider, "_az", lambda args: _az_result(0, token_payload)
-        )
+        monkeypatch.setattr(provider, "_az", lambda args: _az_result(0, token_payload))
         exports = provider.get_exports(org, "sub-1", "Contributor", "eastus")
         for line in exports.splitlines():
             assert line.startswith("export ")

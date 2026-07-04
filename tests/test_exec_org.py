@@ -37,7 +37,9 @@ def _make_cmd():
     return cmd
 
 
-def _make_args(org=None, account=None, role=None, region=None, cmd=None, json_errors=False):
+def _make_args(
+    org=None, account=None, role=None, region=None, cmd=None, json_errors=False
+):
     return SimpleNamespace(
         exec_org=org,
         exec_account=account,

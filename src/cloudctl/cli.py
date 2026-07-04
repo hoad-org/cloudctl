@@ -1273,9 +1273,7 @@ def _build_parser():
     )
 
     # init
-    ip = sub.add_parser(
-        "init", help="Initialize configuration (non-interactive)"
-    )
+    ip = sub.add_parser("init", help="Initialize configuration (non-interactive)")
     ip.add_argument(
         "--shell-only",
         action="store_true",

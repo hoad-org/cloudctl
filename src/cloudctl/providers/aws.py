@@ -106,9 +106,7 @@ class AwsProvider(CloudProvider):
         # creds for a command that targets us-east-1 would otherwise send the
         # portal call to the wrong endpoint and fail with "session token not
         # found or invalid". (list_accounts/list_roles already do this right.)
-        sso_region = (
-            org.get("sso_region") if isinstance(org, dict) else org.sso_region
-        )
+        sso_region = org.get("sso_region") if isinstance(org, dict) else org.sso_region
 
         args = [
             "sso",

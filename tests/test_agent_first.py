@@ -136,7 +136,9 @@ def test_exec_no_context_is_usage_and_nonzero():
 def test_exec_unknown_org_is_not_found():
     ec = ExecCommand()
     ec.console = MagicMock()
-    args = _exec_args(exec_org="ghost", exec_account="1", exec_role="R", exec_region="r")
+    args = _exec_args(
+        exec_org="ghost", exec_account="1", exec_role="R", exec_region="r"
+    )
     with patch("cloudctl.commands.exec.load_context", return_value={}):
         with patch("cloudctl.commands.exec.get_org", side_effect=Exception("nope")):
             rc = ec.execute(args)

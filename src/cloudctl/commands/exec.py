@@ -185,13 +185,23 @@ class ExecCommand(BaseCommand):
         # `exec --org gcp-… -- terraform` would inherit stale AWS_* (including a
         # phantom AWS_PROFILE) from an earlier AWS context.
         _STALE = (
-            "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
-            "AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION",
-            "GOOGLE_OAUTH_ACCESS_TOKEN", "GOOGLE_CLOUD_PROJECT",
-            "GOOGLE_APPLICATION_CREDENTIALS", "CLOUDSDK_CORE_PROJECT",
-            "CLOUDSDK_AUTH_ACCESS_TOKEN", "GCLOUD_PROJECT",
-            "ARM_ACCESS_TOKEN", "ARM_SUBSCRIPTION_ID", "ARM_TENANT_ID",
-            "AZURE_SUBSCRIPTION_ID", "AZURE_TENANT_ID",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+            "AWS_PROFILE",
+            "AWS_REGION",
+            "AWS_DEFAULT_REGION",
+            "GOOGLE_OAUTH_ACCESS_TOKEN",
+            "GOOGLE_CLOUD_PROJECT",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "CLOUDSDK_CORE_PROJECT",
+            "CLOUDSDK_AUTH_ACCESS_TOKEN",
+            "GCLOUD_PROJECT",
+            "ARM_ACCESS_TOKEN",
+            "ARM_SUBSCRIPTION_ID",
+            "ARM_TENANT_ID",
+            "AZURE_SUBSCRIPTION_ID",
+            "AZURE_TENANT_ID",
         )
         env = {k: v for k, v in os.environ.items() if k not in _STALE}
         env.update(creds)
