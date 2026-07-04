@@ -103,7 +103,8 @@ def test_accounts_json_format(monkeypatch, capsys):
     ), f"No JSON output captured. stdout={repr(captured.out)}, stderr={repr(captured.err)}"
 
     output = json.loads(output_text)
-    assert output["organization"] == "test-org"
+    # Unified org-identifier key across read commands: `org` (was `organization`).
+    assert output["org"] == "test-org"
     assert len(output["accounts"]) == 2
     assert output["count"] == 2
 

@@ -115,10 +115,10 @@ class GcpProvider(CloudProvider):
         Fallback: older gcloud builds (and the plain, non-JSON token print)
         do not surface an issue/expiry time. GCP OAuth access tokens live
         exactly 3600 s and gcloud refreshes them transparently, so when no
-        real expiry is readable we conservatively estimate now + 1 h — this is
-        only used by `cloudctl watch` to proactively re-auth near the
-        threshold, so over-estimating expiry would be the only harmful
-        direction, and now+1h never does that.
+        real expiry is readable we conservatively estimate now + 1 h — this
+        estimate only feeds proactive near-threshold re-auth checks, so
+        over-estimating expiry would be the only harmful direction, and
+        now+1h never does that.
         """
         from datetime import datetime, timezone, timedelta
 

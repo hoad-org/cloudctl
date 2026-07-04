@@ -1,8 +1,11 @@
 # src/cloudctl/commands/accounts.py
+import json
+
 from cloudctl.commands.base import BaseCommand
 from cloudctl.accounts import get_account_list
 from cloudctl.config import get_org
 from cloudctl.output_formatter import get_formatter
+from cloudctl import exit_codes
 from rich.table import Table
 
 
@@ -27,6 +30,19 @@ class AccountsCommand(BaseCommand):
             help="Output format (default: table)",
         )
 
+    def _fail_lookup(self, args, message: str) -> int:
+        """Emit a clean not-found failure honoring --format, return NOT_FOUND (3).
+
+        In json mode a single-line ``{"error": ..., "code": 3}`` object is
+        printed to STDOUT (so an agent parses it off the normal output stream);
+        otherwise a red prose line goes to STDERR.
+        """
+        if getattr(args, "format", None) == "json":
+            print(json.dumps({"error": message, "code": exit_codes.NOT_FOUND}))
+        else:
+            self.console.print(f"[red]✗ {message}[/]")
+        return exit_codes.NOT_FOUND
+
     def execute(self, args) -> int:
         org_name = getattr(args, "org", None) or getattr(args, "org_flag", None)
         if not org_name:
@@ -36,7 +52,13 @@ class AccountsCommand(BaseCommand):
             )
             return 1
         args.org = org_name
-        org_data = get_org(org_name)
+        # A bad org name is a user typo, not a bug: fail with a clean,
+        # actionable NOT_FOUND (3) — never let it bubble to the generic
+        # "UNEXPECTED ERROR" handler in cli.py.
+        try:
+            org_data = get_org(org_name)
+        except Exception as e:
+            return self._fail_lookup(args, f"Organization '{org_name}' not found: {e}")
         accounts = get_account_list(org_data, force_sync=args.sync)
 
         if args.format == "json":
@@ -53,7 +75,8 @@ class AccountsCommand(BaseCommand):
             ]
             formatter.success_json(
                 {
-                    "organization": args.org,
+                    # Unified org-identifier key across read commands: `org`.
+                    "org": args.org,
                     "accounts": accounts_list,
                     "count": len(accounts_list),
                 }

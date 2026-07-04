@@ -100,11 +100,9 @@ class AwsProvider(CloudProvider):
         verification_uri_complete = dev.get("verificationUriComplete", "")
         verification_uri = dev.get("verificationUri", "")
         _interval = dev.get("interval")
-        interval = (
-            int(_interval)
-            if _interval is not None
-            else self._DEFAULT_POLL_INTERVAL
-        )
+        # Never poll faster than the default: a service-supplied 0 (or missing)
+        # interval would otherwise busy-spin create_token.
+        interval = max(int(_interval or 0), self._DEFAULT_POLL_INTERVAL)
         expires_in = int(dev.get("expiresIn", 600))
 
         # Open the browser AND print the URL + code to STDERR so a headless /
@@ -214,9 +212,9 @@ class AwsProvider(CloudProvider):
         # Load the cached SSO access token — required for get-role-credentials
         token = self.load_token(org)
         if not token or not hasattr(token, "accessToken"):
-            from ..utils import console
-
-            console.print("[red]No valid SSO session. Run 'cloudctl login <org>'.[/]")
+            # Messaging is owned by commands/exec.py, which catches this
+            # SystemExit and emits a single actionable AUTH/ERROR line
+            # (avoids a double message under `run --json-errors`).
             sys.exit(1)
 
         # The get-role-credentials call is an IAM Identity Center (SSO) portal
@@ -242,18 +240,13 @@ class AwsProvider(CloudProvider):
         ]
         res = run_aws(args)
         if res.get("returncode") != 0:
-            from ..utils import console
-
-            error_msg = res.get("stderr", "AWS CLI failed")
-            console.print(f"[red]Failed to retrieve credentials:[/] {error_msg}")
+            # commands/exec.py owns the user-facing message (see above).
             sys.exit(1)
 
         data = json.loads(res.get("stdout", "{}"))
         creds = data.get("roleCredentials", {})
         if not creds:
-            from ..utils import console
-
-            console.print("[red]No credentials returned from AWS STS.[/]")
+            # commands/exec.py owns the user-facing message (see above).
             sys.exit(1)
 
         # Return ONLY the short-lived STS keys, plus the region the executed

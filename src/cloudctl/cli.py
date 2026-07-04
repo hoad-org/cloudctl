@@ -525,7 +525,10 @@ def cmd_accounts(args: Any) -> int:
 def cmd_doctor(args: Any) -> int:
     from . import doctor
 
-    return doctor.run_diagnostics(fix_path=getattr(args, "fix_path", False))
+    return doctor.run_diagnostics(
+        fix_path=getattr(args, "fix_path", False),
+        fmt=_resolve_format(args),
+    )
 
 
 def cmd_init(args: Any) -> int:
@@ -547,6 +550,41 @@ def cmd_org(args: Any) -> int:
     else:
         console.print("Usage: cloudctl org <add|list|remove>")
         return 1
+
+
+def _whoami_expiry(provider_name: str, org_name: str) -> tuple:
+    """Return (expires_at_iso_or_None, expires_in_seconds_or_None).
+
+    Loads the active provider token and asks the provider for its expiry via
+    the existing ``get_token_expiry`` contract (AWS uses the cached SSO token;
+    gcp/azure call their CLI). Returns (None, None) when unknown / no session,
+    never raising — whoami must not fail just because expiry is unreadable.
+    """
+    from datetime import datetime, timezone
+
+    try:
+        from .config import get_org
+        from .providers import get_provider
+
+        try:
+            org_data = get_org(org_name)
+        except Exception:
+            # Fall back to a minimal org dict so provider lookup still works.
+            org_data = {"name": org_name, "provider": provider_name}
+        provider = get_provider(org_data)
+        expiry = provider.get_token_expiry(org_data)
+        if expiry is None:
+            return None, None
+        if getattr(expiry, "tzinfo", None) is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        secs = int((expiry - now).total_seconds())
+        return (
+            expiry.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            secs,
+        )
+    except Exception:
+        return None, None
 
 
 def cmd_whoami(args: Any = None) -> int:
@@ -571,6 +609,13 @@ def cmd_whoami(args: Any = None) -> int:
     region = ctx.get("region", "") if ctx else ""
     as_json = _resolve_format(args) == "json"
 
+    # Token expiry surfaced for agents so they can pre-empt an expired session.
+    # Null when there is no context / no session / expiry is unreadable.
+    if as_json and org_name:
+        expires_at, expires_in_seconds = _whoami_expiry(provider, org_name)
+    else:
+        expires_at, expires_in_seconds = None, None
+
     if provider == "aws":
         from . import aws
 
@@ -587,6 +632,8 @@ def cmd_whoami(args: Any = None) -> int:
                             "role": role,
                             "region": region,
                             "identity": None,
+                            "expires_at": expires_at,
+                            "expires_in_seconds": expires_in_seconds,
                             "error": f"Failed to get identity: {stderr}",
                         }
                     )
@@ -609,6 +656,8 @@ def cmd_whoami(args: Any = None) -> int:
                         "role": role,
                         "region": region,
                         "identity": identity,
+                        "expires_at": expires_at,
+                        "expires_in_seconds": expires_in_seconds,
                     }
                 )
             else:
@@ -623,6 +672,8 @@ def cmd_whoami(args: Any = None) -> int:
                         "role": role,
                         "region": region,
                         "identity": None,
+                        "expires_at": expires_at,
+                        "expires_in_seconds": expires_in_seconds,
                         "error": str(e),
                     }
                 )
@@ -646,6 +697,8 @@ def cmd_whoami(args: Any = None) -> int:
                     "role": role,
                     "region": region,
                 },
+                "expires_at": expires_at,
+                "expires_in_seconds": expires_in_seconds,
             }
         )
         return exit_codes.OK
@@ -698,6 +751,13 @@ def cmd_open(args: Any = None) -> int:
             )
         else:
             console_url = "https://console.aws.amazon.com/"
+
+        # --url: print the resolved console URL to stdout and exit 0 (do NOT
+        # open a browser). This is the agent/headless path — a browser can't be
+        # opened without a display, and stdout is capturable/pipeable.
+        if getattr(args, "url", False):
+            _safe_emit_to_stdout(console_url)
+            return 0
 
         import webbrowser
 
@@ -1299,7 +1359,16 @@ def _build_parser():
     sub = p.add_subparsers(dest="command", metavar="<command>")
 
     # login
-    lp = sub.add_parser("login", help="Authenticate with a cloud provider")
+    lp = sub.add_parser(
+        "login",
+        help="Authenticate with a cloud provider",
+        epilog=(
+            "EVAL mode: when --account/--role/--region are given, login emits\n"
+            "shell `export` lines to stdout for the wrapper to source (injecting\n"
+            "credentials into the current shell)."
+        ),
+        formatter_class=__import__("argparse").RawDescriptionHelpFormatter,
+    )
     lp.add_argument("org", nargs="?", help="Organization name")
     lp.add_argument("--org", dest="org_flag", help="Organization name (flag form)")
     lp.add_argument("--force", action="store_true", help="Force re-authentication")
@@ -1354,14 +1423,31 @@ def _build_parser():
         )
         parser.add_argument("cmd", nargs="+", metavar="CMD")
 
+    import argparse as _argparse
+
+    _run_epilog = (
+        "The `--` separator divides cloudctl's own flags from the child command;\n"
+        "everything after `--` is passed to the child verbatim (including flags\n"
+        "like --version, --query, --output, or --help).\n"
+        "\n"
+        "Example:\n"
+        "  cloudctl run --org O --account A --role R --region G -- "
+        "aws sts get-caller-identity\n"
+    )
     rp = sub.add_parser(
         "run",
         help="Run a command with cloud credentials injected (nothing written to disk)",
+        epilog=_run_epilog,
+        formatter_class=_argparse.RawDescriptionHelpFormatter,
     )
     _add_run_args(rp)
 
     # exec — hidden alias of run (identical dispatch/args). Kept for scripts.
-    ep = sub.add_parser("exec")  # hidden alias of run
+    ep = sub.add_parser(
+        "exec",
+        epilog=_run_epilog,
+        formatter_class=_argparse.RawDescriptionHelpFormatter,
+    )  # hidden alias of run
     _add_run_args(ep)
 
     # status / env — hidden aliases of whoami (same handler, same output)
@@ -1400,6 +1486,12 @@ def _build_parser():
         "--fix-path",
         action="store_true",
         help="Attempt to add missing bin directories to PATH",
+    )
+    dp.add_argument(
+        "--format",
+        choices=["table", "json"],
+        default=None,
+        help="Output format (default: json when not a TTY, else table)",
     )
 
     # init — hidden top-level alias of `config init`
@@ -1668,26 +1760,48 @@ def main(argv: Optional[List[str]] = None) -> int:
         if argv is None:
             argv = sys.argv[1:]
 
-        # Fast paths that don't need full argparse.
+        # Split on the FIRST standalone `--`: everything before it (`head`) is
+        # cloudctl's own args; everything after (`child_tail`) belongs to the
+        # child command of `run`/`exec` and MUST pass through verbatim. Without
+        # this split, top-level actions like `--version`/`--eval`/
+        # `--check-strategy` (and even `--help`) leak out of the child's argv
+        # into the top-level parser — e.g. `run ... -- echo hello --version`
+        # would print cloudctl's version and exit 0 without ever running echo.
+        #
+        # All fast-path scans below run against `head` ONLY. argparse still needs
+        # a single `--` to separate the run subparser's flags from its CMD
+        # positional, so we re-append exactly one `--` when reconstructing the
+        # final argv for parse_args.
+        has_separator = "--" in argv
+        if has_separator:
+            sep = argv.index("--")
+            head = argv[:sep]
+            child_tail = argv[sep + 1 :]
+        else:
+            head = argv
+            child_tail = []
+
+        # Fast paths that don't need full argparse. Scanned against `head` only.
         # --check-strategy MUST be checked before --version: the shell wrapper calls
         # `_cloudctl_bin --check-strategy --version` to probe the flag, and if --version
         # were checked first it would print the version string instead of EXEC/EVAL.
-        if "--check-strategy" in argv:
-            idx = argv.index("--check-strategy")
-            cmd_arg = argv[idx + 1] if idx + 1 < len(argv) else ""
+        if "--check-strategy" in head:
+            idx = head.index("--check-strategy")
+            cmd_arg = head[idx + 1] if idx + 1 < len(head) else ""
             sys.stdout.write(determine_strategy([cmd_arg]) + "\n")
             return 0
 
-        if "--version" in argv:
+        if "--version" in head:
             stdout_console.print(_resolved_version())
             return 0
 
         # TTY guard — warn when --eval is used without the shell wrapper context.
         # The shell wrapper sets AWSCTL_WRAPPER_ACTIVE=1 before calling us.
         # Direct invocation with --eval risks exposing credentials in shell history
-        # or redirecting them to a file.
-        eval_mode = "--eval" in argv
-        argv = [a for a in argv if a != "--eval"]
+        # or redirecting them to a file. Strip --eval from `head` only — a
+        # `--eval` after `--` is part of the child command and survives untouched.
+        eval_mode = "--eval" in head
+        head = [a for a in head if a != "--eval"]
         if eval_mode and not os.environ.get("AWSCTL_WRAPPER_ACTIVE"):
             sys.stderr.write(
                 "cloudctl: WARNING — --eval used outside shell wrapper context.\n"
@@ -1696,9 +1810,21 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "  shell wrapper, or set AWSCTL_WRAPPER_ACTIVE=1 to suppress.\n"
             )
 
+        # Reconstruct the argv argparse sees: head, plus exactly one `--` and the
+        # child tail when a separator was present.
+        if has_separator:
+            argv = head + ["--"] + child_tail
+        else:
+            argv = head
+
         parser = _build_parser()
 
-        if not argv or ("--help" in argv and len(argv) == 1):
+        # Bare `--help`/`-h` (top-level, no subcommand) prints the root help.
+        # A `--help` inside the child tail (after `--`) must NOT trigger this —
+        # it belongs to the child command, so we scan `head` only.
+        if not argv or (
+            not has_separator and len(head) == 1 and head[0] in ("--help", "-h")
+        ):
             parser.print_help(sys.stderr)
             return 0
 
@@ -1721,14 +1847,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         # This ensures no sensitive information is output to stderr.
         formatted = format_error(e)
         _safe_emit_to_stderr(formatted)
-        return 1
+        # Map the typed error to its documented exit code (NOT_FOUND, AUTH, …)
+        # so an agent can branch on $? — a user typo (invalid org) is a clean
+        # NOT_FOUND (3), never a generic 1.
+        return int(getattr(e, "exit_code", exit_codes.ERROR))
     except KeyboardInterrupt:
         sys.stderr.write("\n\nOperation cancelled by user\n")
         return 1
     except Exception as e:
-        # Catch unexpected errors and print with minimal formatting
+        # A GENUINELY unexpected error (an unhandled bug), not a user mistake.
+        # Known lookup failures (unknown org/account/role) are raised as
+        # CloudCtlError above or handled by the command with a clean message +
+        # NOT_FOUND — they must never reach here and must never read as a bug.
         sys.stderr.write(f"\n✗ UNEXPECTED ERROR\n  {str(e)}\n\n")
         sys.stderr.write(
-            "Please report this issue: https://github.com/BT-IT-Infrastructure-CloudOps/cloudctl-repo/issues\n"
+            "This looks like a bug in cloudctl. Re-run with CLOUDCTL_DEBUG=1 "
+            "for a traceback and report it to your cloudctl maintainer.\n"
         )
-        return 1
+        return exit_codes.ERROR

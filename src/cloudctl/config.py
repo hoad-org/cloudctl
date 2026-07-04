@@ -115,35 +115,6 @@ def get_org(name: str) -> Dict[str, Any]:
     raise ValueError(f"Organization '{name}' not found in configuration.")
 
 
-def get_approval_gates(org: Dict[str, Any]) -> Dict[str, int]:
-    """Get approval gate configuration for an org.
-
-    Returns a dict mapping role names to number of required approvers.
-    Secure default: empty dict (no approval gates).
-
-    Args:
-        org: Organization config dict
-
-    Returns:
-        {"admin": 2, "devops": 1, ...}
-    """
-    return org.get("approval_gate_roles", {})
-
-
-def get_mfa_required_roles(org: Dict[str, Any]) -> List[str]:
-    """Get list of roles that require MFA for an org.
-
-    Secure default: empty list (no MFA required).
-
-    Args:
-        org: Organization config dict
-
-    Returns:
-        ["admin", "security", ...]
-    """
-    return org.get("mfa_required_roles", [])
-
-
 def get_sensitive_roles(org: Dict[str, Any]) -> List[str]:
     """Get list of sensitive roles for an org (requires break-glass justification).
 
@@ -156,20 +127,6 @@ def get_sensitive_roles(org: Dict[str, Any]) -> List[str]:
         ["admin", "security", ...]
     """
     return org.get("sensitive_roles", [])
-
-
-def get_approval_timeout_seconds(org: Dict[str, Any]) -> int:
-    """Get approval timeout in seconds for an org.
-
-    Secure default: 300 seconds (5 minutes).
-
-    Args:
-        org: Organization config dict
-
-    Returns:
-        Timeout in seconds (integer)
-    """
-    return org.get("approval_timeout_seconds", 300)
 
 
 def _hydrate_orgs(enabled_names: List[Any]) -> None:

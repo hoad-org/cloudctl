@@ -7,12 +7,14 @@ All check_* functions return Tuple[bool, str]:
 """
 
 import concurrent.futures
+import json
 import os
 import platform
 import shutil
 import ssl
 import socket
 import subprocess
+import sys
 from typing import Optional, Tuple
 
 from . import config, utils
@@ -161,16 +163,45 @@ def check_wsl_performance() -> Tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 
-def run_diagnostics(fix_path: Optional[bool] = None) -> int:
+def _cloud_cli_checks() -> list:
+    """Presence of the non-AWS cloud CLIs (gcloud, az).
+
+    A multi-cloud tool's doctor shouldn't be AWS-only. Absence is ADVISORY —
+    you may only use AWS — so a missing gcloud/az never counts as a hard issue.
+    Returns [(label, ok, detail), ...].
+    """
+    out = []
+    for tool in ("gcloud", "az"):
+        ok, detail = check_tool(tool)
+        # shutil.which may be mocked to return a non-str in tests; coerce so the
+        # detail is always a printable/serialisable string.
+        out.append((f"{tool} CLI", bool(ok), str(detail)))
+    return out
+
+
+def run_diagnostics(
+    fix_path: Optional[bool] = None, fmt: Optional[str] = None
+) -> int:
     """
     Run all health checks and print a formatted report.
 
     Returns 0 if everything is OK, 1 if any issues were detected.
+
+    With ``fmt="json"`` (or a non-TTY when ``fmt`` is unset) a machine-parseable
+    summary of every check is emitted to STDOUT instead of the Rich table, so an
+    agent can consume the results.
     """
     import cloudctl.doctor as _self  # self-reference so monkeypatching works
 
     console = utils.console
     issues: list = []
+    # Structured record of every check for the JSON summary.
+    records: list = []
+
+    def _record(name, ok, detail, advisory=False):
+        records.append(
+            {"name": name, "ok": bool(ok), "detail": str(detail), "advisory": advisory}
+        )
 
     console.print("\n[bold cyan]System Health Check[/bold cyan]")
     console.print("=" * 50)
@@ -179,31 +210,42 @@ def run_diagnostics(fix_path: Optional[bool] = None) -> int:
     console.print("\n[bold]AWS CLI[/bold]")
     ok, msg = _self.check_aws_version()
     _print_check(console, "AWS CLI version", ok, msg)
+    _record("AWS CLI version", ok, msg)
     if not ok:
         issues.append(msg)
+
+    # --- Cloud CLIs (multi-cloud presence; advisory) ---
+    console.print("\n[bold]Cloud CLIs[/bold]")
+    for label, cli_ok, detail in _cloud_cli_checks():
+        _print_check(console, label, cli_ok, detail)
+        _record(label, cli_ok, detail, advisory=True)
 
     # --- Shell Integration ---
     console.print("\n[bold]Shell Integration[/bold]")
     ok, msg = _self.check_shell_integration()
     _print_check(console, "Shell wrapper", ok, msg)
+    _record("Shell wrapper", ok, msg)
     if not ok:
         issues.append(msg)
 
     # --- Permissions ---
     ok, msg = _self.check_permissions()
     _print_check(console, "Permissions", ok, msg)
+    _record("Permissions", ok, msg)
     if not ok:
         issues.append(msg)
 
     # --- Network / SSL ---
     ok, msg = _self.check_network_ssl()
     _print_check(console, "Network / SSL", ok, msg)
+    _record("Network / SSL", ok, msg)
     if not ok:
         issues.append(msg)
 
     # --- Time sync ---
     ok, msg = _self.check_time_sync()
     _print_check(console, "Time sync", ok, msg)
+    _record("Time sync", ok, msg, advisory=True)
     # Time sync is advisory only — don't count as failure
 
     # --- Configuration ---
@@ -215,8 +257,10 @@ def run_diagnostics(fix_path: Optional[bool] = None) -> int:
         orgs_data = cfg.get("organizations", {}) or cfg.get("orgs", [])
         org_count = len(orgs_data)
         _print_check(console, "Config file", True, f"{org_count} org(s) configured")
+        _record("Config file", True, f"{org_count} org(s) configured")
     except Exception as e:
         _print_check(console, "Config file", False, str(e))
+        _record("Config file", False, str(e))
         issues.append(str(e))
 
     # --- Schema validation ---
@@ -229,13 +273,16 @@ def run_diagnostics(fix_path: Optional[bool] = None) -> int:
             _print_check(
                 console, "Config schema", False, f"{len(schema_errors)} error(s)"
             )
+            _record("Config schema", False, "; ".join(schema_errors))
             for err in schema_errors:
                 console.print(f"    [red]•[/red] {err}")
             issues.extend(schema_errors)
         else:
             _print_check(console, "Config schema", True, "Valid")
+            _record("Config schema", True, "Valid")
     except Exception as e:
         _print_check(console, "Config schema", False, str(e))
+        _record("Config schema", False, str(e))
         issues.append(str(e))
 
     # --- WSL Performance (only when running in WSL) ---
@@ -243,10 +290,35 @@ def run_diagnostics(fix_path: Optional[bool] = None) -> int:
         console.print("\n[bold]WSL Performance[/bold]")
         ok, msg = _self.check_wsl_performance()
         _print_check(console, "AWS binary", ok, msg)
+        _record("AWS binary (WSL)", ok, msg)
         if not ok:
             issues.append(msg)
 
-    # --- Summary ---
+    # Resolve the effective output format: explicit wins; otherwise json when
+    # stdout is not a TTY (agent context). The Rich table above renders to
+    # stderr, so a JSON summary on stdout is a clean, separable stream.
+    if fmt not in ("table", "json"):
+        try:
+            fmt = "table" if sys.stdout.isatty() else "json"
+        except Exception:
+            fmt = "json"
+
+    if fmt == "json":
+        # Machine-readable summary on STDOUT (plain print → capturable, never
+        # Rich-decorated). Advisory failures do not flip `ok` / the exit code.
+        print(
+            json.dumps(
+                {
+                    "ok": not issues,
+                    "issue_count": len(issues),
+                    "checks": records,
+                    "issues": issues,
+                }
+            )
+        )
+        return 0 if not issues else 1
+
+    # --- Summary (table mode) ---
     console.print("\n" + "=" * 50)
     if not issues:
         console.print("[bold green]Everything looks good[/bold green] ✓")

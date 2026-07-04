@@ -8,11 +8,17 @@ does not have). This command therefore loads the active SSO token and asks the
 provider for the assumable roles in each account (or a single --account).
 """
 
+import json
 from typing import Any, Dict, List, Optional
 
 from rich.table import Table
 
 from cloudctl.commands.base import BaseCommand
+from cloudctl import exit_codes
+
+
+class _OrgNotFound(Exception):
+    """Raised when the org lookup fails — mapped to a clean NOT_FOUND (3)."""
 
 
 class ListRolesCommand(BaseCommand):
@@ -68,7 +74,12 @@ class ListRolesCommand(BaseCommand):
         from cloudctl.providers import get_provider
         from cloudctl.sso_cache import OrgRef, load_active_sso_token
 
-        org_data = get_org(org_name)
+        # A bad org name is a user typo, not a bug — surface it as NOT_FOUND (3)
+        # with a clean message rather than the generic "UNEXPECTED ERROR".
+        try:
+            org_data = get_org(org_name)
+        except Exception as e:
+            raise _OrgNotFound(f"Organization '{org_name}' not found: {e}")
         token = load_active_sso_token(
             OrgRef(
                 org_data.get("name", org_name),
@@ -100,21 +111,31 @@ class ListRolesCommand(BaseCommand):
         return out
 
     def execute(self, args: Any) -> int:
+        as_json = getattr(args, "format", "text") == "json"
         try:
             org_name = self._resolve_org(args)
             data = self.roles_by_account(org_name, getattr(args, "account", None))
+        except _OrgNotFound as e:
+            # Clean, actionable not-found — honor --format (json → stdout).
+            if as_json:
+                print(json.dumps({"error": str(e), "code": exit_codes.NOT_FOUND}))
+            else:
+                self.console.print(f"[red]✗ {e}[/]")
+            return exit_codes.NOT_FOUND
         except Exception as e:
             self.console.print(f"[red]✗ Error:[/] {e}")
             return 1
 
-        if getattr(args, "format", "text") == "json":
-            import json
-
+        if as_json:
             print(
                 json.dumps(
                     {
-                        "organization": org_name,
-                        "accounts": [
+                        # Unified org-identifier key across read commands: `org`.
+                        "org": org_name,
+                        # This command lists roles per account: the top-level
+                        # collection key is `roles` (each entry carries its
+                        # account id/name plus that account's role list).
+                        "roles": [
                             {"id": acc_id, "name": v["name"], "roles": v["roles"]}
                             for acc_id, v in data.items()
                         ],

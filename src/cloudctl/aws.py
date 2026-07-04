@@ -211,28 +211,3 @@ def ensure_sso_base_profile(org: Dict[str, Any]) -> str:
         )
         _configparser_write(cfg, AWS_CONFIG)
     return name
-
-
-def write_target_profile(
-    org_data: Dict[str, Any], account: str, role: str, region: str
-) -> str:
-    name = f"{org_data.get('name')}-{account}-{role}"
-    with _config_file_lock():
-        cfg = configparser.RawConfigParser()
-        if AWS_CONFIG.exists():
-            cfg.read(AWS_CONFIG)
-        section = f"profile {name}"
-        # BUG #5 FIX: Add sso_session reference so AWS CLI can find the [sso-session ...]
-        # This is critical for GovCloud (aws-us-gov) and China (aws-cn) partitions
-        _set_section(
-            cfg,
-            section,
-            {
-                "sso_session": org_data.get("name", ""),
-                "sso_account_id": account,
-                "sso_role_name": role,
-                "region": region,
-            },
-        )
-        _configparser_write(cfg, AWS_CONFIG)
-    return name

@@ -257,8 +257,10 @@ def test_open_launches_browser(monkeypatch, mock_rich_console):
     mock_open = MagicMock(return_value=True)
     monkeypatch.setattr("webbrowser.open", mock_open)
 
-    # Execute open
+    # Execute open. url=False → open the browser (the --url flag prints the URL
+    # instead; MagicMock's default truthy attr would otherwise take that branch).
     args = MagicMock()
+    args.url = False
     exit_code = cli.cmd_open(args)
 
     # Verify browser was opened

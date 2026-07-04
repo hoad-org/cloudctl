@@ -64,8 +64,9 @@ def test_doctor_network_fail(mock_rich_console, monkeypatch):
         "cloudctl.doctor.check_network_ssl", lambda: (False, "Timeout Error")
     )
 
-    # 3. Run diagnostics
-    doctor.run_diagnostics()
+    # 3. Run diagnostics (force table mode: under pytest stdout is not a TTY,
+    #    so the default would resolve to the JSON summary instead of the table).
+    doctor.run_diagnostics(fmt="table")
 
     # 4. Verify capture includes the specific error message
     output = "".join(mock_rich_console.captured)

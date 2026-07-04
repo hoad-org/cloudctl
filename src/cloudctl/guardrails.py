@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -15,6 +16,18 @@ except ImportError:
 
 MAX_LOG_SIZE = 10 * 1024 * 1024
 AUDIT_LOG = Path.home() / ".cloudctl" / "audit.log"
+
+# Redact obvious secret-bearing key/value pairs (e.g. "token=abc123",
+# "AWS_SECRET_ACCESS_KEY: xyz") before writing a break-glass reason to the
+# audit log. Keeps the key so the entry stays useful; masks only the value.
+_SECRET_PATTERN = re.compile(
+    r"(?i)(token|secret|password|key)\s*[=:]\s*\S+",
+)
+
+
+def _redact_secrets(text: str) -> str:
+    """Mask obvious secret values in free-text before it is persisted."""
+    return _SECRET_PATTERN.sub(lambda m: f"{m.group(1)}=***", text)
 
 
 def validate_region(org: Dict[str, Any], region: str) -> None:
@@ -96,7 +109,10 @@ def _audit_log(org_name: str, role: str, reason: str) -> None:
             except OSError:
                 pass  # Rotation failure must not block appending
         timestamp = datetime.now(timezone.utc).isoformat()
-        entry = f"{timestamp} | ORG={org_name} " f"| ROLE={role} | REASON={reason}\n"
+        safe_reason = _redact_secrets(reason)
+        entry = (
+            f"{timestamp} | ORG={org_name} | ROLE={role} | REASON={safe_reason}\n"
+        )
         with AUDIT_LOG.open("a", encoding="utf-8") as f:
             f.write(entry)
     except OSError:

@@ -10,29 +10,6 @@ import pytest
 from cloudctl import aws
 
 
-def test_write_target_profile(monkeypatch, tmp_path):
-    """Verify that writing a profile updates the AWS config and returns the profile name."""
-    mock_aws_dir = tmp_path / ".aws"
-    mock_aws_dir.mkdir()
-    mock_config = mock_aws_dir / "config"
-
-    monkeypatch.setattr(aws, "AWS_DIR", mock_aws_dir)
-    monkeypatch.setattr(aws, "AWS_CONFIG", mock_config)
-
-    org = {
-        "name": "dev",
-        "sso_start_url": "u",
-        "sso_region": "r",
-        "default_region": "eu-west-1",
-    }
-
-    # [FIX] Implementation must create the file if it doesn't exist
-    profile = aws.write_target_profile(org, "123", "Admin", "us-east-1")
-
-    assert "dev" in profile
-    assert mock_config.exists()
-
-
 def test_config_write_backup_failure(monkeypatch, tmp_path):
     """Ensure that config writing is resilient even if the backup (shutil.copy2) fails."""
     cfg_file = tmp_path / "config"
