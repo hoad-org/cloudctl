@@ -1,0 +1,110 @@
+{
+  "branches": [
+    "main",
+    "master"
+  ],
+  "plugins": [
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset": "angular",
+        "releaseRules": [
+          {
+            "type": "feat",
+            "release": "minor"
+          },
+          {
+            "type": "fix",
+            "release": "patch"
+          },
+          {
+            "type": "docs",
+            "release": false
+          },
+          {
+            "type": "style",
+            "release": false
+          },
+          {
+            "type": "refactor",
+            "release": false
+          },
+          {
+            "type": "perf",
+            "release": "patch"
+          },
+          {
+            "type": "test",
+            "release": false
+          },
+          {
+            "type": "chore",
+            "release": false
+          },
+          {
+            "breaking": true,
+            "release": "major"
+          }
+        ]
+      }
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "preset": "angular",
+        "presetConfig": {
+          "types": [
+            {
+              "type": "feat",
+              "section": "✨ Features"
+            },
+            {
+              "type": "fix",
+              "section": "🐛 Bug Fixes"
+            },
+            {
+              "type": "perf",
+              "section": "⚡ Performance"
+            },
+            {
+              "type": "docs",
+              "section": "📚 Documentation"
+            }
+          ]
+        }
+      }
+    ],
+    [
+      "@semantic-release/changelog",
+      {
+        "changelogFile": "CHANGELOG.md"
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "sed -i 's/version = \".*\"/version = \"${nextRelease.version}\"/g' pyproject.toml && sed -i 's/__version__ = \".*\"/__version__ = \"${nextRelease.version}\"/g' src/cloudctl/_version.py"
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": [
+          "pyproject.toml",
+          "CHANGELOG.md",
+          "src/cloudctl/_version.py"
+        ],
+        "message": "chore(release): ${nextRelease.version}\n\nSemantic release triggered by commits:\n${nextRelease.notes}"
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "releasedLabels": [
+          "released"
+        ],
+        "successComment": "✅ Released as ${nextRelease.version}"
+      }
+    ]
+  ]
+}

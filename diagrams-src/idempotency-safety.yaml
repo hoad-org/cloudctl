@@ -1,0 +1,41 @@
+Diagram:
+  DefinitionFiles:
+    - Type: URL
+      Url: https://raw.githubusercontent.com/awslabs/diagram-as-code/main/definitions/definition-for-aws-icons-light.yaml
+
+  Resources:
+    Canvas:
+      Type: AWS::Diagram::Canvas
+      Direction: vertical
+      Children:
+        - Execution
+        - State
+        - Audit
+
+    Execution:
+      Type: AWS::CodePipeline
+      Title: Bootstrap Execution
+
+    State:
+      Type: AWS::Organizations::OrganizationalUnit
+      Title: State & Locking
+      Children:
+        - S3State
+        - DynamoLock
+
+    S3State:
+      Type: AWS::S3::Bucket
+
+    DynamoLock:
+      Type: AWS::DynamoDB::Table
+
+    Audit:
+      Type: AWS::CloudTrail::Trail
+
+  Links:
+    - Source: Execution
+      Target: S3State
+    - Source: Execution
+      Target: DynamoLock
+    - Source: Execution
+      Target: Audit

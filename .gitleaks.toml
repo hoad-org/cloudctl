@@ -1,0 +1,40 @@
+# .gitleaks.toml — gitleaks configuration for cloudctl repo
+# Suppress known-safe patterns that would otherwise trigger false positives.
+
+[extend]
+# Start from the default gitleaks ruleset
+useDefault = true
+
+[[rules]]
+id = "gha-secret-reference"
+description = "GitHub Actions secret references — not real secrets"
+regex = '''\$\{\{\s*secrets\.[A-Z_]+\s*\}\}'''
+allowlist.regexTarget = "match"
+allowlist.regexes = ['.*']
+
+[[allowlists]]
+description = "Suppress GitHub Actions expression patterns (not real credentials)"
+regexes = [
+    # GitHub Actions secret references (${{ secrets.FOO }}) are expression syntax, never real values
+    '''\$\{\{\s*secrets\.[A-Za-z_]+\s*\}\}''',
+    # PyPI/twine placeholder username — not a token
+    '''__token__''',
+    # GitHub Actions context expressions
+    '''\$\{\{\s*github\.[A-Za-z_.]+\s*\}\}''',
+]
+
+[[allowlists]]
+description = "minisign PUBLIC key in registry_loader — not a secret"
+# The PUB_KEY in registry_loader.py is a minisign PUBLIC key (not a private key).
+# Public keys are not secrets — they verify signatures. The commit below introduced this.
+commits = ["8f6af335af3db817763565c208aca03b0c464004"]
+
+[[allowlists]]
+description = "Security scanning regex patterns in output_sanitizer.py — not real secrets"
+files = ["src/cloudctl/skills/output_sanitizer.py"]
+regexes = [
+    '''-----BEGIN RSA PRIVATE KEY-----''',
+    '''-----BEGIN PRIVATE KEY-----''',
+    '''-----END RSA PRIVATE KEY-----''',
+    '''-----END PRIVATE KEY-----''',
+]

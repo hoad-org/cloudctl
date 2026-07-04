@@ -1,0 +1,168 @@
+{
+  "manifest_version": "1.0.0",
+  "skills": [
+    {
+      "id": "cloudctl:read",
+      "name": "cloudctl Read-Only Skill",
+      "version": "1.0.0",
+      "description": "Safe, read-only access to cloudctl (list orgs, show context, list accounts)",
+      "risk_level": "LOW",
+      "operations": [
+        {
+          "name": "org_list",
+          "description": "List configured organizations",
+          "approval_required": false,
+          "audit_enabled": true
+        },
+        {
+          "name": "env",
+          "description": "Show active context (org, account, role, region)",
+          "approval_required": false,
+          "audit_enabled": true
+        },
+        {
+          "name": "accounts",
+          "description": "List accounts in organization",
+          "approval_required": false,
+          "audit_enabled": true
+        },
+        {
+          "name": "status",
+          "description": "Show cloudctl status",
+          "approval_required": false,
+          "audit_enabled": true
+        },
+        {
+          "name": "doctor",
+          "description": "System health check",
+          "approval_required": false,
+          "audit_enabled": true
+        }
+      ],
+      "rate_limits": {
+        "operations_per_minute": 100,
+        "burst_allowed": 10
+      },
+      "security_controls": {
+        "audit_logging": {
+          "enabled": true,
+          "destination": "~/.cloudctl/audit.jsonl",
+          "immutable": true,
+          "retention_days": 90
+        },
+        "rate_limiting": {
+          "enabled": true,
+          "enforcement": "per_session"
+        },
+        "credential_handling": {
+          "exposes_credentials": false,
+          "credential_ttl_seconds": 900
+        }
+      },
+      "entrypoint": "cloudctl.skills.cloudctl_read:main",
+      "python_module": "cloudctl.skills.cloudctl_read",
+      "required_env": [
+        "CLAUDE_SESSION_ID"
+      ],
+      "permissions": {
+        "filesystem_read": ["~/.cloudctl/", "~/.config/cloudctl/"],
+        "filesystem_write": ["~/.cloudctl/audit.jsonl"],
+        "network": false,
+        "process_spawn": true,
+        "process_spawn_allowed": ["cloudctl"]
+      }
+    },
+    {
+      "id": "cloudctl:switch",
+      "name": "cloudctl Context Switch Skill",
+      "version": "4.2.7",
+      "description": "Multi-cloud identity context switching with approval gates, rate limiting, and audit logging (AWS, Azure, GCP)",
+      "risk_level": "HIGH",
+      "operations": [
+        {
+          "name": "login",
+          "description": "Authenticate with SSO for an organization (OIDC flow)",
+          "approval_required": false,
+          "audit_enabled": true,
+          "rate_limit": "5 per hour"
+        },
+        {
+          "name": "switch",
+          "description": "Switch to a different organization/account/role context (requires approval for sensitive roles)",
+          "approval_required": true,
+          "audit_enabled": true,
+          "rate_limit": "10 per minute",
+          "sensitive_roles": ["admin", "devops", "security", "owner", "global_admin", "security_admin"]
+        },
+        {
+          "name": "logout",
+          "description": "Clear credentials and current context",
+          "approval_required": false,
+          "audit_enabled": true
+        },
+        {
+          "name": "status",
+          "description": "Show current context (org, account, role, region, expiry)",
+          "approval_required": false,
+          "audit_enabled": true
+        }
+      ],
+      "rate_limits": {
+        "login": "5 per hour per session",
+        "switch": "10 per minute per session",
+        "logout": "unlimited"
+      },
+      "security_controls": {
+        "audit_logging": {
+          "enabled": true,
+          "destination": "~/.cloudctl/audit.jsonl",
+          "immutable": true,
+          "retention_days": 90,
+          "format": "JSONL",
+          "fields": ["timestamp", "operation", "org", "account", "role", "approval_id", "session_id", "exit_code"]
+        },
+        "approval_gates": {
+          "enabled": true,
+          "provider": "mock (Phase 2) / servicenow (Phase 3+)",
+          "timeout_seconds": 300,
+          "sensitive_roles": ["admin", "devops", "security", "owner", "global_admin", "security_admin"]
+        },
+        "rate_limiting": {
+          "enabled": true,
+          "enforcement": "per_session",
+          "login_limit": "5 per hour",
+          "switch_limit": "10 per minute"
+        },
+        "mfa_enforcement": {
+          "enabled": false,
+          "note": "Coming in Phase 2.1"
+        },
+        "credential_handling": {
+          "exposes_credentials": false,
+          "credential_ttl_seconds": "ephemeral (cloud provider managed)",
+          "storage": "provider-native (~/.aws/sso/cache/, ~/.azure/tokens/, ~/.config/gcloud/)"
+        },
+        "session_isolation": {
+          "enabled": true,
+          "per_session_rate_limits": true
+        }
+      },
+      "entrypoint": "cloudctl.skills.cloudctl_switch:CloudctlSwitchSkill",
+      "python_module": "cloudctl.skills.cloudctl_switch",
+      "required_env": [
+        "CLAUDE_SESSION_ID"
+      ],
+      "permissions": {
+        "filesystem_read": ["~/.cloudctl/", "~/.config/cloudctl/", "~/.aws/", "~/.azure/", "~/.config/gcloud/"],
+        "filesystem_write": ["~/.cloudctl/audit.jsonl", "~/.config/cloudctl/current_context.json"],
+        "network": false,
+        "process_spawn": true,
+        "process_spawn_allowed": ["cloudctl"]
+      },
+      "compliance": {
+        "fedramp_ready": true,
+        "nist_800_53_controls": ["AC-3", "AC-6", "IA-5", "IA-7", "AU-2", "AU-6", "SC-7", "SC-23"]
+      }
+    }
+  ]
+}

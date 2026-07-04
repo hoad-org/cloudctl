@@ -1,0 +1,75 @@
+# --- Environments ---
+.venv/
+venv/
+.venv_smoke/
+env/
+ENV/
+.env
+
+# --- Build & Dist ---
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# --- Cache & Testing ---
+.cache
+.tox/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+tests/output/
+tools/output/
+tools/smoke_artifacts/
+
+# --- IDEs & Editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS Specific ---
+*.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# --- awsctl Specifics ---
+tools/uat_enterprise.sh
+*.log
+audit.log
+
+# --- Security & Credentials ---
+*.pem
+
+# --- User Config (Local Overrides) ---
+.cloudctl/
+.aws/
+.gitleaks-baseline.json
