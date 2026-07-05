@@ -5,6 +5,10 @@ All CloudCtl errors should return the correct exit code so agents can
 reliably detect success/failure and take appropriate action.
 """
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from cloudctl import cli, exit_codes
 from cloudctl.errors import (
     CloudCtlError,
     InvalidOrgError,
@@ -12,12 +16,60 @@ from cloudctl.errors import (
     InvalidRoleError,
     CredentialsExpiredError,
     ConfigInvalidError,
-    MFARequiredError,
-    ApprovalPendingError,
-    RateLimitedError,
     NetworkError,
     ErrorType,
 )
+
+
+class TestExitCodeConstantsModule:
+    """The centralised exit_codes module carries the documented scheme."""
+
+    def test_constants_match_documented_scheme(self):
+        assert exit_codes.OK == 0
+        assert exit_codes.ERROR == 1
+        assert exit_codes.AUTH == 2
+        assert exit_codes.NOT_FOUND == 3
+        assert exit_codes.DENIED == 4
+        assert exit_codes.USAGE == 5
+
+
+class TestSwitchExitCodes:
+    """cmd_switch emits the documented codes at its obvious sites."""
+
+    def _args(self, **kw):
+        base = dict(
+            target="myorg",
+            org="myorg",
+            org_flag=None,
+            account="123456789012",
+            role="Admin",
+            region="us-east-1",
+            non_interactive=True,
+        )
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    def test_guardrail_denied_returns_four(self, mock_rich_console):
+        """A guardrail rejection (validate_role_access → False) → DENIED (4)."""
+        org_data = {"name": "myorg", "provider": "aws"}
+        with patch("cloudctl.config.get_org", return_value=org_data), patch(
+            "cloudctl.config.load_config", return_value={"orgs": [{"name": "myorg"}]}
+        ), patch("cloudctl.guardrails.validate_region", return_value=None), patch(
+            "cloudctl.guardrails.validate_role_access",
+            return_value=(False, "not allowed"),
+        ), patch(
+            "cloudctl.sso_cache.load_active_sso_token", return_value=None
+        ):
+            rc = cli.cmd_switch(self._args())
+        assert rc == exit_codes.DENIED
+
+    def test_no_orgs_configured_returns_usage(self, mock_rich_console):
+        """No orgs configured + no --org → USAGE (5)."""
+        with patch("cloudctl.config.get_org", side_effect=Exception("none")), patch(
+            "cloudctl.config.load_config", return_value={"orgs": []}
+        ):
+            rc = cli.cmd_switch(self._args(target=None, org=None))
+        assert rc == exit_codes.USAGE
 
 
 class TestExitCodeConstants:
@@ -63,21 +115,6 @@ class TestExitCodeConstants:
         )
         assert error.exit_code == 5
 
-    def test_mfa_required_error_exit_code(self):
-        """MFARequiredError should have exit_code = 2 (Auth Required)."""
-        error = MFARequiredError("admin", mfa_method="totp")
-        assert error.exit_code == 2
-
-    def test_approval_pending_error_exit_code(self):
-        """ApprovalPendingError should have exit_code = 4 (Permission Denied)."""
-        error = ApprovalPendingError("admin", request_id="req-12345")
-        assert error.exit_code == 4
-
-    def test_rate_limited_error_exit_code(self):
-        """RateLimitedError should have exit_code = 4 (Permission Denied)."""
-        error = RateLimitedError("switch", retry_after=60)
-        assert error.exit_code == 4
-
     def test_network_error_exit_code(self):
         """NetworkError should have exit_code = 1 (General Error)."""
         error = NetworkError("login", details="Connection timeout")
@@ -106,18 +143,8 @@ class TestExitCodeMapping:
     def test_auth_required_errors_return_two(self):
         """All auth-required errors return exit code 2."""
         expired_error = CredentialsExpiredError("bt-avm")
-        mfa_error = MFARequiredError("admin")
 
         assert expired_error.exit_code == 2
-        assert mfa_error.exit_code == 2
-
-    def test_permission_denied_errors_return_four(self):
-        """All permission-denied errors return exit code 4."""
-        approval_error = ApprovalPendingError("admin")
-        rate_limit_error = RateLimitedError("switch")
-
-        assert approval_error.exit_code == 4
-        assert rate_limit_error.exit_code == 4
 
     def test_invalid_arg_errors_return_five(self):
         """Invalid argument errors return exit code 5."""
@@ -145,9 +172,6 @@ class TestExitCodeDocumentation:
             InvalidRoleError("invalid", "235494790978"),
             CredentialsExpiredError("bt-avm"),
             ConfigInvalidError("~/.config/cloudctl/orgs.yaml", "invalid"),
-            MFARequiredError("admin"),
-            ApprovalPendingError("admin"),
-            RateLimitedError("switch"),
             NetworkError("login"),
         ]
 
@@ -170,9 +194,6 @@ class TestExitCodeDocumentation:
             (InvalidRoleError("invalid", "235494790978"), 3),
             (CredentialsExpiredError("bt-avm"), 2),
             (ConfigInvalidError("~/.config/cloudctl/orgs.yaml", "invalid"), 5),
-            (MFARequiredError("admin"), 2),
-            (ApprovalPendingError("admin"), 4),
-            (RateLimitedError("switch"), 4),
             (NetworkError("login"), 1),
             (CloudCtlError(ErrorType.NETWORK_ERROR, "test"), 1),
         ]
@@ -197,25 +218,6 @@ class TestErrorTypeToExitCodeMapping:
         assert error.error_type == ErrorType.CREDENTIALS_EXPIRED
         assert error.exit_code == 2
 
-    def test_mfa_error_maps_to_exit_code_two(self):
-        """MFA required → exit code 2."""
-        error = MFARequiredError("admin")
-        assert error.error_type == ErrorType.MFA_REQUIRED
-        assert error.exit_code == 2
-
-    def test_approval_error_maps_to_exit_code_four(self):
-        """Approval pending → exit code 4."""
-        error = ApprovalPendingError("admin")
-        assert error.error_type == ErrorType.APPROVAL_PENDING
-        assert error.exit_code == 4
-
-    def test_rate_limit_error_maps_to_exit_code_four(self):
-        """Rate limited → exit code 4."""
-        error = RateLimitedError("switch")
-        assert error.error_type == ErrorType.RATE_LIMITED
-        assert error.exit_code == 4
-
-
 class TestAgentWorkflow:
     """Test exit codes in agent automation workflow."""
 
@@ -236,12 +238,6 @@ class TestAgentWorkflow:
         error = InvalidOrgError("invalid")
         assert error.exit_code == 3
         # Agent should verify org name and retry
-
-    def test_agent_can_detect_permission_denied(self):
-        """Agent can detect and handle permission denied (exit code 4)."""
-        error = ApprovalPendingError("admin")
-        assert error.exit_code == 4
-        # Agent should wait for approval or escalate
 
     def test_agent_can_detect_invalid_config(self):
         """Agent can detect and handle invalid config (exit code 5)."""

@@ -118,14 +118,18 @@ def test_cli_switch_non_interactive_validation(monkeypatch, mock_rich_console):
     )
     monkeypatch.setattr("cloudctl.cli._resolve_account_id", lambda r, t: "123")
 
-    # [FIX] role is None, which should trigger a validation error
+    # role is None for an AWS org → USAGE (5). --role is required for AWS (it is
+    # a no-op on GCP/Azure); a missing required argument is USAGE, not a generic
+    # error. The message must teach (mention --role + the `roles` command).
     args = type(
         "Args",
         (),
         {"target": "123", "account": "123", "role": None, "region": "r", "org": None},
     )
 
-    assert cli.cmd_switch(args) == 1
+    from cloudctl import exit_codes
+
+    assert cli.cmd_switch(args) == exit_codes.USAGE
     assert "role" in "".join(mock_rich_console.captured).lower()
 
 

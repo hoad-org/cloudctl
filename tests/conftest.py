@@ -36,6 +36,46 @@ def mock_home(tmp_path, monkeypatch):
     (home / ".cloudctl").mkdir(exist_ok=True)
     (home / ".config" / "cloudctl").mkdir(parents=True, exist_ok=True)
 
+    # CRITICAL isolation: CONFIG_DIR / CONTEXT_FILE / AWS dirs are computed from
+    # Path.home() at *import* time, so setting the HOME env var above is not
+    # enough — the frozen module-level constants still point at the real
+    # ~/.config/cloudctl, and tests that save/clear context would clobber the
+    # user's live context file. Redirect every frozen path constant to the
+    # hermetic tmp home.
+    cfg_dir = home / ".config" / "cloudctl"
+    ctx_file = cfg_dir / "current_context.json"
+    import cloudctl.config as _config
+    import cloudctl.context_manager as _ctxmgr
+    import cloudctl.aws as _aws
+    import cloudctl.core as _core
+    import cloudctl.sso_cache as _sso_cache
+
+    aws_dir = home / ".aws"
+    sso_cache = aws_dir / "sso" / "cache"
+    monkeypatch.setattr(_config, "HOME", home, raising=False)
+    monkeypatch.setattr(_config, "CONFIG_DIR", cfg_dir, raising=False)
+    monkeypatch.setattr(_ctxmgr, "CONFIG_DIR", cfg_dir, raising=False)
+    monkeypatch.setattr(_ctxmgr, "CONTEXT_FILE", ctx_file, raising=False)
+    monkeypatch.setattr(_aws, "AWS_DIR", aws_dir, raising=False)
+    monkeypatch.setattr(_aws, "SSO_CACHE_DIR", sso_cache, raising=False)
+    # sso_cache owns the canonical read/write of the SSO token cache. Its
+    # module-level AWS_DIR/SSO_CACHE_DIR are frozen at import from the *real*
+    # Path.home(), so writers/readers there would otherwise hit the user's real
+    # ~/.aws/sso/cache. Redirect them at the hermetic tmp home too.
+    monkeypatch.setattr(_sso_cache, "AWS_DIR", aws_dir, raising=False)
+    monkeypatch.setattr(_sso_cache, "SSO_CACHE_DIR", sso_cache, raising=False)
+    # core re-binds these at import (AWS_DIR = aws.AWS_DIR), so patching aws
+    # alone leaves core's frozen copies pointing at the real ~/.aws — which is
+    # how a cache-clear test wiped the user's real SSO token cache.
+    monkeypatch.setattr(_core, "AWS_DIR", aws_dir, raising=False)
+    monkeypatch.setattr(_core, "SSO_CACHE_DIR", sso_cache, raising=False)
+    try:
+        import cloudctl.cli as _cli
+
+        monkeypatch.setattr(_cli, "CONTEXT_FILE", ctx_file, raising=False)
+    except Exception:
+        pass
+
     # Global browser mock to prevent tests from launching real windows
     import webbrowser
 
@@ -199,8 +239,6 @@ def sample_orgs_yaml(mock_home):
                 "sso_start_url": "https://beyondtrust.awsapps.com/start",
                 "sso_region": "us-east-1",
                 "sensitive_roles": ["admin", "devops", "security"],
-                "approval_gate_roles": {"admin": 2, "devops": 1},
-                "mfa_required_roles": ["admin", "security"],
             },
             "fdr-gvc": {
                 "provider": "aws",
@@ -208,7 +246,6 @@ def sample_orgs_yaml(mock_home):
                 "sso_start_url": "https://beyondtrust-govcloud.awsapps.com/start",
                 "sso_region": "us-gov-east-1",
                 "sensitive_roles": ["admin"],
-                "approval_gate_roles": {"admin": 2},
             },
         },
     }
@@ -316,23 +353,6 @@ def validate_error_types():
     return _validate
 
 
-@pytest.fixture
-def validate_encryption_roundtrip():
-    """Helper to test encryption/decryption roundtrips.
-
-    Used for testing config encryption module.
-    """
-
-    def _validate(encrypt_fn, decrypt_fn, plaintext):
-        """Test that encrypt->decrypt returns original plaintext."""
-        ciphertext = encrypt_fn(plaintext)
-        assert ciphertext != plaintext, "Encryption should not return plaintext"
-        decrypted = decrypt_fn(ciphertext)
-        assert decrypted == plaintext, "Decryption should return original plaintext"
-
-    return _validate
-
-
 # ============================================================================
 # MARKER-BASED TEST CATEGORIZATION
 # ============================================================================
@@ -356,9 +376,6 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers",
         "error_handling: Mark test as testing error handling and edge cases",
-    )
-    config.addinivalue_line(
-        "markers", "encryption: Mark test as testing encryption/decryption"
     )
     config.addinivalue_line(
         "markers", "role_validation: Mark test as testing role validation"

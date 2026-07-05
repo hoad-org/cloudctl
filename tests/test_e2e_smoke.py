@@ -31,6 +31,19 @@ def _make_sso_token():
     return tok
 
 
+def _force_tty(monkeypatch):
+    """These E2E tests exercise the interactive switch path, so they need a
+    TTY; otherwise cli._non_interactive short-circuits with 'no TTY to prompt'."""
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("CLAUDECODE", raising=False)
+
+    class _T:
+        def isatty(self):
+            return True
+
+    monkeypatch.setattr("cloudctl.cli.sys.stdin", _T())
+
+
 # ---------------------------------------------------------------------------
 # AWS E2E
 # ---------------------------------------------------------------------------
@@ -41,6 +54,8 @@ class TestAwsSwitchE2E:
         """Full AWS switch: org → account → role → region → export lines printed."""
         import cloudctl.cli as cli
         import cloudctl.interactive as interactive
+
+        _force_tty(monkeypatch)
 
         org_cfg = {
             "name": "engineering",
@@ -158,6 +173,8 @@ class TestAzureSwitchE2E:
         import cloudctl.cli as cli
         import cloudctl.interactive as interactive
 
+        _force_tty(monkeypatch)
+
         org_cfg = {
             "name": "azure-prod",
             "provider": "azure",
@@ -216,6 +233,8 @@ class TestGcpSwitchE2E:
         """Full GCP switch: emit GOOGLE_* environment variables."""
         import cloudctl.cli as cli
         import cloudctl.interactive as interactive
+
+        _force_tty(monkeypatch)
 
         org_cfg = {
             "name": "gcp-prod",

@@ -114,8 +114,9 @@ class TestExecute:
         import json
 
         out = json.loads(capsys.readouterr().out)
-        assert out["organization"] == "bt-avm"
-        names = {a["id"]: a["roles"] for a in out["accounts"]}
+        # Unified org key (`org`); per-account role data now under `roles`.
+        assert out["org"] == "bt-avm"
+        names = {a["id"]: a["roles"] for a in out["roles"]}
         assert names["111111111111"] == ["AdministratorAccess"]
 
     def test_no_session_returns_1(self, monkeypatch):

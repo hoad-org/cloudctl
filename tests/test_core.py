@@ -4,17 +4,15 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
-from cloudctl import config, core, sso_cache, utils
+import pytest  # noqa: F401 — kept for test decorators/fixtures
+from cloudctl import config, core, sso_cache, utils  # noqa: F401
 
-
-@pytest.fixture()
-def mock_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(config, "HOME", tmp_path)
-    monkeypatch.setattr(core, "AWS_DIR", tmp_path / ".aws")
-    monkeypatch.setattr(core, "SSO_CACHE_DIR", tmp_path / ".aws" / "sso" / "cache")
-    return tmp_path
+# NOTE: the local `mock_home` fixture that used to live here shadowed the
+# hermetic autouse fixture in conftest.py and only redirected *some* of the
+# frozen path constants — it left CONFIG_DIR / CONTEXT_FILE / aws.SSO_CACHE_DIR
+# pointing at the real ~/.config and ~/.aws, so these tests deleted the user's
+# real context file and SSO token cache. Removed so all tests use the fully
+# isolated conftest fixture.
 
 
 def test_cmd_cache_clear(mock_home, mock_rich_console):
@@ -63,13 +61,13 @@ def test_cmd_login_failure(monkeypatch, mock_rich_console):
         "cloudctl.config.get_org",
         lambda x: {"name": "o", "sso_start_url": "u", "sso_region": "r"},
     )
-    monkeypatch.setattr("cloudctl.aws.ensure_sso_base_profile", lambda x: "p")
     monkeypatch.setattr("cloudctl.core.load_active_sso_token", lambda *a, **k: None)
 
-    # [FIX] Mock binary resolution for login failure test
-    monkeypatch.setattr("cloudctl.aws._resolve_aws_cli", lambda: "aws")
-
-    monkeypatch.setattr("cloudctl.utils.run", MagicMock(side_effect=Exception("Fail")))
+    # login is now a boto3 device-authorization flow; simulate the sso-oidc
+    # client blowing up so the provider returns 1 and reports "Login failed".
+    monkeypatch.setattr(
+        "boto3.client", MagicMock(side_effect=Exception("Fail"))
+    )
     assert core.cmd_login("o") == 1
     assert "Login failed" in "".join(mock_rich_console.captured)
 

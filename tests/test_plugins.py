@@ -6,26 +6,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from cloudctl import plugins
-from cloudctl.plugins import okta
 
 
 # [FIX] Ensure plugin logic actually runs by disabling test mode
 @pytest.fixture(autouse=True)
 def force_enable_plugin(monkeypatch):
     monkeypatch.delenv("AWSCTL_TEST_MODE", raising=False)
-
-
-def test_okta_pre_login_success(mock_rich_console):
-    """Verify Okta plugin reports reachability to stdout."""
-    # We patch requests.head as the plugin uses it for a health check
-    with patch("requests.head") as mock_head:
-        mock_head.return_value.status_code = 200
-        okta.pre_login({"name": "test", "sso_start_url": "https://okta.com"})
-
-    # [FIX] Okta plugin writes to stdout for shell visibility
-    # Combined captured handles both stdout/stderr for parity
-    output = "".join(mock_rich_console.captured)
-    assert "SSO Endpoint reachable" in output
 
 
 def test_plugin_security_block(mock_rich_console):

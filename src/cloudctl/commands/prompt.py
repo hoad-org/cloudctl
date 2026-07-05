@@ -198,7 +198,8 @@ def _parse_expiry_minutes(expiry_str: str) -> Optional[int]:
 
 
 def _print_starship_snippet() -> None:
-    sys.stdout.write("""\
+    sys.stdout.write(
+        """\
 # ── cloudctl Starship integration ───────────────────────────────────────────
 # Add this to ~/.config/starship.toml
 #
@@ -216,11 +217,13 @@ description = "Current cloudctl cloud context"
 # ── Optional: show in the right side of the prompt ────────────────────────
 # [right_format]
 # format = "$custom.cloudctl"
-""")
+"""
+    )
 
 
 def _print_p10k_snippet() -> None:
-    sys.stdout.write("""\
+    sys.stdout.write(
+        """\
 # ── cloudctl Powerlevel10k integration ──────────────────────────────────────
 # Add this block to ~/.p10k.zsh
 #
@@ -248,4 +251,5 @@ function instant_prompt_cloudctl() {
 # Optional: style customisation (add to the same file)
 # typeset -g POWERLEVEL9K_AWSCTL_FOREGROUND=220
 # typeset -g POWERLEVEL9K_AWSCTL_BACKGROUND=236
-""")
+"""
+    )

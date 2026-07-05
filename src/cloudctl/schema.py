@@ -165,18 +165,6 @@ def validate_orgs_config(data: Dict[str, Any]) -> List[str]:
 
     errors: List[str] = []
 
-    # Validate encrypted_fields if present (must be a list of strings)
-    encrypted_fields = data.get("encrypted_fields", [])
-    if encrypted_fields is not None:
-        if not isinstance(encrypted_fields, list):
-            errors.append("orgs.yaml: 'encrypted_fields' must be a list of field names")
-        else:
-            for field in encrypted_fields:
-                if not isinstance(field, str):
-                    errors.append(
-                        f"orgs.yaml: 'encrypted_fields' contains non-string: {field}"
-                    )
-
     orgs = data.get("orgs", [])
     if not isinstance(orgs, list):
         errors.append("orgs.yaml: 'orgs' must be a list")

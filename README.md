@@ -1,312 +1,237 @@
-# CloudCtl v1.0.0-beta — Ephemeral Cloud Credential Manager
+# cloudctl — ephemeral multi-cloud credential runner
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![FedRAMP Ready](https://img.shields.io/badge/FedRAMP-Ready-005288)](docs/SECURITY.md)
 
-**Securely manage ephemeral credentials for AWS, Azure, and GCP with built-in safety gates, approval workflows, and complete audit trails.**
+**Injects short-lived credentials into a child process — no SSO profiles
+written, nothing stored on disk, one command shape for AWS/GCP/Azure — built to
+be driven by agents/scripts.**
 
-CloudCtl is an enterprise-grade credential manager that:
-- ✅ **Multi-cloud support** — AWS, Azure, GCP with consistent CLI
-- ✅ **Ephemeral credentials** — Temporary tokens, automatic cleanup, zero long-lived keys
-- ✅ **Safety gates** — Approval workflows, MFA enforcement, rate limiting
-- ✅ **Zero-trust design** — Credentials never stored on disk or exported
-- ✅ **Complete audit trail** — Every operation logged and immutable
-- ✅ **Agent-native** — Designed for autonomous/agentic use (see *AI Agents & Automation*)
+`cloudctl` vends short-lived credentials for an org/account/role across AWS,
+GCP, and Azure and runs your command with them injected as environment
+variables. It is non-interactive by nature, flag-driven, and machine-parseable.
+
+**Vocabulary map** (one shape, three clouds):
+
+| cloudctl flag | AWS | GCP | Azure |
+|---------------|-----|-----|-------|
+| `--account`   | account ID | project ID | subscription ID |
+| `--role`      | permission set (required) | **no-op** | **no-op** |
+
+> Status: `1.0.0b0` (beta). This README describes the tool as it actually
+> behaves. Features are only listed here if they work.
 
 ---
 
-## Quick Start
+## Install
 
-### Installation
+Editable install from this repo:
 
 ```bash
-python3.12 -m pip install cloudctl
+python3.12 -m pip install -e .
+cloudctl doctor        # sanity-check the install and config
 ```
 
-### Verify Setup
+Configuration lives at `~/.config/cloudctl/orgs.yaml`. The active context is
+stored at `~/.config/cloudctl/current_context.json`. AWS SSO tokens use the
+standard `~/.aws/sso/cache/`.
+
+---
+
+## Quick start
 
 ```bash
-python3.12 -m cloudctl doctor
+# 1. Authenticate an org's SSO session (opens a browser)
+cloudctl login myorg
+
+# 2. See the active identity (live query; JSON for scripts/agents)
+cloudctl whoami --format json
+
+# 3. Run a command with credentials injected — stateless, no prior switch
+cloudctl run --org myorg --account 123456789012 --role AdministratorAccess \
+  --region us-east-1 -- aws sts get-caller-identity
 ```
 
-### Your First Command
-
-List available accounts:
-```bash
-python3.12 -m cloudctl accounts --org bt-avm
-```
-
-Execute AWS commands with assumed role:
-```bash
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role read-only \
-  --region us-east-1 \
-  --non-interactive \
-  -- aws s3 ls
-```
+`run` is the canonical form for automation: it takes everything on the command
+line and needs no persisted context. (`exec` is a hidden back-compat alias for
+`run`, and `status`/`env` for `whoami`; use `run`/`whoami` in new work.)
 
 ---
 
-## Documentation
+## The agent contract (things to know)
 
-All documentation is available in the `docs/` directory:
-
-### 🔧 Planning & Architecture
-
-| Guide | Purpose |
-|-------|---------|
-| **[Installation & Registration Improvement Report](docs/INSTALLATION_REGISTRATION_IMPROVEMENT_REPORT.md)** | **[STRATEGIC]** Comprehensive analysis of installation improvements, borrowing patterns from production MCP servers. Roadmap for OAuth wizard, keyring integration, binary distribution, and Docker containerization. 7-week implementation plan. |
-
-### 📚 User Documentation
-
-| Guide | Purpose |
-|-------|---------|
-| **[Installation](docs/INSTALLATION.md)** | Install and verify CloudCtl |
-| **[Quick Start](docs/QUICK_START.md)** | Get up and running in 5 minutes |
-| **[Configuration](docs/CONFIGURATION.md)** | Set up orgs.yaml and approval gates |
-| **[Command Reference](docs/COMMAND_REFERENCE.md)** | Complete reference for all commands |
-| **[Error Reference](docs/ERROR_REFERENCE.md)** | Quick lookup for error messages |
-| **[Troubleshooting](docs/TROUBLESHOOTING.md)** | Detailed troubleshooting procedures |
-| **[Security](docs/SECURITY.md)** | Security best practices and compliance |
-| **[Development](docs/DEVELOPMENT.md)** | Contributing and development setup |
+- **`run` needs a literal `--`** before the child command, or the parser will
+  consume flags like `--query`/`--output` meant for the child. Everything after
+  `--` is passed to the child verbatim.
+- **`--region` is the region the *child command* runs in.** It is injected as
+  `AWS_REGION`/`AWS_DEFAULT_REGION`. Internally the SSO `get-role-credentials`
+  call uses the org's own `sso_region` — the two are not the same value and are
+  no longer conflated (that bug caused "session token not found" across
+  regions).
+- **No `AWS_PROFILE` is ever set.** The injected STS keys are self-contained; a
+  profile name would shadow them and break the child command.
+- **Never hangs.** `run` is non-interactive by nature; in a non-TTY context it
+  fails fast asking for explicit `--account/--role/--region` instead of showing
+  a picker. A sensitive-role justification is read from
+  `CLOUDCTL_BREAK_GLASS_REASON`.
 
 ---
 
-## Key Features
+## Multi-cloud behaviour (honest)
 
-### Ephemeral Credentials
-- Temporary tokens generated on-demand
-- Automatic cleanup when expired (1-12 hours)
-- Never stored on disk
-- Perfect audit trail
-
-### Safety Gates
-- **Approval Gates** — Sensitive roles require human review (1-2 approvers, 30-second timeout)
-- **MFA Enforcement** — TOTP, SMS, WebAuthn for high-risk operations
-- **Rate Limiting** — 5 logins/hour, 10 role switches/minute
-- **Ownership Verification** — Only authorized users can perform operations
-
-### Multi-Cloud Support
-- **AWS** — Commercial and GovCloud with separate partitions
-- **Azure** — Entra ID with token-based authentication
-- **GCP** — Service accounts with OIDC federation
-
-### Enterprise Ready
-- **Audit Logging** — Immutable record of all operations
-- **FedRAMP Compliant** — For government and regulated workloads
-- **Zero-Trust Model** — Credentials never accessible to users
-- **Encryption** — Field-level encryption for sensitive configuration
+| Cloud | What actually happens |
+|-------|-----------------------|
+| **AWS** | Real STS keys via SSO `get-role-credentials` (portal call in the org's `sso_region`). Errors are faithful: AUTH / DENIED / NOT_FOUND are distinguished (a `Forbidden` is DENIED, not "no SSO session"). `--json-errors` prints `{"error","code"}`. |
+| **GCP** | `run -- gcloud …` works: `CLOUDSDK_AUTH_ACCESS_TOKEN` makes the child `gcloud` run under the injected, non-mutating token (plus `CLOUDSDK_CORE_PROJECT`). **`gsutil`, `bq`, and standard ADC client libraries do NOT honor this token** — a bare `gsutil`/`bq` may still run under the ambient login. `--role` is a **no-op** on GCP (permissions come from the IAM policy bound to the identity). No global `gcloud config set`. |
+| **Azure** | `run -- terraform …` works via the `ARM_*` set (`ARM_USE_CLI=false` when a token is present). The **bare `az` CLI is only injected when the org config supplies service-principal creds** (`client_id` + `client_secret` + `tenant_id` → `AZURE_CLIENT_*`, which `az` honors). Without SP creds, `cloudctl` **WARNS** that bare `az` runs under your ambient `az login`, pins `--subscription <account>`, and lets `az` run under that ambient login. `--role` is a **no-op** on Azure. No global `az account set`. |
 
 ---
 
-## Core Commands
+## Commands
+
+```
+run   --org --account --role --region -- <cmd...>
+                            Run <cmd> with credentials injected (nothing on disk)
+login <org>                 Authenticate SSO for an org (records it as context)
+logout                      Clear the active context and provider session
+whoami [--format json]      Show the LIVE, verified identity (never fabricated)
+switch <org> [--account --role --region] [--non-interactive]
+                            Set a persistent context (human convenience)
+accounts <org> [--format json]      List accessible accounts
+roles <org> --account <id> [--format json]   List assumable roles (AWS)
+orgs | org list             List configured orgs
+init | config init          Create / merge orgs.yaml
+doctor                      Diagnose install and config
+```
+
+Legacy aliases kept for back-compat: `exec` → `run`, `status`/`env` → `whoami`,
+`list-roles` → `roles`. Prefer the primary verbs.
+
+---
+
+## whoami reports real identity
+
+`cloudctl whoami` runs a **live** identity query for the active provider
+(`sts get-caller-identity`, `gcloud auth list` + project, `az account show`). It
+reports what the cloud actually says — or `identity: null` if the session is
+missing/expired. It **never** fabricates an identity by echoing stored context.
 
 ```bash
-# Verify setup
-python3.12 -m cloudctl doctor
-
-# List organizations
-python3.12 -m cloudctl list
-
-# List accounts in organization
-python3.12 -m cloudctl accounts --org bt-avm
-
-# List available roles
-python3.12 -m cloudctl list-roles --org bt-avm --assigned
-
-# Execute AWS commands (primary command for automation)
-# Provide --org/--account/--role/--region explicitly so exec never needs a picker.
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role read-only \
-  --region us-east-1 \
-  -- aws s3 ls
-
-# Logout
-python3.12 -m cloudctl logout
+cloudctl whoami --format json
 ```
 
-**Critical Rule:** Put all operations in ONE command. `exec` takes **no**
-`--non-interactive` flag — it is non-interactive by nature and, given full
-`--org/--account/--role/--region`, never prompts (with incomplete args in a
-non-TTY context it fails fast rather than hanging on a picker). The
-`--non-interactive` flag belongs to `login`/`switch` (see *AI Agents & Automation*).
+```json
+{
+  "provider": "aws",
+  "org": "myorg",
+  "account": "123456789012",
+  "role": "AdministratorAccess",
+  "region": "us-east-1",
+  "identity": { "account": "123456789012", "arn": "...", "user_id": "..." },
+  "expires_at": "2026-07-04T18:00:00Z",
+  "expires_in_seconds": 7200
+}
+```
+
+The JSON form always includes `expires_at` and `expires_in_seconds` (both may be
+`null` when the provider can't determine expiry).
 
 ---
 
-## AI Agents & Automation
+## Exit codes
 
-CloudCtl is built for autonomous, agentic use. The login step is the one
-human-in-the-loop control your security team needs: a browser window opens and a
-human clicks **Approve** (AWS IAM Identity Center / `gcloud auth login` /
-`az login`). Everything else runs unattended on the resulting short-lived,
-on-disk-free credentials.
+`run` (and the read commands) use a documented, machine-checkable scheme:
 
-**Agents should set context explicitly with `cloudctl switch --non-interactive`,
-not with profiles.** The `--non-interactive` flag (valid on `login` and `switch`)
-makes the command require every argument and fail fast with a clear error instead
-of showing an interactive account/role picker:
+| Code | Meaning |
+|------|---------|
+| `0`  | success (the child's own exit code is propagated verbatim on the success path) |
+| `1`  | error (uncategorised failure) |
+| `2`  | AUTH — authentication required (missing/expired SSO session) |
+| `3`  | NOT_FOUND — invalid org / account / role |
+| `4`  | DENIED — permission/access denied (the real reason, not "auth") |
+| `5`  | USAGE — invalid arguments (argparse/usage errors, e.g. missing `--`) |
+
+Note that argparse/usage errors are `5` (USAGE), not `2`.
+
+---
+
+## Examples
 
 ```bash
-# Agent-friendly: fully explicit, no prompts, fails fast if anything is missing
-python3.12 -m cloudctl switch bt-avm \
-  --account 235494790978 \
-  --role read-only \
-  --region us-east-1 \
-  --non-interactive
+# List S3 buckets in a specific account/role, no shell state
+cloudctl run --org myorg --account 123456789012 --role ReadOnly \
+  --region eu-west-2 -- aws s3api list-buckets --query 'Buckets[].Name'
 
-# Then run commands on the active context (exec needs no --non-interactive flag)
-python3.12 -m cloudctl exec -- aws s3 ls
+# Terraform against AWS with injected short-lived creds
+cloudctl run --org myorg --account 123456789012 --role AdministratorAccess \
+  --region eu-west-2 -- terraform plan
+
+# GCP: gcloud runs under the injected token (--role is a no-op)
+cloudctl run --org gcp-terrorgems --account my-project \
+  --region europe-west1 -- gcloud storage buckets list
+
+# Azure Terraform via ARM_* (--role is a no-op)
+cloudctl run --org azure-craighoad --account <subscription-id> -- terraform plan
 ```
-
-**Why not profiles?** Profiles (`cloudctl profile save/load`) are a **local-only**
-convenience for **humans** working interactively at one machine — they are not
-synced, not shared, and carry no credentials. An agent (or any automation) must
-not rely on a profile existing; it should pass `--org/--account/--role/--region`
-explicitly (or use `cloudctl switch ... --non-interactive`) so the same command
-is reproducible on any host.
 
 ---
 
-## Real-World Example
-
-### List and Filter S3 Buckets
+## Testing
 
 ```bash
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role read-only \
-  --region us-east-1 \
-  --non-interactive \
-  -- bash -c "aws s3 ls | grep -i 'prod'"
+python -m pytest -q
 ```
 
-### Run Terraform
-
-```bash
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role administrator \
-  --region us-east-1 \
-  --non-interactive \
-  -- terraform apply -auto-approve
-```
-
-### Use with GitHub Actions
-
-```yaml
-name: Deploy
-on: [workflow_dispatch]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Deploy Infrastructure
-        run: |
-          python3.12 -m cloudctl exec \
-            --org bt-avm \
-            --account ${{ secrets.AWS_ACCOUNT }} \
-            --role administrator \
-            --region us-east-1 \
-            --non-interactive \
-            -- terraform apply
-```
+A green suite is necessary but **not** sufficient — historically the tests
+passed while credential injection was broken. When fixing a bug, add a
+behavioural test (see `tests/test_providers.py::TestAwsProviderCredentials`) and
+verify against a real `cloudctl` invocation.
 
 ---
 
-## Critical Usage Rules
+## Honest limitations
 
-1. **Use `--non-interactive`** — Required for automation
-2. **Everything in ONE command** — Each Bash call is independent; credentials don't persist
-3. **Discover roles first** — Always run `list-roles` before assuming a role
-4. **Verify operations completed** — CloudCtl success ≠ operation success (check logs/resources)
-
-Violating these rules leads to credential loss, failed operations, or security violations.
-
----
-
-## Training
-
-Complete usage and command reference lives in this README and the `docs/`
-directory (see *Documentation* above).
-
-**37 critical gaps covered:**
-- Exact package and field names
-- Approval gates and MFA
-- Error diagnosis (20+ scenarios)
-- Known issues and workarounds
-- Monitoring patterns
+- **Credential storage is opt-out.** By default the SSO access token is cached
+  in the standard `~/.aws/sso/cache/` (mode `0o600`, the same file the AWS CLI
+  writes) so sessions can be reused; the *vended* STS keys are never written to
+  disk. For **zero credentials on disk**, use `run --no-cache`: cloudctl
+  authenticates in memory and vends creds without ever writing the SSO token.
+  Combine with `-- bash -c '...'` to run many commands under one in-memory auth.
+  (`--no-cache` is AWS-specific — GCP/Azure tokens are owned by `gcloud`/`az`,
+  which cloudctl never writes.)
+- **GCP service-account impersonation** and a **machine-readable capabilities
+  index** are deliberately out of scope for now — cloudctl stays a thin wrapper.
+- The human-oriented `switch` path still depends on the shell-function wrapper
+  to apply exports to an interactive shell; `run` is the wrapper-free path and
+  the one agents should use.
 
 ---
 
-## Version
+## Planned evolution (not yet built)
 
-**v1.0.0-beta** (June 2026)
+The next act turns cloudctl from a thin wrapper into a **dual-audience cloud
+identity broker** — first-class for humans (browser SSO) *and* agents (headless
+OIDC), delivered as both a CLI and an MCP server from one core. Full design and
+rationale: **[ADR 0001](docs/adr/0001-agentic-identity-broker.md)**.
 
-- ✅ Multi-cloud support (AWS, Azure, GCP)
-- ✅ Ephemeral credential management
-- ✅ Approval gates and safety workflows
-- ✅ Complete audit trail
-- ✅ Agent-native (autonomous/agentic use)
+Phased, each independently shippable:
 
-**Status:** Production-grade features, still hardening from recent bug fixes. Use with confidence; expect improvements.
+| Phase | What | Value |
+|-------|------|-------|
+| **0** ✅ | Honest zero-trust wrapper (done) | verified creds injection, `--no-cache` |
+| **1** | One `cloudctl-core`; CLI stays thin; ship `cloudctl mcp` (stdio MCP server) | agent-native interface — no more `--help` scraping |
+| **2** | `CredentialSource` + **OIDC workload-identity federation** (GitHub Actions / K8s SA / SPIFFE) | headless agent auth, no browser, no stored secret |
+| **3** | **Downscoped** short-lived creds (session policies / scoped impersonation) + deny-by-default policy | real least-privilege — the security natives don't give ergonomically |
+| **4** 🔒 | Remote broker service (`cloudctld`): server-side policy, central tamper-proof audit, instant revoke | real *control* (vs local *hygiene*) |
 
----
-
-## Getting Help
-
-1. **Quick errors?** Check [Error Reference](docs/ERROR_REFERENCE.md)
-2. **Stuck?** Read [Troubleshooting](docs/TROUBLESHOOTING.md)
-3. **How do I...?** See [Command Reference](docs/COMMAND_REFERENCE.md)
-4. **Setting up?** Follow [Installation](docs/INSTALLATION.md)
-5. **Still stuck?** Contact platform team with output of `cloudctl doctor`
-
----
-
-## Security
-
-CloudCtl implements:
-- Zero-trust architecture (credentials never accessible to users)
-- Ephemeral credentials (auto-cleanup, no long-lived keys)
-- Approval gates (sensitive operations require review)
-- Complete audit trail (every operation logged)
-- MFA enforcement (TOTP, SMS, WebAuthn)
-- FedRAMP compliance (for government workloads)
-
-See [Security](docs/SECURITY.md) for complete details.
-
----
-
-## Contributing
-
-For developers:
-1. Review [Development Guide](docs/DEVELOPMENT.md)
-2. Check [CLAUDE.md](CLAUDE.md) for repo conventions
-3. Submit PR with tests and documentation
-
----
+**Positioning held ruthlessly:** cloudctl is a **control plane** — it mints,
+gates, and audits identity; it never *executes* cloud operations (that's the
+provider MCPs / native CLIs). Phase 4 is **gated** on genuinely running multiple
+clouds × orgs × a fleet of agents with a real governance need — otherwise stop
+at Phase 3 and use provider MCPs + native federation for the rest. A remote
+credential broker is a security-critical service: build it to a real standard or
+not at all.
 
 ## License
 
-Proprietary. See [LICENSE](LICENSE) for details.
-
----
-
-## Support
-
-- **Documentation**: Start with [Quick Start](docs/QUICK_START.md)
-- **Issues**: GitHub Issues on BT-IT-Infrastructure-CloudOps/cloudctl
-- **Platform Team**: Contact for approval gate decisions or escalations
-- **Training**: See linked training documentation above
-
----
-
-Made with ❤️ by BeyondTrust IS CloudOps
+MIT — see [LICENSE](LICENSE).

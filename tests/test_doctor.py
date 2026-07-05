@@ -64,8 +64,10 @@ def test_doctor_all_ok(mock_doctor_deps, mock_rich_console):
     # Ensure all required tools (aws, etc) are found
     mock_doctor_deps["which"].side_effect = lambda x: f"/bin/{x}"
 
-    # fix_path=False matches the signature of the implementation
-    rc = doctor.run_diagnostics(fix_path=None)
+    # fix_path=False matches the signature of the implementation.
+    # Force table mode: under pytest stdout is not a TTY, so the default would
+    # otherwise resolve to the JSON summary (agent default).
+    rc = doctor.run_diagnostics(fix_path=None, fmt="table")
     out = "".join(mock_rich_console.captured)
 
     # Verify diagnostic section markers are present in output
@@ -73,6 +75,7 @@ def test_doctor_all_ok(mock_doctor_deps, mock_rich_console):
     assert "Configuration" in out
     assert "AWS CLI" in out
     assert "Shell Integration" in out
+    assert "Cloud CLIs" in out  # multi-cloud presence section (gcloud/az)
     assert "Everything looks good" in out
     assert rc == 0
 
@@ -88,7 +91,7 @@ def test_doctor_issues_found(mock_doctor_deps, mock_rich_console, monkeypatch):
 
     monkeypatch.setattr("cloudctl.config.load_raw_config", fail_load)
 
-    rc = doctor.run_diagnostics()
+    rc = doctor.run_diagnostics(fmt="table")
     out = "".join(mock_rich_console.captured)
 
     # 3. Assert failure reporting
@@ -148,7 +151,7 @@ def test_run_diagnostics_wsl_warning(mock_doctor_deps, mock_rich_console, monkey
         lambda: (False, "using the Windows AWS CLI"),
     )
 
-    doctor.run_diagnostics()
+    doctor.run_diagnostics(fmt="table")
     out = "".join(mock_rich_console.captured)
 
     # 3. Verify specifically requested warning markers

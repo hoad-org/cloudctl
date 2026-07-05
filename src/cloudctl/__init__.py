@@ -29,11 +29,9 @@ def __getattr__(name):
         "registry",
         "registry_loader",
         "shell",
-        "skills",
         "sso_cache",
         "use_exports",
         "utils",
-        "wizard",
     ]
     if name in modules:
         return importlib.import_module(f"cloudctl.{name}")

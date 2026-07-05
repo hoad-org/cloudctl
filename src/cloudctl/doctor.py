@@ -7,12 +7,14 @@ All check_* functions return Tuple[bool, str]:
 """
 
 import concurrent.futures
+import json
 import os
 import platform
 import shutil
 import ssl
 import socket
 import subprocess
+import sys
 from typing import Optional, Tuple
 
 from . import config, utils
@@ -161,63 +163,112 @@ def check_wsl_performance() -> Tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 
-def run_diagnostics(fix_path: Optional[bool] = None) -> int:
+def _cloud_cli_checks() -> list:
+    """Presence of the non-AWS cloud CLIs (gcloud, az).
+
+    A multi-cloud tool's doctor shouldn't be AWS-only. Absence is ADVISORY —
+    you may only use AWS — so a missing gcloud/az never counts as a hard issue.
+    Returns [(label, ok, detail), ...].
+    """
+    out = []
+    for tool in ("gcloud", "az"):
+        ok, detail = check_tool(tool)
+        # shutil.which may be mocked to return a non-str in tests; coerce so the
+        # detail is always a printable/serialisable string.
+        out.append((f"{tool} CLI", bool(ok), str(detail)))
+    return out
+
+
+def run_diagnostics(
+    fix_path: Optional[bool] = None, fmt: Optional[str] = None
+) -> int:
     """
     Run all health checks and print a formatted report.
 
     Returns 0 if everything is OK, 1 if any issues were detected.
+
+    With ``fmt="json"`` (or a non-TTY when ``fmt`` is unset) a machine-parseable
+    summary of every check is emitted to STDOUT instead of the Rich table, so an
+    agent can consume the results.
     """
     import cloudctl.doctor as _self  # self-reference so monkeypatching works
 
     console = utils.console
     issues: list = []
+    # Structured record of every check for the JSON summary.
+    records: list = []
 
-    console.print("\n[bold cyan]System Health Check[/bold cyan]")
-    console.print("=" * 50)
+    # Resolve the effective output format FIRST: explicit wins; otherwise json
+    # when stdout is not a TTY (agent context). We must know the format before
+    # running checks so we can emit ONLY the requested format — never BOTH a
+    # human table and a JSON blob. In json mode the Rich table is suppressed
+    # entirely (previously it double-printed to stderr alongside the JSON).
+    if fmt not in ("table", "json"):
+        try:
+            fmt = "table" if sys.stdout.isatty() else "json"
+        except Exception:
+            fmt = "json"
+    table_mode = fmt == "table"
+
+    def _emit(msg: str) -> None:
+        # Rich table lines only in table mode; silent in json mode.
+        if table_mode:
+            console.print(msg)
+
+    def _check(label, ok, detail, advisory=False):
+        # Print (table mode only) + record + count non-advisory failures.
+        if table_mode:
+            _print_check(console, label, ok, detail)
+        records.append(
+            {"name": label, "ok": bool(ok), "detail": str(detail), "advisory": advisory}
+        )
+        if not ok and not advisory:
+            issues.append(detail if isinstance(detail, str) else str(detail))
+
+    _emit("\n[bold cyan]System Health Check[/bold cyan]")
+    _emit("=" * 50)
 
     # --- AWS CLI ---
-    console.print("\n[bold]AWS CLI[/bold]")
+    _emit("\n[bold]AWS CLI[/bold]")
     ok, msg = _self.check_aws_version()
-    _print_check(console, "AWS CLI version", ok, msg)
-    if not ok:
-        issues.append(msg)
+    _check("AWS CLI version", ok, msg)
+
+    # --- Cloud CLIs (multi-cloud presence; advisory) ---
+    _emit("\n[bold]Cloud CLIs[/bold]")
+    for label, cli_ok, detail in _cloud_cli_checks():
+        _check(label, cli_ok, detail, advisory=True)
 
     # --- Shell Integration ---
-    console.print("\n[bold]Shell Integration[/bold]")
+    # ADVISORY: a fresh install has no shell wrapper yet — that is expected, not
+    # a failure. Counting it as a hard issue made `doctor` wrongly exit nonzero
+    # on a first run. It's informational; `cloudctl init` installs it.
+    _emit("\n[bold]Shell Integration[/bold]")
     ok, msg = _self.check_shell_integration()
-    _print_check(console, "Shell wrapper", ok, msg)
-    if not ok:
-        issues.append(msg)
+    _check("Shell wrapper", ok, msg, advisory=True)
 
     # --- Permissions ---
     ok, msg = _self.check_permissions()
-    _print_check(console, "Permissions", ok, msg)
-    if not ok:
-        issues.append(msg)
+    _check("Permissions", ok, msg)
 
     # --- Network / SSL ---
     ok, msg = _self.check_network_ssl()
-    _print_check(console, "Network / SSL", ok, msg)
-    if not ok:
-        issues.append(msg)
+    _check("Network / SSL", ok, msg)
 
-    # --- Time sync ---
+    # --- Time sync (advisory only) ---
     ok, msg = _self.check_time_sync()
-    _print_check(console, "Time sync", ok, msg)
-    # Time sync is advisory only — don't count as failure
+    _check("Time sync", ok, msg, advisory=True)
 
     # --- Configuration ---
-    console.print("\n[bold]Configuration[/bold]")
+    _emit("\n[bold]Configuration[/bold]")
     try:
         cfg = config.load_raw_config()
         # Support both the dict schema (organizations: {...}) and the legacy
         # list schema (orgs: [...]) — same resolution config.get_org() uses.
         orgs_data = cfg.get("organizations", {}) or cfg.get("orgs", [])
         org_count = len(orgs_data)
-        _print_check(console, "Config file", True, f"{org_count} org(s) configured")
+        _check("Config file", True, f"{org_count} org(s) configured")
     except Exception as e:
-        _print_check(console, "Config file", False, str(e))
-        issues.append(str(e))
+        _check("Config file", False, str(e))
 
     # --- Schema validation ---
     try:
@@ -226,27 +277,37 @@ def run_diagnostics(fix_path: Optional[bool] = None) -> int:
         raw = config.load_raw_config()
         schema_errors = validate_orgs_config(raw) if raw else []
         if schema_errors:
-            _print_check(
-                console, "Config schema", False, f"{len(schema_errors)} error(s)"
-            )
+            _check("Config schema", False, "; ".join(schema_errors))
             for err in schema_errors:
-                console.print(f"    [red]•[/red] {err}")
-            issues.extend(schema_errors)
+                _emit(f"    [red]•[/red] {err}")
         else:
-            _print_check(console, "Config schema", True, "Valid")
+            _check("Config schema", True, "Valid")
     except Exception as e:
-        _print_check(console, "Config schema", False, str(e))
-        issues.append(str(e))
+        _check("Config schema", False, str(e))
 
     # --- WSL Performance (only when running in WSL) ---
     if is_wsl():
-        console.print("\n[bold]WSL Performance[/bold]")
+        _emit("\n[bold]WSL Performance[/bold]")
         ok, msg = _self.check_wsl_performance()
-        _print_check(console, "AWS binary", ok, msg)
-        if not ok:
-            issues.append(msg)
+        _check("AWS binary (WSL)", ok, msg)
 
-    # --- Summary ---
+    if fmt == "json":
+        # Machine-readable summary on STDOUT (plain print → capturable, never
+        # Rich-decorated). Advisory failures do not flip `ok` / the exit code.
+        # The Rich table was NOT emitted in this branch — single format only.
+        print(
+            json.dumps(
+                {
+                    "ok": not issues,
+                    "issue_count": len(issues),
+                    "checks": records,
+                    "issues": issues,
+                }
+            )
+        )
+        return 0 if not issues else 1
+
+    # --- Summary (table mode) ---
     console.print("\n" + "=" * 50)
     if not issues:
         console.print("[bold green]Everything looks good[/bold green] ✓")

@@ -1,13 +1,12 @@
 import json
-import sys
 from typing import Any, Dict, List, Optional
 
-from .base import CloudProvider
+from .. import exit_codes
+from .base import CloudProvider, ProviderCredentialError
 from ..aws import (
     run_aws,
-    ensure_sso_base_profile,
 )
-from ..sso_cache import OrgRef, load_active_sso_token
+from ..sso_cache import OrgRef, load_active_sso_token, write_sso_token
 
 
 class AwsProvider(CloudProvider):
@@ -26,7 +25,22 @@ class AwsProvider(CloudProvider):
         "AWS_PROFILE",
     ]
 
+    # Device-authorization polling bounds. The AWS SSO OIDC service returns an
+    # `interval` (seconds between polls) and `expiresIn` (seconds until the
+    # device code dies); we honour both. These are only fallbacks used when the
+    # service omits them.
+    _DEFAULT_POLL_INTERVAL = 5
+    _MAX_POLL_INTERVAL = 60
+
     def login(self, org: Dict[str, Any]) -> int:
+        """Authenticate to IAM Identity Center via the SSO OIDC device flow.
+
+        Zero-trust: this writes NO profile or `[sso-session]` block to
+        ~/.aws/config. The only disk artifact is the short-lived SSO access
+        token in the standard AWS SSO cache dir (~/.aws/sso/cache) — the same
+        file the AWS CLI itself uses and that `get_credentials` reads back.
+        The vended STS credentials are never written to disk.
+        """
         # AWS China (aws-cn) does not support IAM Identity Center.
         # Users must configure long-term IAM access keys directly.
         partition = org.get("partition", "aws")
@@ -41,24 +55,194 @@ class AwsProvider(CloudProvider):
                 "  export AWS_DEFAULT_REGION=cn-north-1"
             )
             return 1
-        try:
-            ensure_sso_base_profile(org)
-            from .. import utils as _utils
 
-            # Interactive: inherit stdio (capture=False) so `aws sso login` opens
-            # the browser AND prints the verification URL/code as a fallback, and
-            # blocks until the human completes the browser approval. Capturing
-            # output here would hide the code and break the device-auth flow.
-            _utils.run(
-                ["aws", "sso", "login", "--sso-session", org["name"]],
-                capture=False,
-            )
-            return 0
+        try:
+            return self._device_authorization_login(org)
         except Exception as e:
             from ..utils import console
 
             console.print(f"[red]Login failed:[/] {e}")
             return 1
+
+    def _device_authorization_login(self, org: Dict[str, Any]) -> int:
+        """Interactive login that PERSISTS the SSO token to the cache.
+
+        Token ACQUISITION (the device flow) and token CACHING (the disk write)
+        are deliberately separated: acquisition lives in `_obtain_sso_token`
+        (returns the token in memory, writes nothing), and this method adds the
+        single disk write. That split is what lets `authenticate_in_memory`
+        reuse the exact same device flow WITHOUT touching disk (`--no-cache`).
+        """
+        from .. import utils as _utils
+
+        sso_region = org.get("sso_region", "")
+        start_url = org.get("sso_start_url", "")
+        name = org.get("name", "")
+
+        tok = self._obtain_sso_token(org)
+
+        write_sso_token(
+            OrgRef(name, start_url, sso_region),
+            access_token=tok["accessToken"],
+            expires_at=tok["expiresAt"],
+            client_id=tok.get("clientId", ""),
+            client_secret=tok.get("clientSecret", ""),
+            registration_expires_at=tok.get("registrationExpiresAt", ""),
+            refresh_token=tok.get("refreshToken"),
+        )
+        _utils.console.print("[green]SSO login complete.[/]")
+        return 0
+
+    def _obtain_sso_token(self, org: Dict[str, Any]) -> Dict[str, Any]:
+        """Run the SSO OIDC device flow and RETURN the token payload in memory.
+
+        This performs register_client → start_device_authorization → (open
+        browser + print URL/code to stderr) → poll create_token — honouring the
+        service `interval`/`SlowDownException` and a hard expiry deadline so it
+        NEVER hangs. It writes NOTHING to disk; the caller decides whether to
+        cache the returned payload (`login`) or keep it purely in memory
+        (`authenticate_in_memory`, i.e. `--no-cache`).
+
+        Returns a dict with keys: accessToken, expiresAt (ISO-8601 UTC),
+        clientId, clientSecret, registrationExpiresAt, refreshToken.
+        """
+        import time
+        from datetime import datetime, timedelta, timezone
+
+        import boto3
+        from botocore.exceptions import ClientError
+
+        from .. import utils as _utils
+
+        sso_region = org.get("sso_region", "")
+        start_url = org.get("sso_start_url", "")
+
+        if not sso_region or not start_url:
+            raise RuntimeError(
+                "Org is missing sso_region/sso_start_url; cannot start SSO login."
+            )
+
+        # boto3 resolves the correct sso-oidc endpoint from region_name, so
+        # govcloud/other partitions work without any endpoint override.
+        ssooidc = boto3.client("sso-oidc", region_name=sso_region)
+
+        reg = ssooidc.register_client(clientName="cloudctl", clientType="public")
+        client_id = reg["clientId"]
+        client_secret = reg["clientSecret"]
+
+        dev = ssooidc.start_device_authorization(
+            clientId=client_id,
+            clientSecret=client_secret,
+            startUrl=start_url,
+        )
+        device_code = dev["deviceCode"]
+        user_code = dev.get("userCode", "")
+        verification_uri_complete = dev.get("verificationUriComplete", "")
+        verification_uri = dev.get("verificationUri", "")
+        _interval = dev.get("interval")
+        # Never poll faster than the default: a service-supplied 0 (or missing)
+        # interval would otherwise busy-spin create_token.
+        interval = max(int(_interval or 0), self._DEFAULT_POLL_INTERVAL)
+        expires_in = int(dev.get("expiresIn", 600))
+
+        # Open the browser AND print the URL + code to STDERR so a headless /
+        # agent flow can complete the approval out-of-band. `console` writes to
+        # stderr; keeping the machine-readable stdout stream clean.
+        _utils.console.print(
+            "[yellow]To authenticate, open the following URL and confirm the "
+            f"code:[/]\n  URL:  {verification_uri or verification_uri_complete}\n"
+            f"  Code: {user_code}"
+        )
+        if verification_uri_complete:
+            _utils.open_browser(verification_uri_complete)
+
+        # Poll create_token, honouring interval/SlowDown and the hard expiry
+        # deadline so we NEVER hang indefinitely.
+        deadline = time.monotonic() + expires_in
+        while True:
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    "Device authorization expired before it was approved. "
+                    "Run 'cloudctl login' again."
+                )
+            time.sleep(interval)
+            try:
+                tok = ssooidc.create_token(
+                    clientId=client_id,
+                    clientSecret=client_secret,
+                    grantType="urn:ietf:params:oauth:grant-type:device_code",
+                    deviceCode=device_code,
+                )
+                break
+            except ClientError as e:
+                code = e.response.get("Error", {}).get("Code", "")
+                if code == "AuthorizationPendingException":
+                    continue
+                if code == "SlowDownException":
+                    interval = min(interval + 5, self._MAX_POLL_INTERVAL)
+                    continue
+                raise
+
+        access_token = tok["accessToken"]
+        expires_in_token = int(tok.get("expiresIn", 8 * 3600))
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(seconds=expires_in_token)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        return {
+            "accessToken": access_token,
+            "expiresAt": expires_at,
+            "clientId": client_id,
+            "clientSecret": client_secret,
+            "registrationExpiresAt": self._iso_from_epoch(
+                reg.get("clientSecretExpiresAt")
+            ),
+            "refreshToken": tok.get("refreshToken"),
+        }
+
+    def authenticate_in_memory(self, org: Dict[str, Any]) -> Any:
+        """Acquire an SSO token via the device flow WITHOUT writing to disk.
+
+        This is the `--no-cache` acquisition path: it runs the same device flow
+        as `login`, but returns a lightweight in-memory token object exposing
+        `.accessToken` and `.expiresAt` (the same surface `get_credentials` and
+        the whoami/expiry consumers expect of a cached SsoToken) instead of
+        persisting the token to `~/.aws/sso/cache`. Nothing is written to disk.
+        """
+        from datetime import datetime, timezone
+
+        from ..sso_cache import _parse_timestamp
+
+        tok = self._obtain_sso_token(org)
+        expires_at = _parse_timestamp(tok["expiresAt"]) or datetime.now(timezone.utc)
+
+        class _InMemorySsoToken:
+            """Minimal in-memory token — same duck-type as SsoToken for the
+            fields consumers read (accessToken/expiresAt), never persisted."""
+
+            def __init__(self, access_token: str, expires_at_dt: datetime):
+                self.accessToken = access_token
+                self.expiresAt = expires_at_dt
+
+            def is_expired(self) -> bool:
+                return datetime.now(timezone.utc) >= self.expiresAt
+
+        return _InMemorySsoToken(tok["accessToken"], expires_at)
+
+    @staticmethod
+    def _iso_from_epoch(epoch: Any) -> str:
+        """Format an epoch-seconds value (as returned by register_client's
+        clientSecretExpiresAt) as an ISO-8601 UTC string; '' if unavailable."""
+        from datetime import datetime, timezone
+
+        if not epoch:
+            return ""
+        try:
+            return datetime.fromtimestamp(int(epoch), tz=timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+        except (ValueError, TypeError, OSError):
+            return ""
 
     def load_token(self, org: Dict[str, Any]) -> Optional[Any]:
         name = org.get("name", "") if isinstance(org, dict) else org.name
@@ -88,16 +272,107 @@ class AwsProvider(CloudProvider):
         except Exception:
             return []
 
-    def get_credentials(
-        self, org: Dict[str, Any], account: str, role: str, region: str
-    ) -> Dict[str, str]:
-        # Load the cached SSO access token — required for get-role-credentials
-        token = self.load_token(org)
-        if not token or not hasattr(token, "accessToken"):
-            from ..utils import console
+    def get_identity(self, org: Dict[str, Any]) -> Optional[Dict[str, str]]:
+        """LIVE identity via `sts get-caller-identity`.
 
-            console.print("[red]No valid SSO session. Run 'cloudctl login <org>'.[/]")
-            sys.exit(1)
+        Returns {"account","arn","user_id"} on success, or None if the call
+        fails for ANY reason (no session, denied, network). Never fabricates —
+        an unverifiable identity is None, not a guess echoed from context.
+        """
+        res = run_aws(["sts", "get-caller-identity", "--output", "json"])
+        if res.get("returncode") != 0:
+            return None
+        try:
+            data = json.loads(res.get("stdout", "") or "{}")
+        except (json.JSONDecodeError, ValueError):
+            return None
+        account = data.get("Account")
+        arn = data.get("Arn")
+        user_id = data.get("UserId")
+        if not (account and arn and user_id):
+            return None
+        return {"account": account, "arn": arn, "user_id": user_id}
+
+    @staticmethod
+    def _classify_aws_failure(stderr: str) -> ProviderCredentialError:
+        """Map an AWS CLI stderr / failure condition to a faithful
+        ProviderCredentialError. This is the fix for DENIED being misreported
+        as AUTH: a Forbidden/AccessDenied is code 4, not code 2."""
+        low = (stderr or "").lower()
+
+        # AUTH (2): the SSO session is missing/expired — re-login fixes it.
+        if (
+            "expiredtoken" in low
+            or "expired token" in low
+            or "no valid sso" in low
+            or "session token not found or invalid" in low
+            or "token has expired" in low
+            or "session is invalid" in low
+        ):
+            return ProviderCredentialError(
+                exit_codes.AUTH,
+                "Authentication required: run 'cloudctl login <org>'.",
+            )
+
+        # DENIED (4): the identity is valid but not authorized — relay the real
+        # reason so the user sees the truth, not a phantom "no SSO session".
+        if (
+            "accessdenied" in low
+            or "access denied" in low
+            or "forbidden" in low
+            or "not authorized" in low
+            or "no access" in low
+            or "unauthorizedexception" in low
+        ):
+            reason = stderr.strip() or "Access denied."
+            return ProviderCredentialError(exit_codes.DENIED, reason)
+
+        # NOT_FOUND (3): the account/role doesn't exist or isn't assigned.
+        if (
+            "not found" in low
+            or "resourcenotfound" in low
+            or "no role" in low
+            or "invalid account" in low
+            or "does not exist" in low
+        ):
+            reason = stderr.strip() or "Account or role not found."
+            return ProviderCredentialError(exit_codes.NOT_FOUND, reason)
+
+        # ERROR (1): genuinely uncategorised.
+        summary = stderr.strip() or "Failed to obtain AWS credentials."
+        return ProviderCredentialError(exit_codes.ERROR, summary)
+
+    def get_credentials(
+        self,
+        org: Dict[str, Any],
+        account: str,
+        role: str,
+        region: str,
+        token: Optional[Any] = None,
+    ) -> Dict[str, str]:
+        # SSO access token — required for get-role-credentials. When a
+        # pre-obtained token is passed (the `--no-cache` in-memory path), use it
+        # directly and SKIP the cache read entirely, so no disk lookup/write is
+        # involved. Otherwise fall back to loading it from the cache exactly as
+        # before. A missing/absent token is unambiguously AUTH: no session at all.
+        if token is None:
+            token = self.load_token(org)
+        if not token or not hasattr(token, "accessToken"):
+            # Do NOT print prose here — the exec/CLI layer renders the message
+            # from the raised code (avoids a double line under --json-errors).
+            raise ProviderCredentialError(
+                exit_codes.AUTH,
+                "Authentication required: run 'cloudctl login <org>'.",
+            )
+
+        # The get-role-credentials call is an IAM Identity Center (SSO) portal
+        # API. It MUST be made in the SSO instance region (org.sso_region), NOT
+        # the region the user wants the *executed command* to run in. Conflating
+        # the two is the classic failure: an SSO instance in eu-west-2 vending
+        # creds for a command that targets us-east-1 would otherwise send the
+        # portal call to the wrong endpoint and fail with "session token not
+        # found or invalid". (list_accounts/list_roles already do this right.)
+        sso_region = org.get("sso_region") if isinstance(org, dict) else org.sso_region
 
         args = [
             "sso",
@@ -109,31 +384,45 @@ class AwsProvider(CloudProvider):
             "--access-token",
             token.accessToken,
             "--region",
-            region,
+            sso_region,
         ]
         res = run_aws(args)
         if res.get("returncode") != 0:
-            from ..utils import console
+            # Classify the REAL cause from stderr so a Forbidden/AccessDenied is
+            # reported as DENIED (4), an expired token as AUTH (2), etc. — never
+            # a blanket "no valid SSO session".
+            raise self._classify_aws_failure(res.get("stderr", ""))
 
-            error_msg = res.get("stderr", "AWS CLI failed")
-            console.print(f"[red]Failed to retrieve credentials:[/] {error_msg}")
-            sys.exit(1)
-
-        data = json.loads(res.get("stdout", "{}"))
+        try:
+            data = json.loads(res.get("stdout", "{}") or "{}")
+        except (json.JSONDecodeError, ValueError):
+            raise ProviderCredentialError(
+                exit_codes.ERROR,
+                "Unexpected response from AWS SSO get-role-credentials.",
+            )
         creds = data.get("roleCredentials", {})
         if not creds:
-            from ..utils import console
+            # rc==0 but no credentials in the payload — uncategorised failure.
+            raise ProviderCredentialError(
+                exit_codes.ERROR,
+                "AWS SSO returned no role credentials.",
+            )
 
-            console.print("[red]No credentials returned from AWS STS.[/]")
-            sys.exit(1)
-
-        name = org.get("name", "cloudctl") if isinstance(org, dict) else org.name
-        return {
+        # Return ONLY the short-lived STS keys, plus the region the executed
+        # command should target. Do NOT set AWS_PROFILE: these keys are
+        # self-contained, and a profile name that doesn't exist in
+        # ~/.aws/config takes precedence over the keys and makes the child
+        # command fail with "config profile could not be found". Profile
+        # management is exactly what this tool exists to avoid.
+        out = {
             "AWS_ACCESS_KEY_ID": creds["accessKeyId"],
             "AWS_SECRET_ACCESS_KEY": creds["secretAccessKey"],
             "AWS_SESSION_TOKEN": creds["sessionToken"],
-            "AWS_PROFILE": f"{name}-{account}-{role}",
         }
+        if region:
+            out["AWS_REGION"] = region
+            out["AWS_DEFAULT_REGION"] = region
+        return out
 
     def get_unsets(self) -> str:
         return "\n".join(f"unset {v}" for v in self._ENV_VARS)

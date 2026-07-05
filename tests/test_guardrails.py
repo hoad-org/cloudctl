@@ -82,6 +82,9 @@ def test_check_break_glass_prompt(monkeypatch, mock_rich_console, tmp_path):
 
     cfg = {"name": "prod", "sensitive_roles": ["Admin"]}
 
+    # Force the interactive path: pretend we have a TTY and no CI/agent env.
+    _force_tty(monkeypatch)
+
     # Mock Inquirer to return a reason string
     mock_prompt = MagicMock()
     mock_prompt.execute.return_value = "Fixing DB"
@@ -114,6 +117,7 @@ def test_check_break_glass_abort(monkeypatch, mock_rich_console):
     mock_rich_console.clear()
     cfg = {"name": "prod", "sensitive_roles": ["Admin"]}
 
+    _force_tty(monkeypatch)
     mock_prompt = MagicMock()
     # Simulate user pressing Ctrl+C
     mock_prompt.execute.side_effect = KeyboardInterrupt
@@ -123,3 +127,37 @@ def test_check_break_glass_abort(monkeypatch, mock_rich_console):
         guardrails.check_break_glass(cfg, "Admin")
 
     assert "Access Aborted" in "".join(mock_rich_console.captured)
+
+
+def _force_tty(monkeypatch):
+    """Make guardrails see an interactive TTY (no CI/agent env)."""
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("CLAUDECODE", raising=False)
+
+    class _FakeStdin:
+        def isatty(self):
+            return True
+
+    monkeypatch.setattr(guardrails.sys, "stdin", _FakeStdin())
+
+
+def test_check_break_glass_non_interactive_requires_env_reason(
+    monkeypatch, mock_rich_console
+):
+    """Without a TTY, break-glass must NOT hang: it reads the reason from
+    CLOUDCTL_BREAK_GLASS_REASON, or exits 2 if absent."""
+    cfg = {"name": "prod", "sensitive_roles": ["Admin"]}
+
+    class _FakeStdin:
+        def isatty(self):
+            return False
+
+    monkeypatch.setattr(guardrails.sys, "stdin", _FakeStdin())
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("CLAUDECODE", raising=False)
+
+    # No reason supplied -> fail fast, never prompt.
+    monkeypatch.delenv("CLOUDCTL_BREAK_GLASS_REASON", raising=False)
+    with pytest.raises(SystemExit) as exc:
+        guardrails.check_break_glass(cfg, "Admin")
+    assert exc.value.code == 2

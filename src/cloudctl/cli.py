@@ -20,11 +20,10 @@ need EVAL?" before it decides whether to capture or stream stdout.
 import importlib.metadata
 import os
 import sys
-from pathlib import Path
 from typing import Any, List, Optional
 
 
-from . import core, utils
+from . import context_manager, core, exit_codes, utils
 from .use_exports import emit_exports  # noqa: F401 — re-exported for monkeypatch seam
 from .errors import CloudCtlError
 from .error_formatter import format_error
@@ -33,7 +32,11 @@ from .error_formatter import format_error
 console = utils.console
 stdout_console = utils.stdout_console
 
-CONTEXT_FILE = Path.home() / ".cloudctl" / "context.json"
+# Single source of truth for the active context. Previously this pointed at
+# ~/.cloudctl/context.json — a file that NOTHING wrote (switch/status/exec all
+# use context_manager's ~/.config/cloudctl/current_context.json), so `whoami`
+# and login-inference silently read an empty/stale file. Alias the real one.
+CONTEXT_FILE = context_manager.CONTEXT_FILE
 
 
 def _emit_eval_exports(export_str: str) -> None:
@@ -86,6 +89,51 @@ def load_context():
     except Exception as e:
         utils.debug_print(f"Failed to load context: {e}")
         return {}
+
+
+def _resolve_default_format() -> str:
+    """Default output format for read/discovery commands.
+
+    Agents drive the binary without a TTY, so machine-parseable JSON is the
+    right default there; interactive humans get the friendlier table view.
+    Returns "json" when stdout is NOT a TTY, else "table".
+    """
+    try:
+        return "table" if sys.stdout.isatty() else "json"
+    except Exception:
+        return "json"
+
+
+def _resolve_format(args: Any) -> str:
+    """Resolve the effective --format for a read command.
+
+    Argparse defaults --format to ``None`` for these commands so we can tell
+    "user did not pass --format" apart from an explicit choice. When unset we
+    fall back to :func:`_resolve_default_format` (json when non-TTY).
+    """
+    fmt = getattr(args, "format", None)
+    if fmt in ("table", "json", "text"):
+        return fmt
+    return _resolve_default_format()
+
+
+def _non_interactive(args: Any = None) -> bool:
+    """True when we must NOT show an interactive prompt.
+
+    An agent (or any script) driving the binary has no TTY to answer a picker,
+    so prompting would hang forever. Treat as non-interactive when the flag is
+    set, stdin is not a TTY, or a known CI/agent env var is present. Every
+    interactive site must gate on this and fail fast with an actionable error
+    instead of blocking.
+    """
+    if getattr(args, "non_interactive", False):
+        return True
+    try:
+        if not sys.stdin.isatty():
+            return True
+    except Exception:
+        return True
+    return any(os.environ.get(v) for v in ("CI", "CLAUDECODE", "AWSCTL_HEADLESS"))
 
 
 # ---------------------------------------------------------------------------
@@ -276,12 +324,6 @@ def cmd_switch(args: Any) -> int:
             ctx = load_context()
             org_name = ctx.get("current_org") if ctx else None
 
-        if account_arg and not role_arg:
-            utils.console.print(
-                "[red]--role is required when --account is specified.[/]"
-            )
-            return 1
-
         if org_name:
             try:
                 org_data = get_org(org_name)
@@ -294,13 +336,19 @@ def cmd_switch(args: Any) -> int:
                 utils.console.print(
                     "[red]No organizations configured.[/] Run [bold]cloudctl init[/bold] or [bold]cloudctl org add[/bold]."
                 )
-                return 1
+                return exit_codes.USAGE
             if len(orgs) == 1:
                 org_name = orgs[0]
                 try:
                     org_data = get_org(org_name)
                 except Exception:
                     org_data = {"name": org_name, "provider": "aws"}
+            elif _non_interactive(args):
+                utils.console.print(
+                    "[red]Multiple organizations configured and no TTY to "
+                    "prompt.[/] Pass [bold]--org <name>[/bold] explicitly."
+                )
+                return 5
             else:
                 try:
                     from InquirerPy import inquirer
@@ -315,6 +363,22 @@ def cmd_switch(args: Any) -> int:
                 except KeyboardInterrupt:
                     raise
 
+        # --role is provider-aware. Only AWS SSO requires a permission-set to
+        # switch; GCP/Azure have no runtime role assumption, so a missing --role
+        # must NOT block the switch (role is a display/audit no-op there). When
+        # AWS and role is missing while account is given, the error must TEACH.
+        _provider_name = (
+            org_data.get("provider", "aws") if isinstance(org_data, dict) else "aws"
+        )
+        _role_required = _provider_name == "aws"
+        if _role_required and account_arg and not role_arg:
+            utils.console.print(
+                "[red]AWS requires --role.[/] Run "
+                f"[bold]cloudctl roles --org {org_name} --account {account_arg}[/bold] "
+                "to list them (GCP/Azure don't use --role)."
+            )
+            return exit_codes.USAGE
+
         # Guardrail: validate explicit region before proceeding.
         if region_arg:
             try:
@@ -324,14 +388,25 @@ def cmd_switch(args: Any) -> int:
             except SystemExit:
                 return 1
 
-        # Handle --non-interactive mode: require all arguments, skip prompts
-        non_interactive = getattr(args, "non_interactive", False)
+        # Non-interactive when the flag is set OR there's no TTY / we're in a
+        # CI/agent context. In that case require all args and NEVER prompt —
+        # prompting would hang an agent forever. --role is required only for AWS.
+        non_interactive = _non_interactive(args)
         if non_interactive:
-            if not all([account_arg, role_arg, region_arg]):
+            _required = (
+                [account_arg, role_arg, region_arg]
+                if _role_required
+                else [account_arg, region_arg]
+            )
+            if not all(_required):
+                _role_hint = "--role, " if _role_required else ""
                 utils.console.print(
-                    "[red]--non-interactive requires --account, --role, and --region[/]"
+                    f"[red]No TTY to prompt: --account, {_role_hint}and --region "
+                    "are required here.[/] "
+                    "e.g. [bold]cloudctl switch <org> --account <id> --role "
+                    "<role> --region <region>[/bold]"
                 )
-                return 1
+                return 5
             account, role, region = account_arg, role_arg, region_arg
         else:
             # Interactive mode: use run_interactive_use for prompts
@@ -342,7 +417,14 @@ def cmd_switch(args: Any) -> int:
                 region_arg,
             )
 
-        if not all([account, role, region]):
+        # Completeness: AWS needs account+role+region; GCP/Azure need only
+        # account+region (role is a no-op there and must not block).
+        _complete = (
+            all([account, role, region])
+            if _role_required
+            else all([account, region])
+        )
+        if not _complete:
             return 1
 
         # Validate role exists for this account (with auto-correction in interactive mode)
@@ -387,31 +469,15 @@ def cmd_switch(args: Any) -> int:
             # (SSO might not be initialized yet, or token unavailable)
             utils.console.print(f"[dim]Note: Could not pre-validate role: {e}[/]")
 
-        # RBAC validation: check the user is authorized to access this role
-        # (allowed-roles allowlist, break-glass, approval gate, MFA gate).
+        # RBAC validation: check the user is authorized to access this role.
+        # cloudctl enforces exactly two real controls here — the allowed-roles
+        # allowlist (denies) and the break-glass audit for sensitive roles
+        # (records a justification). No MFA/approval theatre.
         allowed, message = validate_role_access(org_data, role, account)
         if not allowed:
             utils.console.print(f"[bold red]Access Denied:[/] {message}")
-            return 1
-
-        # Handle approval gates and MFA requirements
-        if message == "approval_required":
-            utils.console.print(
-                f"[bold yellow]⚠ Approval Required:[/] "
-                f"Role [cyan]{role}[/] requires approval before access."
-            )
-            utils.console.print(
-                "[yellow]Contact your organization administrator for approval.[/]"
-            )
-            return 1
-        elif message == "mfa_required":
-            utils.console.print(
-                f"[bold yellow]⚠ MFA Required:[/] "
-                f"Role [cyan]{role}[/] requires multi-factor authentication."
-            )
-            # In a real implementation, this would trigger MFA flow
-            # For now, just inform the user
-            return 1
+            # Guardrail rejection is a permission-denied condition.
+            return exit_codes.DENIED
 
         export_str = _self.emit_exports(org_data, account, role, region)
         _emit_eval_exports(export_str)
@@ -444,29 +510,48 @@ def cmd_cache_clear(args: Any) -> int:
     return 0
 
 
-def cmd_exec(args: Any) -> int:
+def cmd_run(args: Any) -> int:
+    """THE primary command: run a child command with cloud credentials injected.
+
+    Stateless — nothing is written to disk. Same behaviour and args as the
+    legacy `exec` verb (which is now a hidden alias of this).
+    """
     from .commands.exec import ExecCommand
 
     return ExecCommand().execute(args)
 
 
-def cmd_status(args: Any) -> int:
-    from .context_manager import print_status
+# `exec` is a hidden back-compat alias of `run`; identical dispatch and args.
+cmd_exec = cmd_run
 
-    print_status()
-    return 0
+
+def cmd_status(args: Any) -> int:
+    """Back-compat handler for `status` / `env`.
+
+    These are hidden aliases of `whoami`. They dispatch to the same handler so
+    all three print an identical context/identity payload (JSON in json mode).
+    """
+    import cloudctl.cli as _self
+
+    return _self.cmd_whoami(args)
 
 
 def cmd_accounts(args: Any) -> int:
     from .commands.accounts import AccountsCommand
 
+    # Normalise the read-command format: json when non-TTY unless overridden.
+    if getattr(args, "format", None) is None:
+        args.format = _resolve_default_format()
     return AccountsCommand().execute(args)
 
 
 def cmd_doctor(args: Any) -> int:
     from . import doctor
 
-    return doctor.run_diagnostics(fix_path=getattr(args, "fix_path", False))
+    return doctor.run_diagnostics(
+        fix_path=getattr(args, "fix_path", False),
+        fmt=_resolve_format(args),
+    )
 
 
 def cmd_init(args: Any) -> int:
@@ -490,49 +575,167 @@ def cmd_org(args: Any) -> int:
         return 1
 
 
+def _whoami_expiry(provider_name: str, org_name: str) -> tuple:
+    """Return (expires_at_iso_or_None, expires_in_seconds_or_None).
+
+    Loads the active provider token and asks the provider for its expiry via
+    the existing ``get_token_expiry`` contract (AWS uses the cached SSO token;
+    gcp/azure call their CLI). Returns (None, None) when unknown / no session,
+    never raising — whoami must not fail just because expiry is unreadable.
+    """
+    from datetime import datetime, timezone
+
+    try:
+        from .config import get_org
+        from .providers import get_provider
+
+        try:
+            org_data = get_org(org_name)
+        except Exception:
+            # Fall back to a minimal org dict so provider lookup still works.
+            org_data = {"name": org_name, "provider": provider_name}
+        provider = get_provider(org_data)
+        expiry = provider.get_token_expiry(org_data)
+        if expiry is None:
+            return None, None
+        if getattr(expiry, "tzinfo", None) is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        secs = int((expiry - now).total_seconds())
+        return (
+            expiry.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            secs,
+        )
+    except Exception:
+        return None, None
+
+
 def cmd_whoami(args: Any = None) -> int:
     """Show the active identity for the current provider context.
 
     Falls back to AWS STS when no context exists (backward-compat with
     tests and scripts that call whoami without a prior switch).
+
+    With ``--format json`` the identity is emitted as a single JSON object on
+    STDOUT (never Rich-decorated) so an agent can parse it:
+        {provider, org, account, role, region, identity}
+    For AWS, ``identity`` holds the STS get-caller-identity fields; for
+    gcp/azure it holds whatever context we know.
     """
+    import json
+
     ctx = load_context()
     provider = ctx.get("provider", "aws") if ctx else "aws"
     org_name = ctx.get("current_org", "") if ctx else ""
     account = ctx.get("account", "") if ctx else ""
     role = ctx.get("role", "") if ctx else ""
     region = ctx.get("region", "") if ctx else ""
+    as_json = _resolve_format(args) == "json"
+
+    # Token expiry surfaced for agents so they can pre-empt an expired session.
+    # Null when there is no context / no session / expiry is unreadable.
+    if as_json and org_name:
+        expires_at, expires_in_seconds = _whoami_expiry(provider, org_name)
+    else:
+        expires_at, expires_in_seconds = None, None
+
+    # Resolve the LIVE identity through the provider's honest get_identity()
+    # contract — every provider queries the cloud (sts get-caller-identity,
+    # az account show, gcloud auth list) and returns the real dict or None. We
+    # NEVER fabricate an identity by echoing stored context.
+    from .config import get_org
+    from .providers import get_provider
+
+    try:
+        try:
+            org_data = get_org(org_name)
+        except Exception:
+            org_data = {"name": org_name, "provider": provider}
+        _provider_obj = get_provider(org_data)
+        identity = _provider_obj.get_identity(org_data)
+    except (Exception, SystemExit):
+        # get_identity must never crash whoami. Some providers sys.exit(1) when
+        # their CLI is absent (az/gcloud) — treat any such failure as
+        # "identity unverifiable" (None), never a fabrication.
+        identity = None
 
     if provider == "aws":
-        from . import aws
-
-        try:
-            result = aws.run_aws(["sts", "get-caller-identity"])
-            if result.get("returncode") != 0:
-                utils.console.print(
-                    f"Failed to get identity: {result.get('stderr', '')}"
+        # AWS: no verified identity means the SSO session is missing/expired.
+        if identity is None:
+            if as_json:
+                stdout_console.print_json(
+                    data={
+                        "provider": provider,
+                        "org": org_name,
+                        "account": account,
+                        "role": role,
+                        "region": region,
+                        "identity": None,
+                        "expires_at": expires_at,
+                        "expires_in_seconds": expires_in_seconds,
+                        "error": "Failed to get identity (no valid session).",
+                    }
                 )
-                return 1
-            utils.console.print(result.get("stdout", ""))
-        except Exception as e:
-            utils.console.print(str(e))
-            return 1
-    elif provider == "azure":
+            else:
+                utils.console.print("Failed to get identity (no valid session).")
+            return exit_codes.AUTH
+        if as_json:
+            stdout_console.print_json(
+                data={
+                    "provider": provider,
+                    "org": org_name,
+                    "account": account,
+                    "role": role,
+                    "region": region,
+                    "identity": identity,
+                    "expires_at": expires_at,
+                    "expires_in_seconds": expires_in_seconds,
+                }
+            )
+        else:
+            utils.console.print(json.dumps(identity, indent=2))
+        return exit_codes.OK
+
+    # Non-AWS providers: the JSON `identity` field holds the REAL dict from
+    # get_identity(), or null if it could not be verified. Stored context
+    # (org/account/role/region) is reported in its own fields — never smuggled
+    # in as identity.
+    if as_json:
+        stdout_console.print_json(
+            data={
+                "provider": provider,
+                "org": org_name,
+                "account": account,
+                "role": role,
+                "region": region,
+                "identity": identity,
+                "expires_at": expires_at,
+                "expires_in_seconds": expires_in_seconds,
+            }
+        )
+        return exit_codes.OK
+
+    # Table view: show the verified identity, or "unverified" when None.
+    verified = "unverified" if identity is None else str(identity)
+    if provider == "azure":
         utils.console.print(
             f"[bold]Azure[/bold]  org={org_name}  "
-            f"subscription={account}  role={role}  region={region}"
+            f"subscription={account}  role={role}  region={region}  "
+            f"identity={verified}"
         )
     elif provider == "gcp":
         utils.console.print(
             f"[bold]GCP[/bold]  org={org_name}  "
-            f"project={account}  role={role}  region={region}"
+            f"project={account}  role={role}  region={region}  "
+            f"identity={verified}"
         )
     else:
         utils.console.print(
             f"[bold]{provider}[/bold]  org={org_name}  "
-            f"account={account}  role={role}  region={region}"
+            f"account={account}  role={role}  region={region}  "
+            f"identity={verified}"
         )
-    return 0
+    return exit_codes.OK
 
 
 def cmd_open(args: Any = None) -> int:
@@ -565,6 +768,13 @@ def cmd_open(args: Any = None) -> int:
             )
         else:
             console_url = "https://console.aws.amazon.com/"
+
+        # --url: print the resolved console URL to stdout and exit 0 (do NOT
+        # open a browser). This is the agent/headless path — a browser can't be
+        # opened without a display, and stdout is capturable/pipeable.
+        if getattr(args, "url", False):
+            _safe_emit_to_stdout(console_url)
+            return 0
 
         import webbrowser
 
@@ -791,12 +1001,6 @@ def cmd_prompt(args: Any = None) -> int:
     return PromptCommand().execute(args)
 
 
-def cmd_watch(args: Any = None) -> int:
-    from .commands.watch import WatchCommand
-
-    return WatchCommand().execute(args)
-
-
 def cmd_upgrade(args: Any = None) -> int:
     """Upgrade cloudctl — prefers Artifactory pip, falls back to GitHub Releases."""
 
@@ -991,13 +1195,21 @@ def _upgrade_via_github(args: Any) -> int:
 
 
 def cmd_setup(args: Any = None) -> int:
-    """Run the setup wizard / merge defaults."""
+    """Merge sample defaults into orgs.yaml (non-interactive)."""
     return core.cmd_setup()
 
 
 def cmd_orgs(args: Any = None) -> int:
-    """Alias for cmd_org."""
-    return cmd_org(args)
+    """List configured orgs.
+
+    Previously this delegated to ``cmd_org`` with no subcommand, which printed
+    a "Usage: cloudctl org <add|list|remove>" stub instead of listing anything.
+    It now dispatches straight to the org-list logic so `orgs`, `list` and
+    `org list` all behave identically.
+    """
+    from .commands.org import OrgListCommand
+
+    return OrgListCommand().execute(args)
 
 
 def cmd_list(args: Any = None) -> int:
@@ -1007,121 +1219,13 @@ def cmd_list(args: Any = None) -> int:
     return OrgListCommand().execute(args)
 
 
-def cmd_pricing(args: Any) -> int:
-    """Estimate cloud infrastructure costs across providers."""
-    from .pricing import PricingCalculator, format_pricing_result
-    from InquirerPy import inquirer
-
-    calculator = PricingCalculator()
-
-    try:
-        # Get provider
-        provider = getattr(args, "provider", None)
-        if not provider:
-            provider = inquirer.select(
-                message="Select cloud provider:",
-                choices=["aws", "azure", "gcp"],
-            ).execute()
-
-        provider = provider.lower()
-
-        # Get component type
-        component = getattr(args, "component", None)
-        if not component:
-            components = [
-                "ec2",
-                "s3",
-                "rds",
-                "lambda",
-                "dynamodb",
-                "storage",
-                "compute",
-            ]
-            component = inquirer.select(
-                message="Select component type:",
-                choices=components,
-            ).execute()
-
-        component = component.lower()
-
-        # Get configuration based on component
-        config = {}
-        if component == "ec2":
-            config["vcpu"] = inquirer.number(
-                message="Number of vCPUs:", default=2
-            ).execute()
-            config["memory_gb"] = inquirer.number(
-                message="Memory (GB):", default=4
-            ).execute()
-        elif component == "s3":
-            config["storage_gb"] = inquirer.number(
-                message="Storage (GB):", default=100
-            ).execute()
-            config["requests_per_day"] = inquirer.number(
-                message="Requests per day:", default=1000
-            ).execute()
-        elif component == "rds":
-            config["vcpu"] = inquirer.number(message="vCPUs:", default=2).execute()
-            config["memory_gb"] = inquirer.number(
-                message="Memory (GB):", default=4
-            ).execute()
-            config["storage_gb"] = inquirer.number(
-                message="Storage (GB):", default=20
-            ).execute()
-        else:
-            console.print(f"[yellow]Using default configuration for {component}.[/]")
-            config = {"units": 1}
-
-        # Get region and other options
-        region = getattr(args, "region", "us-east-1")
-        currency = getattr(args, "currency", "USD")
-        period = getattr(args, "period", 1)
-        compare = getattr(args, "compare", False)
-        verbose = getattr(args, "verbose", False)
-
-        # Calculate costs
-        if compare:
-            console.print(f"\n[bold]Comparing {component} cost across providers[/]\n")
-            results = calculator.compare_providers(component, config, region, currency)
-
-            if not results:
-                console.print("[red]No pricing data available for comparison.[/]")
-                return 1
-
-            for i, result in enumerate(results, 1):
-                console.print(f"[bold]{i}. {result.provider.upper()}[/]")
-                console.print(format_pricing_result(result, verbose))
-
-                if i < len(results):
-                    savings = results[-1].monthly_cost - result.monthly_cost
-                    console.print(
-                        f"[green]Savings vs most expensive: {currency} ${savings:.2f}/mo[/]\n"
-                    )
-        else:
-            result = calculator.estimate_cost(
-                provider, component, config, region, currency, period
-            )
-            console.print("\n[bold]Cost Estimate[/]\n")
-            console.print(format_pricing_result(result, verbose))
-
-        return 0
-
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Cancelled.[/]")
-        return 1
-    except ValueError as e:
-        console.print(f"[red]Error: {e}[/]")
-        return 1
-    except Exception as e:
-        console.print(f"[red]Pricing calculation failed: {e}[/]")
-        utils.debug_print(f"Pricing error: {e}")
-        return 1
-
-
 def cmd_list_roles(args: Any) -> int:
     """List available or assigned IAM roles for an AWS organization."""
     from .commands.list_roles import ListRolesCommand
 
+    # Normalise the read-command format: json when non-TTY unless overridden.
+    if getattr(args, "format", None) is None:
+        args.format = _resolve_default_format()
     try:
         cmd = ListRolesCommand()
         return cmd.execute(args)
@@ -1129,6 +1233,79 @@ def cmd_list_roles(args: Any) -> int:
         console.print(f"[red]Error:[/] {e}")
         utils.debug_print(f"list-roles error: {e}")
         return 1
+
+
+# `roles` is the canonical verb; `list-roles` is a hidden back-compat alias.
+cmd_roles = cmd_list_roles
+
+
+def cmd_config(args: Any) -> int:
+    """`config` grouping command: init | validate | path.
+
+    Groups the configuration lifecycle under one discoverable verb. The old
+    top-level `init` and `setup` verbs remain as hidden aliases.
+    """
+    sub = getattr(args, "config_command", None)
+    if sub == "init":
+        return cmd_init(args)
+    if sub == "validate":
+        return cmd_config_validate(args)
+    if sub == "path":
+        return cmd_config_path(args)
+    console.print("Usage: cloudctl config <init|validate|path>")
+    return exit_codes.USAGE
+
+
+def cmd_config_path(args: Any = None) -> int:
+    """Print the absolute path to the orgs.yaml config file (stdout).
+
+    Uses a plain write (not the Rich console) so the path is emitted verbatim
+    on one line — Rich would soft-wrap long paths, breaking `$(cloudctl config
+    path)` capture.
+    """
+    from . import config as _cfg
+
+    sys.stdout.write(str(_cfg.ORGS_USER) + "\n")
+    return 0
+
+
+def cmd_config_validate(args: Any = None) -> int:
+    """Validate orgs.yaml against the schema and print the result."""
+    import yaml
+
+    from . import config as _cfg
+    from . import schema as _schema
+
+    path = _cfg.ORGS_USER
+    if not path.exists():
+        console.print(
+            f"[red]No config found at[/] {path}. "
+            "Run [bold]cloudctl config init[/bold] first."
+        )
+        return exit_codes.NOT_FOUND
+
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception as e:
+        console.print(f"[red]Failed to parse {path}:[/] {e}")
+        return exit_codes.ERROR
+
+    errors = _schema.validate_orgs_config(data)
+    fmt = _resolve_format(args)
+    if fmt == "json":
+        stdout_console.print_json(
+            data={"valid": not errors, "path": str(path), "errors": errors}
+        )
+        return 0 if not errors else exit_codes.USAGE
+
+    if errors:
+        console.print(f"[red]✗ {path} is invalid ({len(errors)} error(s)):[/]")
+        for err in errors:
+            console.print(f"  • {err}")
+        return exit_codes.USAGE
+
+    console.print(f"[green]✓[/] {path} is valid.")
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -1139,37 +1316,105 @@ def cmd_list_roles(args: Any) -> int:
 def _build_parser():
     import argparse
 
-    p = argparse.ArgumentParser(
+    class UsageArgumentParser(argparse.ArgumentParser):
+        """ArgumentParser whose parse/usage errors exit 5 (USAGE), not argparse's
+        default 2.
+
+        Exit code 2 is reserved for AUTH in cloudctl's documented scheme, so a
+        bad flag or unknown subcommand must NOT collide with "authentication
+        required". We override error() to print the usage message to stderr and
+        exit with USAGE (5). Subparsers created via add_parser inherit this class
+        automatically (argparse uses type(self) for sub-parsers)."""
+
+        def error(self, message: str):  # noqa: D401
+            self.print_usage(sys.stderr)
+            sys.stderr.write(f"{self.prog}: error: {message}\n")
+            sys.exit(exit_codes.USAGE)
+
+    p = UsageArgumentParser(
         prog="cloudctl",
-        description="Enterprise Cloud Identity & Context Manager",
+        description=(
+            "cloudctl — run a command with cloud credentials, statelessly.\n"
+            "The primary verb is `run`: it injects short-lived credentials into a\n"
+            "child process without writing anything to disk."
+        ),
         epilog=(
-            "AGENT WORKFLOW:\n"
-            "  cloudctl login <org>                           Authenticate\n"
-            "  cloudctl switch <org> --account X --role Y     Set context\n"
-            "  cloudctl exec -- <command>                     Run with credentials\n"
+            "WHAT IT DOES:\n"
+            "  Injects short-lived credentials into a child process — no SSO\n"
+            "  profiles, nothing written to disk, one command shape for AWS/GCP/\n"
+            "  Azure.\n"
+            "\n"
+            "VOCABULARY:\n"
+            "  --account = AWS account / GCP project / Azure subscription;\n"
+            "  --role    = AWS only (a no-op on GCP/Azure).\n"
+            "\n"
+            "FIRST RUN (init -> login -> run):\n"
+            "  cloudctl init                       # or: cloudctl config init\n"
+            "  cloudctl login <org>\n"
+            "  cloudctl run --org O --account A --role R --region G -- <command>\n"
+            "\n"
+            "COMMANDS BY PURPOSE:\n"
+            "\n"
+            "  Run        run     Run a command with cloud credentials injected\n"
+            "\n"
+            "  Authenticate\n"
+            "             login   Authenticate with a cloud provider\n"
+            "             logout  Log out and clear the active context\n"
+            "\n"
+            "  Inspect    whoami  Show the active identity/context (--format json)\n"
+            "             open    Open the cloud console in a browser\n"
+            "             prompt  Emit compact context for a shell prompt\n"
+            "\n"
+            "  Discover   orgs    List configured organizations\n"
+            "             accounts  List accounts for an org\n"
+            "             roles   List assumable roles (--account <id>)\n"
+            "\n"
+            "  Configure  init    First-run setup (alias: config init)\n"
+            "             config  Manage config: init | validate | path\n"
+            "             org     Add / remove / list orgs\n"
+            "             switch  Set the active context (aka use)\n"
+            "\n"
+            "  Maintain   doctor  Validate the local setup\n"
+            "             cache-clear  Clear cached SSO tokens\n"
+            "             completion   Shell tab-completion setup\n"
+            "             upgrade / uninstall\n"
+            "\n"
+            "THE ONE FORM AN AGENT NEEDS (stateless, no prior context):\n"
+            "  cloudctl run --org O --account A --role R --region G -- <command>\n"
+            "\n"
+            "Read commands (whoami, orgs, accounts, roles, config validate) accept\n"
+            "--format {table,json} and default to json when stdout is not a TTY.\n"
             "\n"
             "EXIT CODES:\n"
-            "  0 = success\n"
-            "  1 = general error\n"
-            "  2 = auth required (credentials expired)\n"
-            "  3 = not found (invalid org/account/role)\n"
-            "  4 = permission denied (approval pending/rate limited)\n"
-            "  5 = invalid arguments\n"
+            "  0 = success   1 = error   2 = auth required   3 = not found\n"
+            "  4 = permission denied   5 = invalid arguments\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("--version", action="store_true", help="Print version and exit")
-    p.add_argument("--eval", action="store_true", help="Shell wrapper mode (internal)")
-    p.add_argument(
-        "--check-strategy",
-        metavar="CMD",
-        help="Print EVAL or EXEC for CMD and exit",
-    )
+    # NOTE: --version / --eval / --check-strategy are deliberately NOT argparse
+    # actions on this parent parser. They are top-level, pre-argparse concerns
+    # handled entirely in main()'s scan of the pre-`--` head. Registering them
+    # here as parent actions reintroduced the footgun where `run ... aws
+    # --version` (or a stray `--eval` in a child command) could leak up into
+    # cloudctl's own flags. main() owns them; the parser never sees them.
 
-    sub = p.add_subparsers(dest="command")
+    # metavar suppresses argparse's auto-generated {a,b,c,…} choice line, which
+    # would otherwise leak every hidden alias (exec, use, env, status, list,
+    # list-roles, init, setup, orgs). Canonical verbs are documented in the
+    # epilog grouped by purpose; only sub-parsers with help= show a one-liner.
+    sub = p.add_subparsers(dest="command", metavar="<command>")
 
     # login
-    lp = sub.add_parser("login", help="Authenticate with a cloud provider")
+    lp = sub.add_parser(
+        "login",
+        help="Authenticate with a cloud provider",
+        epilog=(
+            "EVAL mode: when --account/--role/--region are given, login emits\n"
+            "shell `export` lines to stdout for the wrapper to source (injecting\n"
+            "credentials into the current shell)."
+        ),
+        formatter_class=__import__("argparse").RawDescriptionHelpFormatter,
+    )
     lp.add_argument("org", nargs="?", help="Organization name")
     lp.add_argument("--org", dest="org_flag", help="Organization name (flag form)")
     lp.add_argument("--force", action="store_true", help="Force re-authentication")
@@ -1182,9 +1427,12 @@ def _build_parser():
         help="Skip interactive prompts (for automation/Claude)",
     )
 
-    # switch / use (alias)
+    # switch (canonical) / use (hidden alias)
     for name in ("switch", "use"):
-        sp = sub.add_parser(name, help="Switch cloud context interactively")
+        # Omit help= entirely for the hidden alias so argparse drops it from the
+        # command list (help=SUPPRESS would print a literal ==SUPPRESS== line).
+        kwargs = {"help": "Set the active cloud context"} if name == "switch" else {}
+        sp = sub.add_parser(name, **kwargs)
         sp.add_argument("org", nargs="?", help="Organization name")
         sp.add_argument(
             "--org",
@@ -1206,31 +1454,72 @@ def _build_parser():
         "cache-clear", help="Clear cached SSO tokens and credentials (forces re-login)"
     )
 
-    # exec
-    ep = sub.add_parser(
-        "exec", help="Run a command with credentials (without changing shell context)"
-    )
-    ep.add_argument("--org", dest="exec_org", help="Organisation name")
-    ep.add_argument("--account", dest="exec_account", help="Account/project ID")
-    ep.add_argument("--role", dest="exec_role", help="Role/permission-set")
-    ep.add_argument("--region", dest="exec_region", help="Region")
-    ep.add_argument("cmd", nargs="+", metavar="CMD")
+    # run (THE primary command) + exec (hidden back-compat alias)
+    def _add_run_args(parser):
+        parser.add_argument("--org", dest="exec_org", help="Organisation name")
+        parser.add_argument("--account", dest="exec_account", help="Account/project ID")
+        parser.add_argument("--role", dest="exec_role", help="Role/permission-set")
+        parser.add_argument("--region", dest="exec_region", help="Region")
+        parser.add_argument(
+            "--json-errors",
+            action="store_true",
+            dest="json_errors",
+            help='On failure, print a one-line JSON object {"error","code"} to '
+            "stderr instead of prose (success path is unchanged).",
+        )
+        parser.add_argument(
+            "--no-cache",
+            action="store_true",
+            dest="no_cache",
+            help="Never write the SSO token to disk; authenticate in-memory "
+            "(re-auths if no active session). Pair with -- bash -c '...' to run "
+            "many commands under one auth.",
+        )
+        parser.add_argument("cmd", nargs="+", metavar="CMD")
 
-    # status / env (alias)
-    sp = sub.add_parser("status", help="Show active context")
-    sp.add_argument(
-        "--format",
-        choices=["table", "json"],
-        default="table",
-        help="Output format (default: table)",
+    import argparse as _argparse
+
+    _run_epilog = (
+        "Injects short-lived credentials into a child process — no SSO profiles,\n"
+        "nothing written to disk, one command shape for AWS/GCP/Azure.\n"
+        "\n"
+        "VOCABULARY:\n"
+        "  --account = AWS account / GCP project / Azure subscription;\n"
+        "  --role    = AWS only (a no-op on GCP/Azure).\n"
+        "\n"
+        "The `--` separator divides cloudctl's own flags from the child command;\n"
+        "everything after `--` is passed to the child verbatim (including flags\n"
+        "like --version, --query, --output, or --help).\n"
+        "\n"
+        "Example:\n"
+        "  cloudctl run --org O --account A --role R --region G -- "
+        "aws sts get-caller-identity\n"
     )
-    ep = sub.add_parser("env", help="Show active context (alias for status)")
-    ep.add_argument(
-        "--format",
-        choices=["table", "json"],
-        default="table",
-        help="Output format (default: table)",
+    rp = sub.add_parser(
+        "run",
+        help="Run a command with cloud credentials injected (nothing written to disk)",
+        epilog=_run_epilog,
+        formatter_class=_argparse.RawDescriptionHelpFormatter,
     )
+    _add_run_args(rp)
+
+    # exec — hidden alias of run (identical dispatch/args). Kept for scripts.
+    ep = sub.add_parser(
+        "exec",
+        epilog=_run_epilog,
+        formatter_class=_argparse.RawDescriptionHelpFormatter,
+    )  # hidden alias of run
+    _add_run_args(ep)
+
+    # status / env — hidden aliases of whoami (same handler, same output)
+    for _alias in ("status", "env"):
+        sp = sub.add_parser(_alias)  # hidden alias of whoami
+        sp.add_argument(
+            "--format",
+            choices=["table", "json"],
+            default=None,
+            help="Output format (default: json when not a TTY, else table)",
+        )
 
     # accounts
     ap = sub.add_parser("accounts", help="List accessible accounts")
@@ -1248,8 +1537,8 @@ def _build_parser():
     ap.add_argument(
         "--format",
         choices=["table", "json"],
-        default="table",
-        help="Output format (default: table)",
+        default=None,
+        help="Output format (default: json when not a TTY, else table)",
     )
 
     # doctor
@@ -1259,14 +1548,20 @@ def _build_parser():
         action="store_true",
         help="Attempt to add missing bin directories to PATH",
     )
+    dp.add_argument(
+        "--format",
+        choices=["table", "json"],
+        default=None,
+        help="Output format (default: json when not a TTY, else table)",
+    )
 
-    # init
-    ip = sub.add_parser("init", help="Initialize configuration wizard")
+    # init — hidden top-level alias of `config init`
+    ip = sub.add_parser("init")  # hidden alias of `config init`
     ip.add_argument(
         "--shell-only",
         action="store_true",
         dest="shell_only",
-        help="Install shell integration only (no wizard)",
+        help="Install shell integration only (skip config setup)",
     )
 
     # prompt
@@ -1318,40 +1613,6 @@ def _build_parser():
         help="Show ⚠ warning when credentials expire within N minutes (default: 15)",
     )
 
-    # watch
-    wp = sub.add_parser(
-        "watch",
-        help="Auto-refresh credentials before they expire",
-        description=(
-            "Run a background loop that checks token expiry every --interval seconds "
-            "and re-authenticates when less than --threshold seconds remain. "
-            "Run in a dedicated terminal pane or tmux window alongside long-running "
-            "Terraform operations. Press Ctrl+C to stop."
-        ),
-    )
-    wp.add_argument(
-        "org", nargs="?", help="Organisation to watch (defaults to active context)"
-    )
-    wp.add_argument(
-        "--interval",
-        type=int,
-        default=60,
-        metavar="SECS",
-        help="How often to check token expiry in seconds (default: 60)",
-    )
-    wp.add_argument(
-        "--threshold",
-        type=int,
-        default=900,
-        metavar="SECS",
-        help="Refresh when this many seconds remain on the token (default: 900 = 15m)",
-    )
-    wp.add_argument(
-        "--once",
-        action="store_true",
-        help="Check once and exit (useful for scripts and CI health checks)",
-    )
-
     # upgrade
     up = sub.add_parser("upgrade", help="Upgrade cloudctl (Artifactory or GitHub)")
     up.add_argument(
@@ -1373,21 +1634,19 @@ def _build_parser():
     list_p.add_argument(
         "--format",
         choices=["table", "json"],
-        default="table",
-        help="Output format (table or json)",
+        default=None,
+        help="Output format (default: json when not a TTY, else table)",
     )
     rm_p = org_sub.add_parser("remove", help="Remove an organization")
     rm_p.add_argument("name", help="Org name to remove")
 
-    # list (top-level alias for 'org list')
-    list_alias = sub.add_parser(
-        "list", help="List configured organizations (shortcut for 'org list')"
-    )
+    # list — hidden alias for 'orgs' / 'org list'
+    list_alias = sub.add_parser("list")  # hidden alias of orgs
     list_alias.add_argument(
         "--format",
         choices=["table", "json"],
-        default="table",
-        help="Output format (table or json)",
+        default=None,
+        help="Output format (default: json when not a TTY, else table)",
     )
 
     # uninstall
@@ -1424,78 +1683,70 @@ def _build_parser():
         help="Write the activation line to your shell profile",
     )
 
-    # list-roles
-    lr_p = sub.add_parser(
-        "list-roles", help="List the IAM roles you can assume (per account)"
+    # roles (canonical) / list-roles (hidden alias)
+    def _add_roles_args(parser):
+        parser.add_argument(
+            "org", nargs="?", help="Organization name (optional if context set)"
+        )
+        parser.add_argument(
+            "--org",
+            dest="org_flag",
+            help="Organization name (flag form; same as positional)",
+        )
+        parser.add_argument("--account", help="Limit to a single account ID")
+        parser.add_argument(
+            "--assigned",
+            action="store_true",
+            help="(SSO only ever lists assumable roles; kept for compatibility)",
+        )
+        parser.add_argument(
+            "--format",
+            choices=["table", "json"],
+            default=None,
+            help="Output format (default: json when not a TTY, else table)",
+        )
+
+    roles_p = sub.add_parser(
+        "roles", help="List the roles you can assume (per account)"
     )
-    lr_p.add_argument(
-        "org", nargs="?", help="Organization name (optional if context set)"
-    )
-    lr_p.add_argument(
-        "--org",
-        dest="org_flag",
-        help="Organization name (flag form; same as positional)",
-    )
-    lr_p.add_argument("--account", help="Limit to a single account ID")
-    lr_p.add_argument(
-        "--assigned",
+    _add_roles_args(roles_p)
+    lr_p = sub.add_parser("list-roles")  # hidden alias of roles
+    _add_roles_args(lr_p)
+
+    # config (canonical grouping) — init | validate | path
+    cfg_p = sub.add_parser("config", help="Manage configuration (init/validate/path)")
+    cfg_sub = cfg_p.add_subparsers(dest="config_command")
+    cfg_init = cfg_sub.add_parser("init", help="Initialize configuration")
+    cfg_init.add_argument(
+        "--shell-only",
         action="store_true",
-        help="(SSO only ever lists assumable roles; kept for compatibility)",
+        dest="shell_only",
+        help="Install shell integration only (skip config setup)",
     )
-    lr_p.add_argument(
+    cfg_val = cfg_sub.add_parser(
+        "validate", help="Validate orgs.yaml against the schema"
+    )
+    cfg_val.add_argument(
         "--format",
-        choices=["text", "json"],
-        default="text",
-        help="Output format (default: text)",
+        choices=["table", "json"],
+        default=None,
+        help="Output format (default: json when not a TTY, else table)",
     )
+    cfg_sub.add_parser("path", help="Print the orgs.yaml config path")
 
-    # pricing
-    price_p = sub.add_parser("pricing", help="Estimate cloud infrastructure costs")
-    price_p.add_argument(
-        "provider",
-        nargs="?",
-        choices=["aws", "azure", "gcp"],
-        help="Cloud provider (or omit for interactive selection)",
-    )
-    price_p.add_argument(
-        "--component",
-        required=False,
-        help="Component type (ec2, s3, rds, etc)",
-    )
-    price_p.add_argument(
-        "--region",
-        default="us-east-1",
-        help="Cloud region (default: us-east-1)",
-    )
-    price_p.add_argument(
-        "--compare",
-        action="store_true",
-        help="Compare cost across all providers",
-    )
-    price_p.add_argument(
-        "--currency",
-        default="USD",
-        choices=["USD", "EUR", "GBP", "JPY", "AUD"],
-        help="Currency for pricing (default: USD)",
-    )
-    price_p.add_argument(
-        "--period",
-        type=int,
-        default=1,
-        help="Estimation period in months (default: 1)",
-    )
-    price_p.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Show detailed cost breakdown",
-    )
+    # setup — hidden alias (merge sample defaults into orgs.yaml)
+    sub.add_parser("setup")  # hidden alias
 
-    # setup
-    sub.add_parser("setup", help="Run the setup wizard / merge defaults")
-
-    # whoami
-    sub.add_parser("whoami", help="Show current user and account details")
+    # whoami (canonical inspect verb; absorbs status/env)
+    wp = sub.add_parser(
+        "whoami", help="Show the active identity/context (--format json)"
+    )
+    wp.add_argument(
+        "--format",
+        choices=["table", "json"],
+        default=None,
+        help="Output format (default: json when not a TTY, else table)",
+    )
 
     # open
     open_p = sub.add_parser("open", help="Open cloud provider console in browser")
@@ -1505,15 +1756,13 @@ def _build_parser():
         help="Print URL instead of opening browser",
     )
 
-    # orgs
-    orgs_p = sub.add_parser(
-        "orgs", help="List configured organizations (alias for org list)"
-    )
+    # orgs (canonical discover verb) — list configured organizations
+    orgs_p = sub.add_parser("orgs", help="List configured organizations")
     orgs_p.add_argument(
         "--format",
         choices=["table", "json"],
-        default="table",
-        help="Output format (table or json)",
+        default=None,
+        help="Output format (default: json when not a TTY, else table)",
     )
 
     # Register argcomplete — must come after all subparsers are added.
@@ -1533,29 +1782,36 @@ def _build_parser():
 # ---------------------------------------------------------------------------
 
 _DISPATCH = {
+    # Run
+    "run": "cmd_run",
+    "exec": "cmd_exec",  # hidden alias of run
+    # Authenticate
     "login": "cmd_login",
-    "switch": "cmd_switch",
-    "use": "cmd_switch",
     "logout": "cmd_logout",
-    "cache-clear": "cmd_cache_clear",
-    "exec": "cmd_exec",
-    "status": "cmd_status",
-    "env": "cmd_status",
-    "accounts": "cmd_accounts",
-    "doctor": "cmd_doctor",
-    "init": "cmd_init",
-    "org": "cmd_org",
-    "orgs": "cmd_orgs",
-    "list": "cmd_list",
-    "list-roles": "cmd_list_roles",
-    "setup": "cmd_setup",
+    # Inspect
     "whoami": "cmd_whoami",
+    "status": "cmd_whoami",  # hidden alias of whoami
+    "env": "cmd_whoami",  # hidden alias of whoami
     "open": "cmd_open",
-    "upgrade": "cmd_upgrade",
     "prompt": "cmd_prompt",
-    "watch": "cmd_watch",
+    # Discover
+    "orgs": "cmd_orgs",
+    "list": "cmd_list",  # hidden alias of orgs
+    "accounts": "cmd_accounts",
+    "roles": "cmd_roles",
+    "list-roles": "cmd_list_roles",  # hidden alias of roles
+    # Configure
+    "config": "cmd_config",
+    "init": "cmd_init",  # hidden alias of `config init`
+    "setup": "cmd_setup",  # hidden alias
+    "org": "cmd_org",
+    "switch": "cmd_switch",
+    "use": "cmd_switch",  # hidden alias of switch
+    # Maintain
+    "doctor": "cmd_doctor",
+    "cache-clear": "cmd_cache_clear",
     "completion": "cmd_completion",
-    "pricing": "cmd_pricing",
+    "upgrade": "cmd_upgrade",
     "uninstall": "cmd_uninstall",
 }
 
@@ -1565,26 +1821,53 @@ def main(argv: Optional[List[str]] = None) -> int:
         if argv is None:
             argv = sys.argv[1:]
 
-        # Fast paths that don't need full argparse.
+        # Split on the FIRST standalone `--`: everything before it (`head`) is
+        # cloudctl's own args; everything after (`child_tail`) belongs to the
+        # child command of `run`/`exec` and MUST pass through verbatim. Without
+        # this split, top-level actions like `--version`/`--eval`/
+        # `--check-strategy` (and even `--help`) leak out of the child's argv
+        # into the top-level parser — e.g. `run ... -- echo hello --version`
+        # would print cloudctl's version and exit 0 without ever running echo.
+        #
+        # All fast-path scans below run against `head` ONLY. argparse still needs
+        # a single `--` to separate the run subparser's flags from its CMD
+        # positional, so we re-append exactly one `--` when reconstructing the
+        # final argv for parse_args.
+        has_separator = "--" in argv
+        if has_separator:
+            sep = argv.index("--")
+            head = argv[:sep]
+            child_tail = argv[sep + 1 :]
+        else:
+            head = argv
+            child_tail = []
+
+        # Fast paths that don't need full argparse. Scanned against `head` only.
         # --check-strategy MUST be checked before --version: the shell wrapper calls
         # `_cloudctl_bin --check-strategy --version` to probe the flag, and if --version
         # were checked first it would print the version string instead of EXEC/EVAL.
-        if "--check-strategy" in argv:
-            idx = argv.index("--check-strategy")
-            cmd_arg = argv[idx + 1] if idx + 1 < len(argv) else ""
+        if "--check-strategy" in head:
+            idx = head.index("--check-strategy")
+            cmd_arg = head[idx + 1] if idx + 1 < len(head) else ""
             sys.stdout.write(determine_strategy([cmd_arg]) + "\n")
             return 0
 
-        if "--version" in argv:
+        # --version is a GENUINE top-level flag only when it is the first token
+        # of the invocation. Requiring position 0 means `run ... aws --version`
+        # (even WITHOUT a `--` separator, so the whole argv is `head`) can never
+        # fire cloudctl's own version — the `--version` there belongs to the
+        # child `aws`, and the child, not cloudctl, must answer it.
+        if head and head[0] in ("--version", "-V"):
             stdout_console.print(_resolved_version())
             return 0
 
         # TTY guard — warn when --eval is used without the shell wrapper context.
         # The shell wrapper sets AWSCTL_WRAPPER_ACTIVE=1 before calling us.
         # Direct invocation with --eval risks exposing credentials in shell history
-        # or redirecting them to a file.
-        eval_mode = "--eval" in argv
-        argv = [a for a in argv if a != "--eval"]
+        # or redirecting them to a file. Strip --eval from `head` only — a
+        # `--eval` after `--` is part of the child command and survives untouched.
+        eval_mode = "--eval" in head
+        head = [a for a in head if a != "--eval"]
         if eval_mode and not os.environ.get("AWSCTL_WRAPPER_ACTIVE"):
             sys.stderr.write(
                 "cloudctl: WARNING — --eval used outside shell wrapper context.\n"
@@ -1593,9 +1876,21 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "  shell wrapper, or set AWSCTL_WRAPPER_ACTIVE=1 to suppress.\n"
             )
 
+        # Reconstruct the argv argparse sees: head, plus exactly one `--` and the
+        # child tail when a separator was present.
+        if has_separator:
+            argv = head + ["--"] + child_tail
+        else:
+            argv = head
+
         parser = _build_parser()
 
-        if not argv or ("--help" in argv and len(argv) == 1):
+        # Bare `--help`/`-h` (top-level, no subcommand) prints the root help.
+        # A `--help` inside the child tail (after `--`) must NOT trigger this —
+        # it belongs to the child command, so we scan `head` only.
+        if not argv or (
+            not has_separator and len(head) == 1 and head[0] in ("--help", "-h")
+        ):
             parser.print_help(sys.stderr)
             return 0
 
@@ -1611,6 +1906,22 @@ def main(argv: Optional[List[str]] = None) -> int:
         handler = getattr(_self, handler_name)
         return handler(args)
 
+    except SystemExit as e:
+        # argparse raises SystemExit on a usage/parse error AND on --help. We
+        # normalise ONLY the error case so a bad flag / unknown subcommand reads
+        # as USAGE (5), never AUTH (2), and callers that invoke main() get a
+        # return value rather than a raised exception. A clean help exit
+        # (code 0) is left to propagate unchanged — subcommand `--help` is
+        # expected to raise SystemExit(0), matching argparse's own contract.
+        code = e.code
+        if code in (0, None):
+            raise
+        if isinstance(code, int):
+            # Defensively remap argparse's legacy 2 → USAGE (5); 2 means AUTH.
+            return exit_codes.USAGE if code == 2 else code
+        # Non-int exit message → treat as a usage error.
+        sys.stderr.write(f"{code}\n")
+        return exit_codes.USAGE
     except CloudCtlError as e:
         # Format and print CloudCtlError with suggestions and recovery info
         # NOTE: format_error() sanitizes context dict and removes any keys
@@ -1618,14 +1929,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         # This ensures no sensitive information is output to stderr.
         formatted = format_error(e)
         _safe_emit_to_stderr(formatted)
-        return 1
+        # Map the typed error to its documented exit code (NOT_FOUND, AUTH, …)
+        # so an agent can branch on $? — a user typo (invalid org) is a clean
+        # NOT_FOUND (3), never a generic 1.
+        return int(getattr(e, "exit_code", exit_codes.ERROR))
     except KeyboardInterrupt:
         sys.stderr.write("\n\nOperation cancelled by user\n")
         return 1
     except Exception as e:
-        # Catch unexpected errors and print with minimal formatting
+        # A GENUINELY unexpected error (an unhandled bug), not a user mistake.
+        # Known lookup failures (unknown org/account/role) are raised as
+        # CloudCtlError above or handled by the command with a clean message +
+        # NOT_FOUND — they must never reach here and must never read as a bug.
         sys.stderr.write(f"\n✗ UNEXPECTED ERROR\n  {str(e)}\n\n")
         sys.stderr.write(
-            "Please report this issue: https://github.com/BT-IT-Infrastructure-CloudOps/cloudctl-repo/issues\n"
+            "This looks like a bug in cloudctl. Re-run with CLOUDCTL_DEBUG=1 "
+            "for a traceback and report it to your cloudctl maintainer.\n"
         )
-        return 1
+        return exit_codes.ERROR

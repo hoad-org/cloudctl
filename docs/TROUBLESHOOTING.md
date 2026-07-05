@@ -1,318 +1,119 @@
-# CloudCtl Troubleshooting Guide
+# cloudctl Troubleshooting
 
-Detailed troubleshooting procedures for common CloudCtl issues.
+## Diagnosis workflow
 
-## Diagnosis Workflow
-
-When CloudCtl fails, follow this workflow:
-
-### Step 1: Run Health Check
+### 1. Run the health check
 
 ```bash
-python3.12 -m cloudctl doctor
+cloudctl doctor
 ```
 
-**Interpretation:**
-- ✅ All checks pass? → Issue is with your operation, not setup
-- ❌ Any check fails? → Fix the issue reported, re-run doctor
+- All checks pass → the issue is with your operation, not the setup.
+- A check fails → fix what it reports and re-run.
 
-### Step 2: Check Exit Code
+### 2. Check the exit code
 
 ```bash
-python3.12 -m cloudctl <command>
-echo $?
+cloudctl <command>; echo $?
 ```
 
 | Code | Meaning | Action |
 |------|---------|--------|
-| 0 | Success | Check output for errors |
-| 1 | General error | Check error message (ERROR_REFERENCE.md) |
-| 2 | Argument error | Check command syntax |
-| 30 | Network timeout | Retry (network too slow) |
-| 124 | Command timeout | Operation exceeded timeout |
+| 0 | OK | Success |
+| 1 | ERROR | General failure — read stderr |
+| 2 | AUTH | Re-authenticate: `cloudctl login <org>` |
+| 3 | NOT_FOUND | Verify org/account/role |
+| 4 | DENIED | You lack access to the role |
+| 5 | USAGE | Fix arguments (or missing `--` before the child command) |
 
-### Step 3: Find Exact Error
+See [Exit Codes](EXIT_CODES.md).
 
-Find exact error message in [ERROR_REFERENCE.md](ERROR_REFERENCE.md) and follow recovery steps.
+## Common issues
 
----
+### `exec` swallows the child command's flags
 
-## Common Issues & Solutions
+**Symptom:** flags like `--query` or `--output` are consumed by cloudctl.
 
-### Issue: "Unable to locate credentials"
-
-**Symptom:**
-```
-❌ Error: Unable to locate credentials
-```
-
-**Root Cause:**
-Split CloudCtl operations across multiple Bash calls. Each call is independent with fresh environment.
-
-**Solution:**
-Put everything in ONE call:
+**Cause:** missing the literal `--` separator.
 
 ```bash
-# ❌ WRONG
-python3.12 -m cloudctl login bt-avm
-python3.12 -m cloudctl switch ...  # Credentials lost
+# WRONG — --query is parsed by cloudctl
+cloudctl exec --org myorg --account 123456789012 --role ReadOnly \
+  --region eu-west-2 aws s3api list-buckets --query 'Buckets[].Name'
 
-# ✅ CORRECT
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role admin \
-  --region us-east-1 \
-  -- aws s3 ls
+# CORRECT
+cloudctl exec --org myorg --account 123456789012 --role ReadOnly \
+  --region eu-west-2 -- aws s3api list-buckets --query 'Buckets[].Name'
 ```
 
----
+### "session token not found" / creds work in one region but not another
 
-### Issue: "cloudctl: command not found"
+**Cause (historical bug, now fixed):** conflating the SSO portal region with the
+command's `--region`. The SSO `get-role-credentials` call uses the org's
+`sso_region`; `--region` is injected as `AWS_REGION`/`AWS_DEFAULT_REGION` for the
+child. Confirm `sso_region` is set correctly for the org in `orgs.yaml`.
 
-**Symptom:**
-```
-command not found: cloudctl
-```
+### `switch` hangs or errors in CI
 
-**Root Cause:**
-Not using full Python module invocation.
-
-**Solution:**
-Always use full form:
+`switch` never prompts in a non-TTY / CI / agent context — it fails fast (exit
+`5`) asking for explicit `--account/--role/--region`. Pass them, or use `exec`,
+which is the wrapper-free path agents should use.
 
 ```bash
-# ✅ CORRECT
-python3.12 -m cloudctl <command>
-
-# ❌ WRONG
-cloudctl <command>          # Not in PATH
-python cloudctl <command>   # Wrong Python version
+cloudctl exec --org myorg --account 123456789012 --role ReadOnly \
+  --region eu-west-2 -- aws sts get-caller-identity
 ```
 
----
+### Role name not found after listing roles
 
-### Issue: Role name not found after listing roles
-
-**Symptom:**
-```bash
-$ python3.12 -m cloudctl list-roles --org bt-avm --assigned
-✓ Your assigned roles in bt-avm:
-  - administrator
-
-$ python3.12 -m cloudctl exec --role admin ...  # ❌ Role 'admin' not found
-```
-
-**Root Cause:**
-Using a different role name than what's listed.
-
-**Solution:**
-Use exact role name from `list-roles`:
+Use the exact role name from `list-roles` (matching is case-insensitive and the
+tool suggests close matches, but use the canonical name):
 
 ```bash
-# Discover roles
-python3.12 -m cloudctl list-roles --org bt-avm --assigned
-# Output: administrator
-
-# Use exact name
-python3.12 -m cloudctl exec --role administrator ...
+cloudctl list-roles myorg --account 123456789012 --format json
 ```
 
----
+### `cloudctl: command not found`
 
-### Issue: Approval timeout
-
-**Symptom:**
-```
-Approval required for 'admin' role
-Waiting for platform team to approve (30 seconds)...
-❌ Approval request timed out after 30 seconds
-```
-
-**Root Cause:**
-Platform team didn't respond within 30 seconds (normal for approval gates).
-
-**Solution:**
-Re-run the command to generate new approval request:
+The editable install did not put `cloudctl` on your PATH, or the venv isn't
+active. Re-install from the repo root and check:
 
 ```bash
-# Re-run the same command
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role admin \
-  ...
+python3.12 -m pip install -e .
+cloudctl --version
 ```
 
----
+### `Unable to locate credentials`
 
-### Issue: AWS CLI profile not found
+Each shell invocation is independent. Don't split `login` and the actual command
+across environments and expect credentials to persist — use the stateless `exec`
+form, which injects credentials into the one child process.
 
-**Symptom:**
-```
-❌ Error: The config profile (cloudctl-a1b2c3d4) could not be found
-```
-
-**Root Cause:**
-CloudCtl's AWS_PROFILE generation bug (known issue in v5.3.2).
-
-**Solutions:**
-
-**Option 1: Use GitHub Actions instead**
-```bash
-# Instead of cloudctl exec, trigger a workflow
-gh workflow dispatch trigger-ecs-inventory --ref main
-```
-
-**Option 2: Ensure ~/.aws/config is properly set up**
-```ini
-[default]
-region = us-east-1
-output = json
-```
-
-**Option 3: Use explicit region**
-```bash
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --region us-east-1 \
-  -- aws s3 ls --region us-east-1
-```
-
----
-
-## Verification Procedures
-
-### Verify Configuration
+## Verify a working setup
 
 ```bash
-# Check YAML syntax
-python3.12 -c "import yaml; yaml.safe_load(open(os.path.expanduser('~/.config/cloudctl/orgs.yaml')))"
-# No output = success
-
-# Check CloudCtl recognizes it
-python3.12 -m cloudctl doctor
-# All ✅ = success
+cloudctl doctor
+cloudctl exec --org myorg --account 123456789012 --role ReadOnly \
+  --region eu-west-2 -- aws sts get-caller-identity
 ```
 
-### Verify AWS CLI Integration
+## Where state lives
+
+| Path | Purpose |
+|------|---------|
+| `~/.config/cloudctl/orgs.yaml` | Org config |
+| `~/.config/cloudctl/current_context.json` | Active context |
+| `~/.aws/sso/cache/` | AWS SSO token cache |
+
+If the active context looks stale, clear caches:
 
 ```bash
-# Check AWS CLI works with CloudCtl
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role read-only \
-  --region us-east-1 \
-  -- aws sts get-caller-identity
+cloudctl cache-clear
+cloudctl logout
 ```
 
-Expected output:
-```json
-{
-    "UserId": "AIDACKCEVSQ6C2EXAMPLE",
-    "Account": "235494790978",
-    "Arn": "arn:aws:iam::235494790978:role/..."
-}
-```
+## Next steps
 
-### Verify Long-Running Operations
-
-For operations > 1 hour, verify token refresh is working:
-
-```bash
-# Terraform apply (2+ hours)
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role admin \
-  --region us-east-1 \
-  -- terraform apply
-
-# Token auto-refreshes after 1 hour
-# If operation completes: ✅ Token refresh worked
-```
-
----
-
-## Debugging Techniques
-
-### Enable Debug Logging
-
-```bash
-export CLOUDCTL_DEBUG=1
-python3.12 -m cloudctl <command>
-```
-
-### Check CloudCtl Logs
-
-```bash
-# View audit log
-cat ~/.cloudctl/audit.log
-
-# View recent entries
-tail -20 ~/.cloudctl/audit.log
-```
-
-### Check SSO Cache Status
-
-```bash
-# List SSO cache files
-ls -la ~/.cloudctl/sso_cache/
-
-# Check if SSO session is valid
-python3.12 -m cloudctl status
-```
-
-### Trace Network Issues
-
-```bash
-# Test connectivity to SSO
-ping sso.provider.com
-
-# Test AWS API connectivity
-python3.12 -m cloudctl exec \
-  --org bt-avm \
-  --account 235494790978 \
-  --role read-only \
-  --region us-east-1 \
-  -- aws ec2 describe-regions
-```
-
----
-
-## When to Escalate
-
-Contact platform team if:
-
-1. `cloudctl doctor` shows ❌ that you cannot fix
-2. Error message not in ERROR_REFERENCE.md
-3. Permission denied (don't have role access)
-4. SSO provider unreachable (network issue)
-5. Issue persists after trying all solutions above
-
-**Information to provide:**
-```bash
-# 1. Health check output
-python3.12 -m cloudctl doctor
-
-# 2. Exact error message
-# (from your command)
-
-# 3. Command you ran
-# (copy-paste from your shell)
-
-# 4. Exit code
-echo $?
-
-# 5. Context
-# (org name, account ID, region)
-```
-
----
-
-## Next Steps
-
-- [Error Reference](ERROR_REFERENCE.md) — Error message index
-- [Command Reference](COMMAND_REFERENCE.md) — All available commands
-- [Configuration](CONFIGURATION.md) — Setup and configuration
+- [Error Reference](ERROR_REFERENCE.md)
+- [Command Reference](COMMAND_REFERENCE.md)
+- [Configuration](CONFIGURATION.md)

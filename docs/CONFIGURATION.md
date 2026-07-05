@@ -1,184 +1,111 @@
-# CloudCtl Configuration Guide
+# cloudctl Configuration
 
-## Configuration File Location
+## Files
 
-```
-~/.config/cloudctl/orgs.yaml
-```
+| Path | Purpose |
+|------|---------|
+| `~/.config/cloudctl/orgs.yaml` | Org configuration |
+| `~/.config/cloudctl/current_context.json` | Active context (single source of truth) |
+| `~/.aws/sso/cache/` | Standard AWS SSO token cache |
 
-## Complete Configuration Example
+Create or merge `orgs.yaml` with `cloudctl init` (or `cloudctl setup` to merge
+sample defaults).
+
+## Schema
+
+The top-level `orgs:` key is a **list** of org objects, each with a `name`.
+`enabled_orgs` lists which orgs are active.
 
 ```yaml
-version: "4.0.0"
-organizations:
-  bt-avm:
+orgs:
+  - name: myorg
     provider: aws
-    partition: aws
-    sso_start_url: "https://beyondtrust.awsapps.com/start"
-    sso_region: "us-east-1"
-    sensitive_roles:
-      - admin
-      - devops
-      - security
-    approval_gate_roles:
-      admin: 2
-      devops: 1
-      security: 2
-    mfa_required_roles:
-      - admin
-      - security
+    partition: aws                 # aws | aws-us-gov | aws-cn (optional, default aws)
+    sso_start_url: https://d-xxxxxxxxxx.awsapps.com/start
+    sso_region: eu-west-2          # region used for the SSO portal call
+    default_region: eu-west-2
+    allowed_regions: [eu-west-1, eu-west-2, us-east-1]
 
-  fdr-gvc:
-    provider: aws
-    partition: aws-us-gov
-    sso_start_url: "https://fdr-gvc.awsapps.com/start"
-    sso_region: "us-gov-east-1"
-    sensitive_roles:
-      - admin
+  - name: gcp-terrorgems
+    provider: gcp
+    default_project: asatst-gemini-api-v2
+    default_region: us-central1
+    auth_method: adc               # Application Default Credentials
+
+  - name: azure-craighoad
+    provider: azure
+    subscription_id: 00000000-0000-0000-0000-000000000000
+    tenant_id: 00000000-0000-0000-0000-000000000000
+    default_region: eastus
+
+enabled_orgs:
+  - myorg
+  - gcp-terrorgems
+  - azure-craighoad
 ```
 
-## Field Reference
+## Field reference
 
-### Top-Level Fields
+### Org fields (all providers)
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `version` | string | Yes | Schema version (use "4.0.0") |
-| `organizations` | dict | Yes | Organization configurations |
+| Field | Required | Notes |
+|-------|----------|-------|
+| `name` | yes | Org identifier used on the command line |
+| `provider` | yes | `aws`, `gcp`, or `azure` |
+| `default_region` | no | Default `--region` for the org |
+| `allowed_regions` | no | Regions offered in pickers / validated |
 
-### Organization Fields
+### AWS-specific
 
-| Field | Type | Required | Values | Description |
-|-------|------|----------|--------|-------------|
-| `provider` | string | Yes | "aws" | Cloud provider |
-| `partition` | string | Yes | "aws" or "aws-us-gov" | AWS partition |
-| `sso_start_url` | string | Yes | HTTPS URL | AWS Identity Center URL |
-| `sso_region` | string | No | Region code | SSO region (default: us-east-1) |
-| `sensitive_roles` | list | Yes | Role names | Roles requiring approval |
-| `approval_gate_roles` | dict | No | Role: count (1-2) | Approval requirements |
-| `mfa_required_roles` | list | No | Role names | Roles requiring MFA |
+| Field | Required | Notes |
+|-------|----------|-------|
+| `sso_start_url` | yes | IAM Identity Center start URL |
+| `sso_region` | yes | Region for the SSO `get-role-credentials` portal call — **not** the command's `--region` |
+| `partition` | no | `aws` (default), `aws-us-gov`, or `aws-cn` |
 
-## Commercial AWS vs GovCloud
+### GCP-specific
 
-### Commercial AWS (Standard)
+| Field | Notes |
+|-------|-------|
+| `default_project` | Project id (also injected as `CLOUDSDK_CORE_PROJECT`) |
+| `auth_method` | e.g. `adc` (Application Default Credentials) |
 
-```yaml
-bt-avm:
-  provider: aws
-  partition: aws                    # ← Standard partition
-  sso_start_url: "https://beyondtrust.awsapps.com/start"
-  sso_region: "us-east-1"
-```
+`--role` is **not** a functional credential selector on GCP (static IAM).
 
-### GovCloud (FedRAMP)
+### Azure-specific
 
-```yaml
-fdr-gvc:
-  provider: aws
-  partition: aws-us-gov             # ← GovCloud partition
-  sso_start_url: "https://fdr-gvc.awsapps.com/start"
-  sso_region: "us-gov-east-1"
-```
+| Field | Notes |
+|-------|-------|
+| `subscription_id` / `default_subscription` | Target subscription |
+| `tenant_id` | Entra tenant |
 
-**Key Differences:**
-- Partition name: `aws` vs `aws-us-gov`
-- Region names are different (`us-east-1` vs `us-gov-east-1`)
-- Service availability varies by region
+## `sso_region` vs `--region`
 
-## Approval Gates
+This distinction matters and was the cause of a real "session token not found"
+bug:
 
-Approval gates require human review before sensitive operations complete.
+- **`sso_region`** (org config) is where the SSO portal `get-role-credentials`
+  call is made.
+- **`--region`** (passed to `exec`/`switch`) is where the *child command* runs;
+  it is injected as `AWS_REGION`/`AWS_DEFAULT_REGION`.
 
-### Configuring Approval Gates
+They are independent values and are no longer conflated.
 
-```yaml
-approval_gate_roles:
-  admin: 2        # admin role requires 2 approvers
-  devops: 1       # devops role requires 1 approver
-  # Roles NOT listed here don't require approval
-```
-
-### How Approval Gates Work
-
-1. User requests sensitive role
-2. CloudCtl sends approval request to platform team
-3. User waits up to 30 seconds
-4. Platform team approves or denies
-5. Operation completes or fails
-
-## MFA Requirements
-
-```yaml
-mfa_required_roles:
-  - admin
-  - security
-```
-
-Roles listed require MFA verification (TOTP, SMS, or WebAuthn).
-
-## Validation
-
-### Check Configuration Syntax
+## Validate
 
 ```bash
-# Validate YAML syntax
-python3.12 -c "import yaml; yaml.safe_load(open(open(os.path.expanduser('~/.config/cloudctl/orgs.yaml'))))"
-
-# Should return nothing (success) or show YAML error
+cloudctl doctor
 ```
 
-### Check CloudCtl Recognizes Config
-
-```bash
-python3.12 -m cloudctl doctor
-```
-
-Expected output:
-```
-✅ orgs.yaml found
-✅ orgs.yaml YAML syntax valid
-✅ orgs.yaml schema valid
-```
-
-## Common Configuration Mistakes
-
-### ❌ Using wrong field names
-
-```yaml
-# WRONG
-ssoStartUrl: "..."        # Use snake_case: sso_start_url
-approvalGateRoles: ...    # Use snake_case: approval_gate_roles
-```
-
-### ❌ Using wrong partition name
-
-```yaml
-# WRONG
-partition: govcloud       # Use: aws-us-gov
-partition: aws-gov        # Use: aws-us-gov
-```
-
-### ❌ Invalid indentation
-
-```yaml
-# WRONG
-organizations:
-  bt-avm:
-    provider: aws         # Must use 2 spaces (not tabs)
-	sso_start_url: "..."  # This tab will cause error
-```
-
-## Resetting Configuration
-
-To start over:
+## Reset
 
 ```bash
 rm ~/.config/cloudctl/orgs.yaml
-python3.12 -m cloudctl init
+cloudctl init
 ```
 
-## Next Steps
+## Next steps
 
-- [Quick Start](QUICK_START.md) — Get your first commands working
-- [Command Reference](COMMAND_REFERENCE.md) — All available commands
-- [Troubleshooting](TROUBLESHOOTING.md) — Resolve configuration issues
+- [Quick Start](QUICK_START.md)
+- [Command Reference](COMMAND_REFERENCE.md)
+- [Troubleshooting](TROUBLESHOOTING.md)

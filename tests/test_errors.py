@@ -18,9 +18,6 @@ from cloudctl.errors import (
     InvalidRoleError,
     CredentialsExpiredError,
     ConfigInvalidError,
-    MFARequiredError,
-    ApprovalPendingError,
-    RateLimitedError,
     NetworkError,
     get_suggestions,
     SUGGESTION_REGISTRY,
@@ -38,16 +35,13 @@ from cloudctl.error_formatter import (
 
 
 def test_error_type_enum_has_all_types():
-    """Verify all 9 required ErrorType enum values exist."""
+    """Verify all required ErrorType enum values exist."""
     expected_types = {
         "INVALID_ORG",
         "INVALID_ACCOUNT",
         "INVALID_ROLE",
         "CREDENTIALS_EXPIRED",
         "CONFIG_INVALID",
-        "MFA_REQUIRED",
-        "APPROVAL_PENDING",
-        "RATE_LIMITED",
         "NETWORK_ERROR",
     }
     actual_types = {member.name for member in ErrorType}
@@ -210,46 +204,6 @@ def test_config_invalid_error():
     assert error.error_type == ErrorType.CONFIG_INVALID
     assert "Invalid YAML syntax" in error.message
     assert "cloudctl doctor" in error.recovery_command
-
-
-def test_mfa_required_error():
-    """Test MFARequiredError."""
-    error = MFARequiredError(
-        role_name="admin-role",
-        mfa_method="totp",
-    )
-
-    assert error.error_type == ErrorType.MFA_REQUIRED
-    assert "admin-role" in error.message
-    assert "totp" in error.message
-    assert error.context["mfa_method"] == "totp"
-
-
-def test_approval_pending_error():
-    """Test ApprovalPendingError."""
-    error = ApprovalPendingError(
-        role_name="secure-role",
-        request_id="req-12345",
-        approval_timeout=600,
-    )
-
-    assert error.error_type == ErrorType.APPROVAL_PENDING
-    assert "secure-role" in error.message
-    assert "req-12345" in error.message
-    assert "600" in error.message
-
-
-def test_rate_limited_error():
-    """Test RateLimitedError."""
-    error = RateLimitedError(
-        operation="switch",
-        retry_after=120,
-    )
-
-    assert error.error_type == ErrorType.RATE_LIMITED
-    assert "switch" in error.message
-    assert "120" in error.message
-    assert error.context["retry_after_seconds"] == 120
 
 
 def test_network_error():
@@ -464,13 +418,10 @@ def test_multiple_error_types():
         InvalidRoleError("role1", "acc1"),
         CredentialsExpiredError("org1"),
         ConfigInvalidError("/path/to/config", "Invalid YAML"),
-        MFARequiredError("admin"),
-        ApprovalPendingError("secure"),
-        RateLimitedError("switch"),
         NetworkError("login"),
     ]
 
-    assert len(errors) == 9
+    assert len(errors) == 6
     assert all(isinstance(e, CloudCtlError) for e in errors)
     assert all(e.error_type in ErrorType for e in errors)
 

@@ -133,13 +133,17 @@ def test_whoami_shows_context(mock_rich_console, monkeypatch):
     }
     monkeypatch.setattr("cloudctl.cli.load_context", lambda: context)
 
-    # Mock AWS STS call to avoid actual AWS API
+    # Mock AWS STS call to avoid actual AWS API. whoami routes AWS identity
+    # through provider.get_identity, which imports run_aws in the provider module.
     mock_result = {
         "returncode": 0,
         "stdout": '{"UserId": "AIDA...","Account": "123456789012","Arn": "arn:aws:iam::123456789012:user/test"}',
         "stderr": "",
     }
-    monkeypatch.setattr("cloudctl.aws.run_aws", lambda x: mock_result)
+    monkeypatch.setattr("cloudctl.providers.aws.run_aws", lambda x: mock_result)
+    monkeypatch.setattr(
+        "cloudctl.config.get_org", lambda _n: {"name": "bt-avm", "provider": "aws"}
+    )
 
     # Execute whoami
     exit_code = cli.cmd_whoami(None)
@@ -152,13 +156,19 @@ def test_whoami_no_context_fallback(mock_rich_console, monkeypatch):
     """Test whoami falls back to AWS STS when no context exists."""
     monkeypatch.setattr("cloudctl.cli.load_context", lambda: {})
 
-    # Mock AWS STS call
+    # Mock AWS STS call (full, valid caller-identity so get_identity accepts it).
     mock_result = {
         "returncode": 0,
-        "stdout": '{"Account": "123456789012"}',
+        "stdout": (
+            '{"UserId": "AIDA...","Account": "123456789012",'
+            '"Arn": "arn:aws:iam::123456789012:user/test"}'
+        ),
         "stderr": "",
     }
-    monkeypatch.setattr("cloudctl.aws.run_aws", lambda x: mock_result)
+    monkeypatch.setattr("cloudctl.providers.aws.run_aws", lambda x: mock_result)
+    monkeypatch.setattr(
+        "cloudctl.config.get_org", lambda _n: {"name": "", "provider": "aws"}
+    )
 
     # Execute whoami
     exit_code = cli.cmd_whoami(None)
@@ -213,13 +223,16 @@ def test_whoami_sts_error_handling(mock_rich_console, monkeypatch):
         "stdout": "",
         "stderr": "InvalidClientTokenId: The provided token is malformed",
     }
-    monkeypatch.setattr("cloudctl.aws.run_aws", lambda x: mock_result)
+    monkeypatch.setattr("cloudctl.providers.aws.run_aws", lambda x: mock_result)
+    monkeypatch.setattr(
+        "cloudctl.config.get_org", lambda _n: {"name": "", "provider": "aws"}
+    )
 
     # Execute whoami
     exit_code = cli.cmd_whoami(None)
 
-    # Should return error code
-    assert exit_code == 1
+    # A failed STS get-caller-identity means no valid SSO session → AUTH (2).
+    assert exit_code == 2
 
 
 # ============================================================================
@@ -257,8 +270,10 @@ def test_open_launches_browser(monkeypatch, mock_rich_console):
     mock_open = MagicMock(return_value=True)
     monkeypatch.setattr("webbrowser.open", mock_open)
 
-    # Execute open
+    # Execute open. url=False → open the browser (the --url flag prints the URL
+    # instead; MagicMock's default truthy attr would otherwise take that branch).
     args = MagicMock()
+    args.url = False
     exit_code = cli.cmd_open(args)
 
     # Verify browser was opened
@@ -476,49 +491,54 @@ def test_orgs_help(capsys):
 
 
 def test_orgs_lists_organizations(monkeypatch, mock_rich_console):
-    """Test orgs lists organizations (same as 'org list')."""
+    """`orgs` dispatches to the real org-list logic (no more usage stub).
+
+    Regression: `cmd_orgs` used to call `cmd_org(args)` with no `org_command`,
+    which printed "Usage: cloudctl org <add|list|remove>". It now delegates
+    straight to OrgListCommand — the same path as `org list` and `list`.
+    """
     from argparse import Namespace
 
-    # Mock cmd_org to return 0 (success)
-    mock_cmd_org = MagicMock(return_value=0)
-    monkeypatch.setattr("cloudctl.cli.cmd_org", mock_cmd_org)
+    # Mock the real list executor to confirm delegation happens there.
+    mock_exec = MagicMock(return_value=0)
+    monkeypatch.setattr(
+        "cloudctl.commands.org.OrgListCommand.execute", mock_exec
+    )
 
-    # Execute orgs command
-    args = Namespace(org_command="list")
+    args = Namespace(format="json")
     exit_code = cli.cmd_orgs(args)
 
-    # Should succeed
     assert exit_code == 0
-    # Verify cmd_org was delegated to
-    mock_cmd_org.assert_called_once_with(args)
+    mock_exec.assert_called_once()
 
 
 def test_orgs_alias_works(monkeypatch, mock_rich_console):
-    """Test orgs is an alias for 'org list'."""
+    """`orgs` is an alias for `org list` — both hit OrgListCommand.execute."""
     from argparse import Namespace
 
-    # Mock the cmd_org function
-    mock_org_cmd = MagicMock(return_value=0)
-    monkeypatch.setattr("cloudctl.cli.cmd_org", mock_org_cmd)
+    mock_exec = MagicMock(return_value=0)
+    monkeypatch.setattr(
+        "cloudctl.commands.org.OrgListCommand.execute", mock_exec
+    )
 
-    # Execute orgs
-    args = Namespace()
+    args = Namespace(format="json")
     exit_code = cli.cmd_orgs(args)
 
-    # Verify cmd_org was called
     assert exit_code == 0
-    mock_org_cmd.assert_called_once()
+    mock_exec.assert_called_once()
 
 
-def test_orgs_empty_list(monkeypatch, mock_rich_console):
-    """Test orgs handles empty organization list."""
-    monkeypatch.setattr("cloudctl.cli.cmd_org", lambda x: 0)
+def test_orgs_no_longer_prints_usage_stub(monkeypatch, mock_rich_console, tmp_path):
+    """`orgs` must NOT print the old 'Usage: cloudctl org <add|list|remove>' stub."""
+    # Point config at an empty dir so no orgs are configured.
+    orgs_file = tmp_path / "orgs.yaml"
+    monkeypatch.setattr("cloudctl.config.ORGS_USER", orgs_file)
 
-    # Execute orgs
-    exit_code = cli.cmd_orgs(None)
+    exit_code = cli.cmd_orgs(type("A", (), {"format": "table"})())
 
-    # Should still succeed
     assert exit_code == 0
+    output = "".join(mock_rich_console.captured)
+    assert "Usage: cloudctl org" not in output
 
 
 # ============================================================================
@@ -539,11 +559,17 @@ def test_logout_then_whoami(monkeypatch, mock_rich_console):
     mock_sts = MagicMock(
         return_value={
             "returncode": 0,
-            "stdout": '{"Account": "123456789012"}',
+            "stdout": (
+                '{"Account": "123456789012",'
+                '"Arn": "arn:aws:iam::123456789012:user/test","UserId": "AIDA..."}'
+            ),
             "stderr": "",
         }
     )
-    monkeypatch.setattr("cloudctl.aws.run_aws", mock_sts)
+    monkeypatch.setattr("cloudctl.providers.aws.run_aws", mock_sts)
+    monkeypatch.setattr(
+        "cloudctl.config.get_org", lambda _n: {"name": "", "provider": "aws"}
+    )
 
     # Logout then whoami
     exit_logout = cli.cmd_logout(None)

@@ -2,7 +2,7 @@
 """
 cloudctl org — manage cloud organization entries.
 
-  cloudctl org add    — auth-first wizard: login, discover accounts/projects, save
+  cloudctl org add    — auth-first flow: login, discover accounts/projects, save
   cloudctl org list   — list configured orgs with provider and key identifier
   cloudctl org remove — remove an org entry from config
 """
@@ -61,7 +61,7 @@ def _run(cmd: List[str], timeout: int = 30) -> Optional[str]:
 
 def _discover_aws(org: Dict[str, Any]) -> Dict[str, Any]:
     """Prompt for AWS SSO fields and infer/confirm partition."""
-    from cloudctl.wizard import inquirer
+    from InquirerPy import inquirer
     from cloudctl import schema as _schema
 
     utils.console.print("[bold]AWS org configuration[/bold]")
@@ -114,7 +114,7 @@ def _discover_azure(org: Dict[str, Any]) -> Dict[str, Any]:
                 )
                 # Pick default subscription
                 choices = [f"{s.get('name', '?')} ({s.get('id', '?')})" for s in subs]
-                from cloudctl.wizard import inquirer
+                from InquirerPy import inquirer
 
                 chosen = inquirer.select(
                     message="Select default subscription:",
@@ -144,7 +144,7 @@ def _discover_gcp(org: Dict[str, Any]) -> Dict[str, Any]:
                     f"{p.get('name', '?')} ({p.get('projectId', '?')})"
                     for p in projects
                 ]
-                from cloudctl.wizard import inquirer
+                from InquirerPy import inquirer
 
                 chosen = inquirer.select(
                     message="Select default project:",
@@ -174,7 +174,7 @@ class OrgAddCommand(BaseCommand):
 
     def execute(self, args) -> int:
         import sys
-        from cloudctl.wizard import inquirer
+        from InquirerPy import inquirer
 
         provider = getattr(args, "provider", None)
         name = getattr(args, "name", None)
@@ -300,6 +300,38 @@ class OrgListCommand(BaseCommand):
             orgs = data.get("orgs", [])
 
         enabled: List[str] = data.get("enabled_orgs", [o.get("name", "") for o in orgs])
+
+        # Resolve output format. A read/discovery command defaults to JSON when
+        # stdout is not a TTY (agent context), else table. `_resolve_format`
+        # lives in cli.py so the default is consistent across every read verb.
+        from cloudctl import cli as _cli
+
+        fmt = _cli._resolve_format(args)
+
+        if fmt == "json":
+            payload = []
+            for org in orgs:
+                name = org.get("name", "")
+                provider = org.get("provider", "aws")
+                if provider == "aws":
+                    key = org.get("sso_start_url", "")
+                elif provider == "azure":
+                    key = org.get("tenant_id") or org.get("default_subscription") or ""
+                elif provider == "gcp":
+                    key = org.get("default_project", "")
+                else:
+                    key = ""
+                payload.append(
+                    {
+                        "name": name,
+                        "provider": provider,
+                        "enabled": name in enabled,
+                        "key": key,
+                    }
+                )
+            # Data goes to stdout so an agent can pipe it; never Rich-decorated.
+            utils.stdout_console.print_json(data={"orgs": payload})
+            return 0
 
         if not orgs:
             utils.console.print(

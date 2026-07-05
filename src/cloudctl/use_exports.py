@@ -53,6 +53,11 @@ def get_credentials(
     if not token or not hasattr(token, "accessToken"):
         raise RuntimeError("No valid SSO session. Run 'cloudctl login' first.")
 
+    # The portal `get-role-credentials` call must target the SSO instance
+    # region, not the command's region. Prefer the org's sso_region; fall back
+    # to the command region only if the ref carries none.
+    sso_region = getattr(org_ref, "sso_region", "") or region
+
     args = [
         "sso",
         "get-role-credentials",
@@ -63,17 +68,21 @@ def get_credentials(
         "--access-token",
         token.accessToken,
         "--region",
-        region,
+        sso_region,
     ]
     data = _aws_json(args)
     creds = data.get("roleCredentials", {})
     if not creds:
         raise RuntimeError("No credentials returned from AWS SSO")
-    return {
+    out = {
         "AWS_ACCESS_KEY_ID": creds["accessKeyId"],
         "AWS_SECRET_ACCESS_KEY": creds["secretAccessKey"],
         "AWS_SESSION_TOKEN": creds["sessionToken"],
     }
+    if region:
+        out["AWS_REGION"] = region
+        out["AWS_DEFAULT_REGION"] = region
+    return out
 
 
 def emit_exports(org: Any, account: str, role: str, region: str) -> str:
@@ -145,10 +154,11 @@ def emit_exports(org: Any, account: str, role: str, region: str) -> str:
         sys.exit(1)
     try:
         c = get_credentials(account, role, region, org_ref)
+        # No AWS_PROFILE: the STS keys are self-contained, and exporting a
+        # profile name absent from ~/.aws/config would shadow them and break
+        # every subsequent command. get_credentials already sets AWS_REGION /
+        # AWS_DEFAULT_REGION when a region is supplied.
         lines = [f"export {k}={shlex.quote(v)}" for k, v in c.items()]
-        lines.append(
-            f"export AWS_PROFILE={shlex.quote(f'{org_name}-{account}-{role}')}"
-        )
         return "\n".join(lines)
     except Exception:
         sys.stdout.write("No role credentials\n")

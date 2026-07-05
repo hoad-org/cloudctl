@@ -28,15 +28,13 @@ def load_orgs_config() -> List[Dict[str, Any]]:
 
 
 def load_raw_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
-    """Load and decrypt orgs.yaml configuration.
-
-    Automatically decrypts any fields marked in encrypted_fields list.
+    """Load orgs.yaml configuration.
 
     Args:
         config_path: Path to orgs.yaml. If None, uses default location.
 
     Returns:
-        Decrypted configuration dict
+        Configuration dict
     """
     if config_path is None:
         config_path = get_orgs_path(ensure=False)
@@ -46,25 +44,6 @@ def load_raw_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
 
     # Let YAMLError propagate — callers that want {} on error must catch it.
     data = yaml.safe_load(config_path.read_text()) or {}
-
-    # Decrypt sensitive fields if encryption is enabled
-    if data and "encrypted_fields" in data:
-        from . import encryption as _encryption
-
-        try:
-            enc = _encryption.ConfigEncryption()
-            data = enc.decrypt_config(data)
-        except Exception as e:
-            try:
-                from . import utils as _utils
-                import sys
-
-                _utils.console.print(
-                    f"[yellow]Warning:[/] Failed to decrypt config: {e}",
-                    file=sys.stderr,
-                )
-            except Exception:
-                pass
 
     # Validate and warn — do not abort so existing configs continue to work.
     if data:
@@ -136,35 +115,6 @@ def get_org(name: str) -> Dict[str, Any]:
     raise ValueError(f"Organization '{name}' not found in configuration.")
 
 
-def get_approval_gates(org: Dict[str, Any]) -> Dict[str, int]:
-    """Get approval gate configuration for an org.
-
-    Returns a dict mapping role names to number of required approvers.
-    Secure default: empty dict (no approval gates).
-
-    Args:
-        org: Organization config dict
-
-    Returns:
-        {"admin": 2, "devops": 1, ...}
-    """
-    return org.get("approval_gate_roles", {})
-
-
-def get_mfa_required_roles(org: Dict[str, Any]) -> List[str]:
-    """Get list of roles that require MFA for an org.
-
-    Secure default: empty list (no MFA required).
-
-    Args:
-        org: Organization config dict
-
-    Returns:
-        ["admin", "security", ...]
-    """
-    return org.get("mfa_required_roles", [])
-
-
 def get_sensitive_roles(org: Dict[str, Any]) -> List[str]:
     """Get list of sensitive roles for an org (requires break-glass justification).
 
@@ -177,20 +127,6 @@ def get_sensitive_roles(org: Dict[str, Any]) -> List[str]:
         ["admin", "security", ...]
     """
     return org.get("sensitive_roles", [])
-
-
-def get_approval_timeout_seconds(org: Dict[str, Any]) -> int:
-    """Get approval timeout in seconds for an org.
-
-    Secure default: 300 seconds (5 minutes).
-
-    Args:
-        org: Organization config dict
-
-    Returns:
-        Timeout in seconds (integer)
-    """
-    return org.get("approval_timeout_seconds", 300)
 
 
 def _hydrate_orgs(enabled_names: List[Any]) -> None:
@@ -212,17 +148,14 @@ def sample_orgs_yaml() -> str:
 
 def save_orgs_yaml(
     config: Dict[str, Any],
-    encrypted_fields: Optional[List[str]] = None,
     config_path: Optional[Path] = None,
 ) -> None:
-    """Save configuration to orgs.yaml with optional field encryption.
+    """Save configuration to orgs.yaml as plain YAML.
 
-    Automatically encrypts specified fields before writing to disk.
     Sets file permissions to 0o600 (read/write owner only).
 
     Args:
         config: Configuration dict to save
-        encrypted_fields: List of field names to encrypt (e.g., ["sso_start_url"])
         config_path: Path to orgs.yaml. If None, uses default location.
 
     Raises:
@@ -230,28 +163,6 @@ def save_orgs_yaml(
     """
     if config_path is None:
         config_path = get_orgs_path(ensure=True)
-
-    # Encrypt sensitive fields if specified
-    if encrypted_fields:
-        from . import encryption as _encryption
-
-        try:
-            enc = _encryption.ConfigEncryption()
-            config = enc.encrypt_config(config, encrypted_fields)
-            # Mark which fields are encrypted in the config
-            if "encrypted_fields" not in config:
-                config["encrypted_fields"] = encrypted_fields
-        except Exception as e:
-            try:
-                from . import utils as _utils
-                import sys
-
-                _utils.console.print(
-                    f"[yellow]Warning:[/] Failed to encrypt config: {e}",
-                    file=sys.stderr,
-                )
-            except Exception:
-                pass
 
     # Write configuration to file
     with open(config_path, "w") as f:

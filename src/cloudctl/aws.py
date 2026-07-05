@@ -185,6 +185,16 @@ def sso_list_account_roles(
 
 
 def ensure_sso_base_profile(org: Dict[str, Any]) -> str:
+    """DEPRECATED for the login path — writes a ``[sso-session]`` block to
+    ~/.aws/config.
+
+    ``AwsProvider.login`` no longer calls this: login is now a self-contained
+    SSO OIDC device-authorization flow (see ``providers/aws.py``) that writes
+    NO profile/config to disk. This function remains only because
+    ``core.cmd_config_sync`` still materialises base sso-session entries for
+    users who want to drive the raw ``aws`` CLI directly. Do not reintroduce it
+    into the zero-trust login path.
+    """
     name = org.get("name", "base")
     with _config_file_lock():
         cfg = configparser.RawConfigParser()
@@ -197,31 +207,6 @@ def ensure_sso_base_profile(org: Dict[str, Any]) -> str:
             {
                 "sso_start_url": org.get("sso_start_url", ""),
                 "sso_region": org.get("sso_region", ""),
-            },
-        )
-        _configparser_write(cfg, AWS_CONFIG)
-    return name
-
-
-def write_target_profile(
-    org_data: Dict[str, Any], account: str, role: str, region: str
-) -> str:
-    name = f"{org_data.get('name')}-{account}-{role}"
-    with _config_file_lock():
-        cfg = configparser.RawConfigParser()
-        if AWS_CONFIG.exists():
-            cfg.read(AWS_CONFIG)
-        section = f"profile {name}"
-        # BUG #5 FIX: Add sso_session reference so AWS CLI can find the [sso-session ...]
-        # This is critical for GovCloud (aws-us-gov) and China (aws-cn) partitions
-        _set_section(
-            cfg,
-            section,
-            {
-                "sso_session": org_data.get("name", ""),
-                "sso_account_id": account,
-                "sso_role_name": role,
-                "region": region,
             },
         )
         _configparser_write(cfg, AWS_CONFIG)

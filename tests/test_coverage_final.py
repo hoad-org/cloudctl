@@ -13,25 +13,30 @@ def test_main_entrypoint_coverage(monkeypatch):
     # We use monkeypatch for sys.argv to ensure it doesn't leak to other tests
     monkeypatch.setattr(sys, "argv", ["awsctl", "status"])
 
-    # 2. Patch the target main function
-    # We patch 'cloudctl.main.main' because that is what __main__.py calls
-    with patch("cloudctl.main.main") as mock_main:
+    # 2. Patch the target main function.
+    # We patch 'cloudctl.main.main' because that is what __main__.py calls.
+    # __main__.py does `sys.exit(main(...))`, so main must return an int exit
+    # code — otherwise sys.exit would raise SystemExit with a MagicMock object.
+    with patch("cloudctl.main.main", return_value=0) as mock_main:
 
         # 3. Handle Module Caching
         # If the module was already imported, we must remove it from cache
-        # to ensure the 'if __name__ == "__main__":' block executes again.
-        if "cloudctl.__main__" in sys.modules:
-            importlib.reload(sys.modules["cloudctl.__main__"])
-        else:
-            pass
+        # so importing __main__ re-executes its top-level `sys.exit(main(...))`.
+        # sys.exit(0) raises SystemExit(0), which we expect and swallow.
+        try:
+            if "cloudctl.__main__" in sys.modules:
+                importlib.reload(sys.modules["cloudctl.__main__"])
+            else:
+                importlib.import_module("cloudctl.__main__")
+        except SystemExit as exc:
+            assert exc.code == 0
 
         # 4. Verify Execution
-        # The import/reload itself should have triggered the call to main()
-        # because of the 'if __name__ == "__main__":' block
+        # The import/reload itself should have triggered the call to main().
         assert mock_main.called
 
         # Verify it was called with the arguments from sys.argv[1:]
-        # Based on typical __main__.py logic: main(sys.argv[1:])
+        # (__main__.py logic: sys.exit(main(sys.argv[1:])) )
         mock_main.assert_called_with(["status"])
 
 

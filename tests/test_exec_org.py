@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 
 
 from cloudctl.commands.exec import ExecCommand
+from cloudctl import exit_codes
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -36,12 +37,15 @@ def _make_cmd():
     return cmd
 
 
-def _make_args(org=None, account=None, role=None, region=None, cmd=None):
+def _make_args(
+    org=None, account=None, role=None, region=None, cmd=None, json_errors=False
+):
     return SimpleNamespace(
         exec_org=org,
         exec_account=account,
         exec_role=role,
         exec_region=region,
+        json_errors=json_errors,
         cmd=cmd or ["terraform", "plan"],
     )
 
@@ -61,7 +65,8 @@ class TestExecNoContext:
         with patch("cloudctl.commands.exec.load_context", return_value={}):
             rc = ec.execute(args)
 
-        assert rc == 1
+        # Missing org + no context is a usage error (invalid args).
+        assert rc == exit_codes.USAGE
         assert any("No org" in m or "context" in m.lower() for m in messages)
 
     def test_helpful_message_suggests_exec_org(self):
@@ -73,7 +78,7 @@ class TestExecNoContext:
         with patch("cloudctl.commands.exec.load_context", return_value={}):
             rc = ec.execute(args)
 
-        assert rc == 1
+        assert rc == exit_codes.USAGE
         combined = " ".join(messages)
         assert "--org" in combined or "exec --org" in combined
 
@@ -150,7 +155,8 @@ class TestExecOrgFlag:
             ):
                 rc = ec.execute(args)
 
-        assert rc == 1
+        # Unknown org is a not-found condition.
+        assert rc == exit_codes.NOT_FOUND
 
     def test_interactive_cancelled_returns_1(self):
         ec = _make_cmd()
@@ -166,7 +172,7 @@ class TestExecOrgFlag:
                     ):
                         rc = ec.execute(args)
 
-        assert rc == 1
+        assert rc == exit_codes.USAGE
 
 
 # ---------------------------------------------------------------------------

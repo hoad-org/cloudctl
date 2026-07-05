@@ -10,33 +10,39 @@ from cloudctl import core, doctor, utils
 
 
 def test_login_force_flag(mock_rich_console, monkeypatch):
-    """Cover the 'force=True' path in cmd_login."""
+    """Cover the 'force=True' path in cmd_login.
+
+    login is now a boto3 SSO OIDC device-authorization flow, so we mock the
+    sso-oidc client to return a token immediately rather than mocking the old
+    ensure_sso_base_profile + `aws sso login` shell-out.
+    """
     # 1. Setup happy path for config
     monkeypatch.setattr(
         "cloudctl.config.get_org",
-        lambda x: {"name": "test", "sso_start_url": "u", "sso_region": "r"},
-    )
-    # Patch both the aws module AND the provider's imported reference.
-    # providers/aws.py does 'from ..aws import ensure_sso_base_profile', so
-    # patching only cloudctl.aws won't intercept the call inside the provider.
-    monkeypatch.setattr("cloudctl.aws.ensure_sso_base_profile", lambda x: "p")
-    monkeypatch.setattr("cloudctl.providers.aws.ensure_sso_base_profile", lambda x: "p")
-    monkeypatch.setattr("cloudctl.aws._resolve_aws_cli", lambda: "aws")
-
-    # 2. Mock successful execution
-    # Implementation expects a dict return from utils.run
-    monkeypatch.setattr(
-        "cloudctl.utils.run", lambda *a, **k: {"returncode": 0, "stdout": ""}
+        lambda x: {"name": "test", "sso_start_url": "https://x/start", "sso_region": "r"},
     )
 
-    # 3. Mock token loading
-    # cmd_login checks for an active token to verify login was successful
+    # 2. Mock the boto3 sso-oidc client for an immediate-success device flow.
+    oidc = MagicMock()
+    oidc.register_client.return_value = {"clientId": "cid", "clientSecret": "csec"}
+    oidc.start_device_authorization.return_value = {
+        "deviceCode": "dev",
+        "userCode": "USER-CODE",
+        "verificationUriComplete": "https://x/verify?code=USER-CODE",
+        "interval": 0,
+        "expiresIn": 600,
+    }
+    oidc.create_token.return_value = {"accessToken": "AT", "expiresIn": 3600}
+    monkeypatch.setattr("boto3.client", lambda *a, **k: oidc)
+    monkeypatch.setattr("cloudctl.utils.open_browser", lambda url: None)
+
+    # 3. Mock token loading (cmd_login re-reads to confirm — not required but
+    # harmless).
     monkeypatch.setattr(
         "cloudctl.core.load_active_sso_token", lambda *a, **k: MagicMock()
     )
 
     # 4. Run with force=True (skips "Already logged in" check)
-    # Command should return 0 (Success)
     assert core.cmd_login("test", force=True) == 0
 
     # 5. Verify the console reports success
@@ -58,8 +64,9 @@ def test_doctor_network_fail(mock_rich_console, monkeypatch):
         "cloudctl.doctor.check_network_ssl", lambda: (False, "Timeout Error")
     )
 
-    # 3. Run diagnostics
-    doctor.run_diagnostics()
+    # 3. Run diagnostics (force table mode: under pytest stdout is not a TTY,
+    #    so the default would resolve to the JSON summary instead of the table).
+    doctor.run_diagnostics(fmt="table")
 
     # 4. Verify capture includes the specific error message
     output = "".join(mock_rich_console.captured)

@@ -2,47 +2,37 @@
 
 ## Supported Versions
 
+`cloudctl` is a personal project. The current line is `1.0.0` beta; only the
+latest version receives fixes.
+
 | Version | Supported |
 |---------|-----------|
-| 3.x (latest) | ✅ Active security fixes |
-| 2.x | ❌ End of life — upgrade to v3 |
-| < 2.0 | ❌ End of life |
+| 1.0.x (beta, latest) | ✅ Active fixes |
+| < 1.0 | ❌ Not supported |
 
 ## Reporting a Vulnerability
 
-**DO NOT open a public GitHub issue for security vulnerabilities.**
+**Do not open a public GitHub issue for security vulnerabilities.**
 
-Email **`cloud-security-emergency@beyondtrust.com`** with:
+Report privately via the repository's GitHub security advisories
+(`hoad-org/cloudctl` → Security → Report a vulnerability). Include:
+
 - A description of the vulnerability
 - Steps to reproduce (proof-of-concept if available)
-- Affected versions
-- Suggested fix (optional)
+- Affected version
 
-We will acknowledge receipt within **1 business day** and aim to provide an assessment within **5 business days**.
+Do not include real credentials in a report.
 
-## Disclosure Policy
+## Security posture
 
-- We follow **coordinated disclosure**: please allow up to 90 days for a patch before public disclosure.
-- Once a fix is released we will publish a GitHub security advisory and credit the reporter unless anonymity is requested.
-
-## Security Controls
+See [docs/SECURITY.md](../docs/SECURITY.md) for the actual credential model.
+Summary:
 
 | Control | Implementation |
 |---------|---------------|
-| **Ephemeral credentials** | STS tokens exist only in the active shell session; nothing written to disk |
-| **Shell injection protection** | All exported variables sanitised with `shlex.quote()` before shell evaluation |
-| **TTY Guard** | `--eval` mode warns when used outside the validated shell wrapper context |
-| **Registry integrity** | org registry verified with Minisign signature before use |
-| **Audit logging** | Break-glass role access logged to `~/.awsctl/audit.log` (mode 0600) |
-| **Atomic file writes** | Config and profile writes use `mkstemp` + `os.replace()` to prevent partial updates |
-| **Dependency scanning** | `pip-audit` runs on every push (CI) and twice weekly (scheduled audit) |
-| **Secret scanning** | Gitleaks runs on every push and pull request |
-| **SAST** | Bandit runs on every push |
-
-## Security Update SLAs
-
-| Severity | CVSS | Target patch time |
-|----------|------|-------------------|
-| Critical | ≥ 9.0 | 48 hours |
-| High | 7.0–8.9 | 7 days |
-| Medium / Low | < 7.0 | Next regular release |
+| **Short-lived credentials** | STS keys / access tokens vended on demand, injected into the child process only; never written to cloudctl's own files |
+| **No `AWS_PROFILE`** | Injected keys are self-contained; no static profiles written |
+| **No secrets on disk** | `orgs.yaml` (mode 0600) holds config only — no credentials |
+| **No-hang guards** | Fails fast in non-TTY contexts instead of prompting |
+| **Break-glass** | Sensitive-role justification read from `CLOUDCTL_BREAK_GLASS_REASON` |
+| **CI checks** | ruff / mypy / pytest run in `.github/workflows/ci.yaml` |
