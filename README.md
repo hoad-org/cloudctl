@@ -205,6 +205,33 @@ verify against a real `cloudctl` invocation.
   to apply exports to an interactive shell; `run` is the wrapper-free path and
   the one agents should use.
 
+---
+
+## Planned evolution (not yet built)
+
+The next act turns cloudctl from a thin wrapper into a **dual-audience cloud
+identity broker** — first-class for humans (browser SSO) *and* agents (headless
+OIDC), delivered as both a CLI and an MCP server from one core. Full design and
+rationale: **[ADR 0001](docs/adr/0001-agentic-identity-broker.md)**.
+
+Phased, each independently shippable:
+
+| Phase | What | Value |
+|-------|------|-------|
+| **0** ✅ | Honest zero-trust wrapper (done) | verified creds injection, `--no-cache` |
+| **1** | One `cloudctl-core`; CLI stays thin; ship `cloudctl mcp` (stdio MCP server) | agent-native interface — no more `--help` scraping |
+| **2** | `CredentialSource` + **OIDC workload-identity federation** (GitHub Actions / K8s SA / SPIFFE) | headless agent auth, no browser, no stored secret |
+| **3** | **Downscoped** short-lived creds (session policies / scoped impersonation) + deny-by-default policy | real least-privilege — the security natives don't give ergonomically |
+| **4** 🔒 | Remote broker service (`cloudctld`): server-side policy, central tamper-proof audit, instant revoke | real *control* (vs local *hygiene*) |
+
+**Positioning held ruthlessly:** cloudctl is a **control plane** — it mints,
+gates, and audits identity; it never *executes* cloud operations (that's the
+provider MCPs / native CLIs). Phase 4 is **gated** on genuinely running multiple
+clouds × orgs × a fleet of agents with a real governance need — otherwise stop
+at Phase 3 and use provider MCPs + native federation for the rest. A remote
+credential broker is a security-critical service: build it to a real standard or
+not at all.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
